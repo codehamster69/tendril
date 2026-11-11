@@ -1,0 +1,75 @@
+---
+import '../styles/global.css';
+interface Props { title?: string; description?: string }
+const { title, description = 'Tendril is an endless farming game you play by writing Sprout, a plain-English programming language. Script your bots, grow your land without limit, and climb a leaderboard that replays every move.' } = Astro.props;
+const fullTitle = title ? `${title} | Tendril` : 'Tendril: a farm you grow by writing code';
+const path = Astro.url.pathname;
+const here = (p: string) => (p === '/' ? path === '/' : path.startsWith(p));
+---
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{fullTitle}</title>
+    <meta name="description" content={description} />
+    <meta property="og:title" content={fullTitle} />
+    <meta property="og:description" content={description} />
+    <meta name="theme-color" content="#2f6e35" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="canonical" href={new URL(Astro.url.pathname, Astro.site)} />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible+Next:ital,wght@0,400;0,700;1,400&family=Bricolage+Grotesque:opsz,wght@12..96,500..800&family=JetBrains+Mono:wght@400;600&display=swap" />
+  </head>
+  <body>
+    <a class="skip" href="#main">Skip to content</a>
+    <header class="site-head">
+      <div class="wrap bar">
+        <a class="brand" href="/" aria-label="Tendril home">
+          <img src="/favicon.svg" alt="" width="28" height="28" />
+          <span>Tendril</span>
+        </a>
+        <nav aria-label="Main">
+          <a href="/docs/" aria-current={here('/docs') && !here('/docs/reference') ? 'page' : undefined}>Docs</a>
+          <a href="/docs/reference/" aria-current={here('/docs/reference') ? 'page' : undefined}>Reference</a>
+          <a href="/leaderboard/" aria-current={here('/leaderboard') ? 'page' : undefined}>Leaderboard</a>
+          <a class="btn primary small" href="/download/">Download</a>
+        </nav>
+      </div>
+    </header>
+    <main id="main"><slot /></main>
+    <footer class="site-foot">
+      <div class="wrap foot">
+        <p>Tendril is a farming game you play by writing code. Your programs run on your machine; the server only checks the moves.</p>
+        <nav aria-label="Footer">
+          <a href="/docs/">Getting started</a>
+          <a href="/docs/how-to-play/">How the farm works</a>
+          <a href="/docs/reference/">Sprout reference</a>
+          <a href="/leaderboard/">Leaderboard</a>
+          <a href="/play/">Play in browser</a>
+          <a href="/docs/leaderboard/">Fair play</a>
+          <a href="/download/">Download</a>
+        </nav>
+      </div>
+    </footer>
+  </body>
+</html>
+<style>
+  .skip { position: absolute; left: -999px; top: 0; }
+  .skip:focus { left: 1rem; top: 1rem; z-index: 10; background: var(--paper); padding: 0.5rem 0.75rem; }
+  .site-head { position: sticky; top: 0; z-index: 5; background: color-mix(in srgb, var(--paper) 92%, transparent); backdrop-filter: blur(8px); border-bottom: 1px solid var(--line); }
+  .bar { display: flex; align-items: center; justify-content: space-between; height: 4rem; gap: 1rem; }
+  .brand { display: flex; align-items: center; gap: 0.55rem; color: var(--ink); text-decoration: none; font: 700 1.35rem var(--display); letter-spacing: -0.02em; }
+  .site-head nav { display: flex; align-items: center; gap: clamp(0.75rem, 3vw, 1.75rem); }
+  .site-head nav a:not(.btn) { color: var(--ink); text-decoration: none; font-weight: 700; font-size: 0.98rem; }
+  .site-head nav a[aria-current='page'] { color: var(--leaf); }
+  .site-head nav a:not(.btn):hover { color: var(--leaf); }
+  .btn.small { padding: 0.45rem 0.95rem; font-size: 0.95rem; }
+  .site-foot { border-top: 1px solid var(--line); margin-top: 6rem; padding-block: 2.5rem 3rem; color: var(--dim); font-size: 0.95rem; }
+  .foot { display: flex; flex-wrap: wrap; gap: 1.5rem 3rem; justify-content: space-between; }
+  .foot p { max-width: 34rem; margin: 0; }
+  .foot nav { display: flex; flex-wrap: wrap; gap: 0.5rem 1.25rem; }
+  .foot a { color: var(--dim); }
+  @media (max-width: 420px) { .site-head nav a[href='/docs/reference/'], .site-head nav a[href='/leaderboard/'] { display: none; } }
+</style>

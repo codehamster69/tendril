@@ -1,0 +1,33 @@
+---
+// Example programs are read straight from packages/lang/examples, so they're always the ones the game ships.
+import { Code } from 'astro:components';
+import Docs from '../../layouts/Docs.astro';
+import { sprout } from '../../sprout-lang';
+import starter from '../../../../lang/examples/starter.sprout?raw';
+import expander from '../../../../lang/examples/expander.sprout?raw';
+import orders from '../../../../lang/examples/orders.sprout?raw';
+import orchard from '../../../../lang/examples/orchard.sprout?raw';
+import compost from '../../../../lang/examples/compost.sprout?raw';
+import daily from '../../../../lang/examples/daily.sprout?raw';
+import grower from '../../data/grower.sprout?raw';
+
+const examples = [
+  { id: 'starter', title: 'Starter', code: starter, about: 'The program every new farm begins with. One bot walks every tile, farms carrots and sells them when its hands are full.' },
+  { id: 'expander', title: 'Expander', code: expander, about: 'Splits the farm between bots by column, researches wheat, then buys up to four bots and four plots.' },
+  { id: 'orders', title: 'Orders', code: orders, about: 'Fills buyer orders before selling anything, since an order pays double. Also prints the forecast.' },
+  { id: 'orchard', title: 'Orchard', code: orchard, about: 'Plants berries around a hive. Berries regrow after each harvest, and the hive pollinates them and makes honey. Needs 700 coins of research first.' },
+  { id: 'compost', title: 'Compost', code: compost, about: 'Turns a harvest into compost at a composter and feeds it back to the same tile. Needs a composter researched.' },
+  { id: 'daily', title: 'Daily', code: daily, about: 'A short route for the 3,000-tick daily challenge: five tiles close to the barn, orders first, then selling.' },
+  { id: 'home-page-farm', title: 'Home page farm', code: grower, about: 'The program running on the home page. It rotates clover, carrots and wheat by soil nitrogen, gives each bot its own plot, and keeps buying land and bots with no limit.' },
+];
+const headings = examples.map((e) => ({ depth: 2, slug: e.id, text: e.title }));
+---
+<Docs title="Example programs" description="Complete programs to read, run and take apart. Paste any of them into the game's editor." headings={headings}>
+  {examples.map((e) => (
+    <section>
+      <h2 id={e.id}>{e.title}</h2>
+      <p>{e.about}</p>
+      <Code code={e.code.trim()} lang={sprout as any} themes={{ light: 'github-light', dark: 'github-dark-dimmed' }} defaultColor={false} />
+    </section>
+  ))}
+</Docs>

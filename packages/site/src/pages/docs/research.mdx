@@ -1,0 +1,71 @@
+---
+layout: ../../layouts/Docs.astro
+title: Research and buildings
+description: Spend coins on new crops, hives, composters and a bigger satchel.
+---
+import { UNLOCKS, BUILDINGS, HONEY_INTERVAL, HONEY_MAX } from '@tendril/sim';
+import { art } from '../../data/art';
+
+## Research
+
+A new farm can only plant carrots. Everything else is **research**, bought once with `unlock name` and kept
+for good. Unlocking is a farm action: it costs no ticks, doesn't end the bot's turn, and returns `false` without
+doing anything if you can't afford it yet. Research counts toward your net worth.
+
+<div class="table-scroll">
+  <table>
+    <thead><tr><th>Research</th><th>Price</th><th>What it gives you</th></tr></thead>
+    <tbody>
+      {UNLOCKS.map((u) => (
+        <tr>
+          <td><code>{u.name}</code></td>
+          <td>{u.price ? `${u.price} coins` : 'Free'}</td>
+          <td>{u.name === 'hive' ? 'Lets you build hives.' : u.name === 'composter' ? 'Lets you build composters.' : u.name === 'satchel' ? 'Every bot carries 30 units instead of 20.' : u.name === 'carrot' ? 'Unlocked from the start.' : `Lets you plant ${u.name}.`}</td>
+        </tr>
+      ))}
+    </tbody>
+  </table>
+</div>
+
+Check what you have with `unlocked(wheat)` and what something costs with `unlock_cost(berry)`.
+Orders only ask for crops you have researched.
+
+## Buildings
+
+A bot builds on the tile it stands on with `build hive` or `build composter`. The tile must be plain grass:
+not the barn, not tilled, and without a crop. Building takes 4 ticks and costs coins on top of the research.
+`clear` removes a building (or a crop, or tilled soil) for good, with no refund.
+
+<div class="buildings">
+  {BUILDINGS.slice(1).map((b) => {
+    const img = art(b.name === 'hive' ? 'prop_beehive' : 'prop_compost');
+    return (
+      <div>
+        {img && <img src={img} alt="" width="96" height="96" loading="lazy" />}
+        <p><strong>{b.name === 'hive' ? 'Hive' : 'Composter'}</strong>, {b.price} coins to build</p>
+      </div>
+    );
+  })}
+</div>
+
+### Hives
+
+A hive makes one jar of honey every {HONEY_INTERVAL} ticks and holds up to {HONEY_MAX}. A bot standing on the
+hive collects it with `harvest`. Honey sells for 8 coins, more than any crop. `scan().honey` tells you how
+many jars are waiting.
+
+Hives also **pollinate**. When a ripe crop is harvested, every hive on the four tiles directly next to it
+(north, south, east, west) adds 25% to the harvest. A crop surrounded by four hives yields double.
+
+### Composters
+
+Stand on a composter and `compost` turns every four crop units the bot is carrying into one unit of compost.
+Compost can't be sold or deposited. Carry it to a tired tile and `fertilize` uses one unit to add 25 nitrogen
+and take away 20 fatigue. That keeps your best tiles producing without resting them.
+
+<style>{`
+  .buildings { display: flex; flex-wrap: wrap; gap: 2rem; margin: 0 0 1.5rem; }
+  .buildings div { display: flex; align-items: center; gap: 0.75rem; }
+  .buildings img { width: 96px; height: 96px; object-fit: contain; }
+  .buildings p { margin: 0; }
+`}</style>

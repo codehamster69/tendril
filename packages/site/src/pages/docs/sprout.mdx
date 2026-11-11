@@ -1,0 +1,142 @@
+---
+layout: ../../layouts/Docs.astro
+title: Learn Sprout
+description: The whole language on one page. If you have written a little Python, you already know most of it.
+---
+
+Sprout is the language your bots speak. It looks like plain English, uses indentation for blocks like Python,
+and has only whole numbers. It's small on purpose: everything below is everything there is.
+
+## Commands
+
+A line that starts with a command does that thing. Arguments follow, separated by commas, no brackets needed.
+
+```sprout
+move east
+plant carrot
+sell wheat, all
+go_to 3, 4
+say "Coins so far:", coins()
+```
+
+A command on its own, like `harvest` or `till`, runs with no arguments. Comments start with `#`.
+
+## Questions
+
+Questions end in brackets and give you a value back. They are free: asking never costs your bot any time.
+
+```sprout
+soil = scan()
+if soil.ripe:
+    harvest
+say "I am bot", my_id(), "at", position()
+```
+
+Inside a bigger expression, commands need brackets too: `if harvest() > 10:` works, `if harvest > 10:` doesn't.
+
+## Values
+
+| Kind | Looks like |
+|---|---|
+| Whole numbers | `0`, `42`, `-7`, `1_000` |
+| Text | `"hello"` or `'hello'` |
+| Yes or no | `true`, `false` |
+| Nothing | `none` |
+| Lists | `[1, 2, 3]`, counted from 0, so `xs[0]` is the first item and `xs[-1]` the last |
+| Records | `{x: 3, y: 4}`, read with `pos.x` or `pos["x"]` |
+
+Text in double quotes can include values: `say "I have {coins()} coins"`. Single quotes never do.
+
+Lists and records are shared, not copied: after `b = a`, changing `b` changes `a`. Reading a field a record
+doesn't have gives `none`. `false`, `none`, `0`, `""`, `[]` and `{}` all count as no in an `if`; everything else is yes.
+
+## Maths and comparisons
+
+`+ - * / %` work on whole numbers. `/` divides and rounds down, so `7 / 2` is `3`. `+` also joins text and lists.
+
+Compare with `== != < <= > >=`. Combine with `and`, `or`, `not`. `x in xs` checks whether a list holds a value,
+`"k" in r` checks whether a record has a key, and `"ab" in "cab"` checks text.
+
+## Variables
+
+```sprout
+target = 5
+target += 1
+spot = {x: target, y: 2}
+spot.y = 3
+```
+
+Each bot has its own variables. To share something with every bot, use the `shared` record:
+`shared.plan = "wheat"`. Shared values last until the program restarts.
+
+## Choosing
+
+```sprout
+if scan().ripe:
+    harvest
+elif scan().empty:
+    till
+    plant carrot
+else:
+    say "Still growing"
+```
+
+## Repeating
+
+```sprout
+repeat forever:
+    harvest
+
+repeat 3 times:
+    move east
+
+while carried() < capacity():
+    harvest
+    move east
+
+for each tile in tiles():
+    go_to tile
+
+for x from 1 to 7:
+    go_to x, 0
+
+for x from 7 to 1 step -2:
+    say x
+```
+
+`for each` works on lists, the keys of a record, and the letters of text. `from ... to` includes both ends,
+and counts down by itself when the first number is bigger. `break` leaves the loop, `continue` skips to the
+next round, and `stop` ends this bot's program for good.
+
+## Functions
+
+```sprout
+define unload():
+    go_to barn
+    deposit
+    sell carrot, all
+
+define best_crop(soil):
+    if soil.nitrogen < 15:
+        return clover
+    return wheat
+
+repeat forever:
+    unload()
+```
+
+`def` works too. Define a function before the line that first calls it. Variables you set inside a function
+stay inside it, unless you write `global name` first. Functions can call themselves.
+
+## Built-in helpers
+
+`len`, `min`, `max`, `abs`, `range`, `append`, `pop`, `insert`, `remove`, `contains`, `keys`, `sorted`,
+`reversed`, `str`, `int`, `random` and `distance` are all there. See the [reference](/docs/reference/#utilities)
+for each one. `random(n)` is seeded from your farm and the bot's id, so a program behaves the same way every
+time it runs on the same farm.
+
+## Mistakes
+
+When something is wrong, the editor underlines it and says what it means in plain words, like
+"I don't know what `plnat` means. Did you mean `plant`?". A mistake that only shows up while running stops
+just the bot that hit it and shows the line in the console. The other bots carry on.

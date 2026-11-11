@@ -1,0 +1,78 @@
+---
+// Generated from @tendril/lang's api.ts, the same list the in-game editor and reference use.
+import { Code } from 'astro:components';
+import { API, KEYWORDS } from '@tendril/lang';
+import type { ApiEntry } from '@tendril/lang';
+import Docs from '../../layouts/Docs.astro';
+import { sprout } from '../../sprout-lang';
+
+const groups: { id: string; title: string; kind: ApiEntry['kind']; intro: string }[] = [
+  { id: 'actions', title: 'Actions', kind: 'action', intro: 'Actions change the farm. Each one ends the bot\'s turn and keeps it busy for the ticks shown.' },
+  { id: 'farm-actions', title: 'Farm actions', kind: 'farm', intro: 'Farm actions spend coins. They happen instantly, cost no ticks and don\'t end the bot\'s turn.' },
+  { id: 'questions', title: 'Questions', kind: 'query', intro: 'Questions look at the farm without changing it. They are free.' },
+  { id: 'utilities', title: 'Utilities', kind: 'utility', intro: 'Helpers for lists, text and numbers, plus printing and walking. All free except go_to, which moves.' },
+  { id: 'constants', title: 'Names', kind: 'constant', intro: 'Built-in names you can use anywhere.' },
+];
+const ticks = (e: ApiEntry) => (e.ticks === 'n' ? (e.name === 'go_to' ? '2 per tile' : 'n') : e.ticks === 0 ? null : String(e.ticks));
+const headings = groups.map((g) => ({ depth: 2, slug: g.id, text: g.title })).concat([{ depth: 2, slug: 'keywords', text: 'Keywords' }]);
+const scanFields: [string, string][] = [
+  ['x, y', 'Where the tile is.'],
+  ['tilled', 'true if the soil is tilled.'],
+  ['crop', 'The crop name, or none.'],
+  ['stage', '0 to 3. The crop is ripe at 3.'],
+  ['ripe', 'true when there is a ripe crop.'],
+  ['empty', 'true when there is no crop, no building, and it isn\'t the barn: ready to till and plant.'],
+  ['moisture, nitrogen, fatigue', 'Soil numbers from 0 to 100.'],
+  ['barn', 'true on the barn.'],
+  ['building', 'hive, composter or none.'],
+  ['honey', 'Jars of honey waiting in a hive.'],
+];
+---
+<Docs title="Reference" description="Every command, question and helper in Sprout, with what it costs and an example." headings={headings}>
+  {groups.map((g) => (
+    <section>
+      <h2 id={g.id}>{g.title}</h2>
+      <p>{g.intro}</p>
+      {g.kind === 'constant' ? (
+        <div class="table-scroll">
+          <table>
+            <tbody>
+              {API.filter((e) => e.kind === 'constant').map((e) => (
+                <tr id={e.name}><td><code>{e.name}</code></td><td>{e.doc}</td></tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        API.filter((e) => e.kind === g.kind).map((e) => (
+          <div class="entry" id={e.name}>
+            <h3><code>{e.signature}</code>{ticks(e) && <span class="ticks">{ticks(e)} {ticks(e) === '1' ? 'tick' : 'ticks'}</span>}</h3>
+            <p>{e.doc}</p>
+            {e.name === 'scan' && (
+              <div class="table-scroll">
+                <table class="fields">
+                  <thead><tr><th>Field</th><th>Meaning</th></tr></thead>
+                  <tbody>{scanFields.map(([f, d]) => <tr><td><code>{f}</code></td><td>{d}</td></tr>)}</tbody>
+                </table>
+              </div>
+            )}
+            <Code code={e.example} lang={sprout as any} themes={{ light: 'github-light', dark: 'github-dark-dimmed' }} defaultColor={false} />
+          </div>
+        ))
+      )}
+    </section>
+  ))}
+  <section>
+    <h2 id="keywords">Keywords</h2>
+    <p>These words are part of the language and can't be used as names. See <a href="/docs/sprout/">Learn Sprout</a> for how they're used.</p>
+    <p class="keywords">{KEYWORDS.map((k) => <code>{k}</code>)}</p>
+  </section>
+</Docs>
+<style>
+  .entry { padding-top: 0.25rem; }
+  .entry h3 { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.75rem; }
+  .ticks { font: 400 0.85rem var(--body); color: var(--dim); }
+  .entry :global(pre) { margin-bottom: 1.25rem; }
+  .fields { margin-bottom: 1rem; }
+  .keywords { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+</style>

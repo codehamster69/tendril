@@ -1,0 +1,138 @@
+---
+import { Code } from 'astro:components';
+import Base from '../layouts/Base.astro';
+import FarmDemo from '../components/FarmDemo.astro';
+import DownloadCta from '../components/DownloadCta.astro';
+import CropTable from '../components/CropTable.astro';
+import { sprout } from '../sprout-lang';
+import { art } from '../data/art';
+import starter from '../../../lang/examples/starter.sprout?raw';
+
+const hive = art('prop_beehive');
+const composter = art('prop_compost');
+const bot = art('bot_tender');
+---
+<Base>
+  <section class="hero wrap">
+    <div class="pitch">
+      <h1>A farm that grows as far as your code does.</h1>
+      <p class="lede">
+        Tendril is a farming game you play by writing programs. Your bots till, plant and harvest
+        on land that never runs out. Buy more plots, hire more bots, and let your code run all of it.
+      </p>
+      <DownloadCta />
+      <p class="note">Free on Windows, macOS and Linux. No account needed to play.</p>
+    </div>
+    <div class="live">
+      <FarmDemo />
+      <p class="caption">
+        This is the game's real rules engine and language running in your browser. The farm started with
+        one plot, one bot and no coins. A <a href="/docs/examples/#home-page-farm">50-line program</a> is doing everything else.
+      </p>
+    </div>
+  </section>
+
+  <section class="wrap split">
+    <div>
+      <h2>You don't farm. You write the farmer.</h2>
+      <p>
+        There is no clicking on tiles. You write one program in Sprout, a small language that reads like
+        plain English, and every bot you own runs it. Bots walk, check the soil, plant what it can take,
+        and haul the harvest back to the barn.
+      </p>
+      <p>
+        This is the program every new farm starts with. It already makes money. Making it make more
+        is the game.
+      </p>
+      <p><a href="/docs/sprout/">Learn Sprout in ten minutes</a></p>
+    </div>
+    <div class="code"><Code code={starter.trim()} lang={sprout as any} themes={{ light: 'github-light', dark: 'github-dark-dimmed' }} defaultColor={false} /></div>
+  </section>
+
+  <section class="wrap">
+    <h2>Grow without a ceiling</h2>
+    <p class="section-lede">
+      Land comes in 8 by 8 plots and there is always another one next door. Each plot and each bot
+      costs more than the last, so past a point the only way to grow faster is a smarter program.
+    </p>
+    <ul class="pillars" role="list">
+      <li>
+        {bot && <img src={bot} alt="" width="120" height="120" loading="lazy" />}
+        <h3>Bots</h3>
+        <p>Every bot runs the same program but knows its own id, so you can split the work any way you like.</p>
+      </li>
+      <li>
+        {hive && <img src={hive} alt="" width="120" height="120" loading="lazy" />}
+        <h3>Hives</h3>
+        <p>Hives make honey on their own and pollinate the crops around them for bigger harvests.</p>
+      </li>
+      <li>
+        {composter && <img src={composter} alt="" width="120" height="120" loading="lazy" />}
+        <h3>Compost</h3>
+        <p>Turn spare crops into compost and feed tired soil, so the same tile keeps producing.</p>
+      </li>
+    </ul>
+  </section>
+
+  <section class="wrap">
+    <h2>Six crops, one soil</h2>
+    <p class="section-lede">
+      Every crop drinks water, eats nitrogen and tires the ground. Clover puts nitrogen back. Berries and
+      apples regrow after harvest. Carrots and pumpkins die if frost arrives before they ripen, and the forecast is one call away.
+    </p>
+    <CropTable />
+    <p><a href="/docs/how-to-play/#crops">More on crops and soil</a></p>
+  </section>
+
+  <section class="wrap">
+    <h2>Every move is checked</h2>
+    <p class="section-lede">
+      Your program runs on your own machine, so it can be as clever as you like. What reaches the
+      leaderboard is the list of moves it made, and the server plays those moves back through the same rules.
+    </p>
+    <ol class="steps">
+      <li><h3>Write</h3><p>Edit your program in the game's editor, with autocomplete, breakpoints and a live line-by-line view of every bot.</p></li>
+      <li><h3>Run</h3><p>Your farm runs ten ticks a second. The game records each move: which bot, what it did, and on which tick.</p></li>
+      <li><h3>Replay</h3><p>The server replays that record from your last checkpoint. It never sees or runs your code.</p></li>
+      <li><h3>Rank</h3><p>If the replay lands on the same farm, your net worth counts. A doctored save simply doesn't match.</p></li>
+    </ol>
+    <p><a href="/docs/leaderboard/">How the leaderboard stays fair</a></p>
+  </section>
+
+  <section class="wrap closing">
+    <h2>Start with one plot.</h2>
+    <p>The starter program farms it for you. What happens after that is up to you.</p>
+    <DownloadCta />
+  </section>
+</Base>
+
+<style>
+  .hero { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 6fr); gap: clamp(2rem, 5vw, 4.5rem); align-items: center; padding-block: clamp(2.5rem, 7vw, 5.5rem) 3rem; }
+  .hero h1 { font-size: clamp(2.5rem, 6vw, 4.25rem); line-height: 1.02; max-width: 12ch; }
+  .lede { font-size: 1.22rem; color: var(--dim); margin: 1.25rem 0 1.75rem; max-width: 34rem; }
+  .note { color: var(--dim); font-size: 0.95rem; margin: 0.9rem 0 0; }
+  .caption { color: var(--dim); font-size: 0.92rem; margin: 0.6rem 0 0; max-width: 36rem; }
+  section + section { margin-top: clamp(4rem, 9vw, 7rem); }
+  section h2 { font-size: clamp(1.75rem, 3.2vw, 2.4rem); max-width: 22ch; margin-bottom: 1rem; }
+  .section-lede { max-width: 42rem; color: var(--dim); font-size: 1.1rem; margin: 0 0 2rem; }
+  .split { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: clamp(2rem, 5vw, 4rem); align-items: center; }
+  .split p { max-width: 34rem; }
+  .code :global(pre) { margin: 0; font-size: 0.86rem; }
+  .pillars { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 2rem; }
+  .pillars img { width: 120px; height: 120px; object-fit: contain; margin: 0 0 0.5rem -0.5rem; }
+  .pillars h3 { margin-bottom: 0.4rem; }
+  .pillars p { margin: 0; color: var(--dim); max-width: 22rem; }
+  .steps { list-style: none; counter-reset: s; padding: 0; margin: 0 0 1.75rem; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1.5rem; }
+  .steps li { counter-increment: s; border-top: 2px solid var(--ink); padding-top: 0.9rem; }
+  .steps li::before { content: counter(s); font: 700 2.5rem/1 var(--display); color: var(--leaf); display: block; margin-bottom: 0.6rem; }
+  .steps h3 { margin-bottom: 0.4rem; }
+  .steps p { margin: 0; color: var(--dim); }
+  .closing { border-top: 1px solid var(--line); padding-top: 3.5rem; }
+  .closing p { color: var(--dim); font-size: 1.1rem; margin: 0 0 1.5rem; }
+  @media (max-width: 900px) {
+    .hero, .split { grid-template-columns: minmax(0, 1fr); }
+    .steps { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .pillars { grid-template-columns: 1fr; gap: 1.5rem; }
+  }
+  @media (max-width: 520px) { .steps { grid-template-columns: minmax(0, 1fr); } }
+</style>

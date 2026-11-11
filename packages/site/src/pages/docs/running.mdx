@@ -1,0 +1,76 @@
+---
+layout: ../../layouts/Docs.astro
+title: How programs run
+description: Turns, ticks, many bots, restarts and debugging.
+---
+
+## One program, many bots
+
+You write one program. Every bot runs its own copy from the top, with its own variables. A bot you buy later
+starts its copy the moment it appears. To give bots different jobs, branch on `my_id()`:
+
+```sprout
+repeat forever:
+    for each tile in tiles():
+        if tile.x % bots() == my_id():
+            go_to tile
+            if scan().ripe:
+                harvest
+```
+
+## Turns and ticks
+
+Each tick, the game visits your bots in order of their id. A bot that isn't busy runs its program until it
+reaches an **action**, like `move` or `harvest`. The action happens right away, the bot is busy for that
+action's ticks, and the game moves on to the next bot.
+
+- **Questions** (`scan()`, `coins()`, `orders()`) and **helpers** (`len`, `sorted`) are free and never end a turn.
+- **Farm actions** (`buy_plot`, `buy_bot`, `unlock`) take effect immediately and don't end the turn either.
+- `go_to` is a helper written in Sprout that makes one `move` at a time, so it takes two ticks per tile.
+
+## Thinking time
+
+A bot gets 5,000 steps of thinking per tick: roughly one step per line run and per call made. If it uses them
+all without taking an action, its turn simply ends and it carries on thinking next tick. An endless loop with
+no actions in it wastes that bot's time but can never freeze the game.
+
+A program also stops with an error if it calls functions more than 200 deep, or builds a list, record or text
+longer than 100,000.
+
+## Restarts
+
+Your program's place isn't saved. When you edit the program, or open the game again, every bot starts again
+from the top against the farm as it is now. Write programs that look at the farm before they act, rather than
+remembering what they did:
+
+```sprout
+# Good: works no matter where the bot was when the program restarted.
+repeat forever:
+    if carried() >= capacity():
+        go_to barn
+        deposit
+```
+
+The `shared` record is cleared on restart too.
+
+## When it goes wrong
+
+If your program doesn't compile, the editor lists every problem with its line, and the farm keeps running the
+last program that worked. A runtime error stops only the bot that hit it; the console shows which bot, which
+line and why.
+
+## Debugging
+
+- **Breakpoints.** Click beside a line number. Every bot that reaches it pauses, and you can see its variables.
+- **Step.** Runs until any bot moves to a new line, so you can follow the program a line at a time.
+- **Bot lines.** While the farm runs, the editor marks the line each bot is on.
+- **Heat.** Shows how many steps each line has used, so you can find the code that eats your bots' time.
+- **`say`.** Prints to the console, tagged with the bot and the tick.
+
+Pausing and stepping never change what your bots do. The farm ends up exactly where it would have without them.
+
+## Same program, same farm
+
+Sprout has no clock and no hidden randomness. The same program on the same farm always makes exactly the same
+moves. That's what lets the server check your farm without ever running your code; see
+[leaderboard and fair play](/docs/leaderboard/).
