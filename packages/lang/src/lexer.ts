@@ -28,7 +28,7 @@ export function lex(source: string): Token[] {
         if (raw[i] !== c) throw Object.assign(new SproutError('Close this string with its matching quote.'), { line, col });
         i++; push(raw.slice(start, i), 'string', col, i + 1); continue;
       }
-      const m = raw.slice(i).match(/^(\d[\d_]*|[A-Za-z_]\w*|==|!=|<=|>=|\+=|-=|\*=|[+\-*/%=<>()\[\]{},.:])/);
+      const m = raw.slice(i).match(/^(\d[\d_]*|[A-Za-z_]\w*|==|!=|<=|>=|\+=|-=|\*=|[+\-*/%=<>()[\]{},.:])/);
       if (!m) throw Object.assign(new SproutError(`Unexpected character ${c}.`), { line, col });
       const text = m[0]; i += text.length;
       if ('([{'.includes(text)) depth++;
