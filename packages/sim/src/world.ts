@@ -1,9 +1,12 @@
-// Deterministic farm rules (rules version 2). Integers only.
-import { CAPACITY, COST, CROPS, OP, OPS, TILE_INTS, botPrice, plotPrice } from './rules.ts';
-import { IllegalAction } from './types.ts';
-import type { Farm, LogEntry, Order, ScanResult, World } from './types.ts';
+// Deterministic farm rules (rules version 3). Integers only.
 import {
-  CROP, FATIGUE, MOIST, NITRO, PLANTED, RATE, TILLED, addPlot, findPlot, plotKey,
+  BASE_CAPACITY, BUILDINGS, COMPOST, COST, CROP_COUNT, CROPS, FARM_OPS, HIVE, COMPOSTER, HONEY, HONEY_INTERVAL,
+  HONEY_MAX, ITEMS, ITEM_COUNT, OP, OPS, SATCHEL_BIT, SATCHEL_CAPACITY, UNLOCKS, botPrice, plotPrice,
+} from './rules.ts';
+import { IllegalAction } from './types.ts';
+import type { Farm, LogEntry, Order, ScanResult, Setup, World } from './types.ts';
+import {
+  BUILDING, BUILT, CROP, FATIGUE, MOIST, NITRO, PLANTED, RATE, TILLED, addPlot, findPlot, honeyAt, plotKey,
   settleInts, stageOf, tileOffset,
 } from './tiles.ts';
 import { rand } from './weather.ts';
@@ -15,32 +18,50 @@ export { tileHash } from './tiles.ts';
 const MAX = Number.MAX_SAFE_INTEGER;
 const DX = [0, 1, 0, -1], DY = [-1, 0, 1, 0];
 
-export function createWorld(farm: Farm): World {
+export function createWorld(farm: Farm, setup?: Setup): World {
   const seed = (farm.seed >>> 0) || 1;
   const w: World = {
-    id: farm.id, seed, tick: 0, coins: 0, spent: 0,
+    id: farm.id, seed, tick: 0, coins: 0, spent: 0, unlocks: 1,
     wrng: ((seed ^ 0xA5A5A5A5) >>> 0) || 1, orng: ((seed ^ 0x5EED5EED) >>> 0) || 1,
-    nextOrderAt: 200, nextOrderId: 1, stock: [0, 0, 0, 0, 0], weather: [], orders: [],
-    bots: [{ x: 0, y: 0, busyUntil: 0, load: new Int32Array(5) }],
+    nextOrderAt: 200, nextOrderId: 1, stock: new Array<number>(ITEM_COUNT).fill(0), weather: [], orders: [],
+    bots: [{ x: 0, y: 0, busyUntil: 0, load: new Int32Array(ITEM_COUNT + 1) }],
     plots: [], plotIndex: new Map(), lastOp: [null],
   };
+  if (setup) {
+    if (setup.coins !== undefined) {
+      if (!Number.isSafeInteger(setup.coins) || setup.coins < 0) throw new Error('bad setup coins');
+      w.coins = setup.coins;
+    }
+    if (setup.unlocks !== undefined) {
+      if (!Number.isSafeInteger(setup.unlocks) || setup.unlocks < 0 || setup.unlocks >= 1 << UNLOCKS.length) {
+        throw new Error('bad setup unlocks');
+      }
+      w.unlocks = setup.unlocks | 1;
+    }
+  }
   addPlot(w, 0, 0);
   return w;
 }
 
 export function plotCost(w: World): number { return plotPrice(w.plots.length); }
 export function botCost(w: World): number { return botPrice(w.bots.length); }
+export function isUnlocked(w: World, bit: number): boolean {
+  return Number.isInteger(bit) && bit >= 0 && bit < UNLOCKS.length && (w.unlocks & (1 << bit)) !== 0;
+}
+export function capacity(w: World): number { return isUnlocked(w, SATCHEL_BIT) ? SATCHEL_CAPACITY : BASE_CAPACITY; }
 
 export function netWorth(w: World): number {
   let n = w.coins + w.spent;
-  for (let c = 1; c <= 4; c++) n += w.stock[c]! * CROPS[c]!.price;
+  for (let i = 1; i < ITEM_COUNT; i++) n += w.stock[i]! * ITEMS[i]!.price;
   return n;
 }
 
 export function tickWorld(w: World): void {
   w.tick++;
   while (w.nextOrderAt <= w.tick) {
-    w.orng = rand(w.orng); const crop = 1 + (w.orng % 4);
+    const pool: number[] = [];
+    for (let c = 1; c <= CROP_COUNT; c++) if (w.unlocks & (1 << (c - 1))) pool.push(c);
+    w.orng = rand(w.orng); const crop = pool[w.orng % pool.length]!;
     w.orng = rand(w.orng); const qty = (5 + (w.orng % 16)) * w.plots.length;
     w.orng = rand(w.orng); const life = 1500 + (w.orng % 1500);
     w.orders.push({
@@ -76,7 +97,7 @@ function validate(w: World, e: LogEntry): number {
   if (t !== w.tick) bad(`action tick ${t} != world tick ${w.tick}`);
   if (!isInt(op) || op < 0 || op >= OPS.length) bad(`unknown op ${String(op)}`);
   if (!isInt(bot)) bad('bot must be an integer');
-  if (op === OP.buyPlot || op === OP.buyBot) {
+  if (FARM_OPS.includes(op as number)) {
     if (bot !== -1) bad('farm-level actions use bot -1');
   } else {
     if ((bot as number) < 0 || (bot as number) >= w.bots.length) bad(`no bot ${String(bot)}`);
@@ -84,11 +105,13 @@ function validate(w: World, e: LogEntry): number {
   }
   switch (op) {
     case OP.move: inRange(a, 0, 3, 'dir'); break;
-    case OP.plant: inRange(a, 1, 4, 'crop'); break;
+    case OP.plant: inRange(a, 1, CROP_COUNT, 'crop'); break;
     case OP.deliver: inRange(a, 1, MAX, 'order id'); break;
     case OP.wait: inRange(a, 1, 1000, 'wait n'); break;
-    case OP.sell: inRange(a, 1, 4, 'crop'); inRange(b, 1, MAX, 'units'); break;
+    case OP.sell: inRange(a, 1, ITEM_COUNT - 1, 'item'); inRange(b, 1, MAX, 'units'); break;
     case OP.buyPlot: inRange(a, -COORD, COORD, 'px'); inRange(b, -COORD, COORD, 'py'); break;
+    case OP.build: inRange(a, 1, BUILDINGS.length - 1, 'building'); break;
+    case OP.unlock: inRange(a, 0, UNLOCKS.length - 1, 'research'); break;
   }
   return op as number;
 }
@@ -96,6 +119,24 @@ function validate(w: World, e: LogEntry): number {
 function addCoins(w: World, n: number): void {
   if (w.coins + n > MAX) throw new Error('overflow');
   w.coins += n;
+}
+
+function pay(w: World, n: number): void { w.coins -= n; w.spent += n; }
+
+function carried(load: Int32Array): number {
+  let used = 0;
+  for (let k = 1; k <= ITEM_COUNT; k++) used += load[k]!;
+  return used;
+}
+
+function hivesAround(w: World, x: number, y: number): number {
+  let h = 0;
+  for (let d = 0; d < 4; d++) {
+    const nx = x + DX[d]!, ny = y + DY[d]!;
+    const p = findPlot(w, nx, ny);
+    if (p && p.tiles[tileOffset(p, nx, ny) + BUILDING] === HIVE) h++;
+  }
+  return h;
 }
 
 /** Apply one action at the current tick. Returns its result (0 = failed in-world). Throws IllegalAction. */
@@ -110,17 +151,22 @@ export function applyAction(w: World, e: LogEntry): number {
     const adj = w.plotIndex.has(plotKey(a + 1, b)) || w.plotIndex.has(plotKey(a - 1, b))
       || w.plotIndex.has(plotKey(a, b + 1)) || w.plotIndex.has(plotKey(a, b - 1));
     const cost = plotCost(w);
-    if (!owned && adj && w.coins >= cost) { w.coins -= cost; w.spent += cost; addPlot(w, a, b); res = 1; }
+    if (!owned && adj && w.coins >= cost) { pay(w, cost); addPlot(w, a, b); res = 1; }
     return res;
   }
   if (op === OP.buyBot) {
     const cost = botCost(w);
     if (w.coins >= cost) {
-      w.coins -= cost; w.spent += cost;
-      w.bots.push({ x: 0, y: 0, busyUntil: T, load: new Int32Array(5) });
+      pay(w, cost);
+      w.bots.push({ x: 0, y: 0, busyUntil: T, load: new Int32Array(ITEM_COUNT + 1) });
       w.lastOp.push(null);
       res = w.bots.length;
     }
+    return res;
+  }
+  if (op === OP.unlock) {
+    const price = UNLOCKS[a]!.price;
+    if (!isUnlocked(w, a) && w.coins >= price) { pay(w, price); w.unlocks |= 1 << a; res = 1; }
     return res;
   }
   const bot = w.bots[botI]!;
@@ -135,11 +181,11 @@ export function applyAction(w: World, e: LogEntry): number {
     }
     case OP.till:
       settleInts(w, t, o, T);
-      if (!barn && !t[o + CROP]) { t[o + TILLED] = 1; res = 1; }
+      if (!barn && !t[o + CROP] && !t[o + BUILDING]) { t[o + TILLED] = 1; res = 1; }
       break;
     case OP.plant: {
       settleInts(w, t, o, T);
-      if (t[o + TILLED] && !t[o + CROP] && !barn) {
+      if (isUnlocked(w, a - 1) && t[o + TILLED] && !t[o + CROP] && !t[o + BUILDING] && !barn) {
         const c = CROPS[a]!;
         t[o + RATE] = t[o + MOIST]! >= c.thirst && t[o + NITRO]! >= c.hunger ? 2 : 1;
         t[o + MOIST] = Math.max(0, t[o + MOIST]! - c.drink);
@@ -153,22 +199,41 @@ export function applyAction(w: World, e: LogEntry): number {
       break;
     case OP.harvest: {
       settleInts(w, t, o, T);
+      const free = capacity(w) - carried(bot.load);
+      if (t[o + BUILDING] === HIVE) {
+        t[o + BUILT] = Math.max(t[o + BUILT]!, T - HONEY_MAX * HONEY_INTERVAL);
+        res = Math.min(honeyAt(t, o, T), free);
+        bot.load[HONEY] = bot.load[HONEY]! + res;
+        t[o + BUILT] = t[o + BUILT]! + res * HONEY_INTERVAL;
+        break;
+      }
       const crop = t[o + CROP]!;
       if (!crop) break;
       const c = CROPS[crop]!;
-      const units = stageOf(w, t, o, T) < 3 ? 0 : Math.max(1, (c.yield * (100 - t[o + FATIGUE]!) / 100) | 0);
-      let used = 0;
-      for (let k = 1; k <= 4; k++) used += bot.load[k]!;
-      res = Math.min(units, CAPACITY - used);
+      const stage = stageOf(w, t, o, T);
+      if (c.perennial && stage < 3) break;
+      let units = 0;
+      if (stage >= 3) {
+        const base = Math.max(1, (c.yield * (100 - t[o + FATIGUE]!) / 100) | 0);
+        units = base + ((base * 25 * hivesAround(w, bot.x, bot.y) / 100) | 0);
+      }
+      res = Math.min(units, free);
       bot.load[crop] = bot.load[crop]! + res;
       t[o + NITRO] = Math.min(100, Math.max(0, t[o + NITRO]! + c.nDelta));
       t[o + FATIGUE] = Math.min(100, Math.max(0, t[o + FATIGUE]! + c.fatigue));
-      t[o + CROP] = 0; t[o + PLANTED] = 0; t[o + RATE] = 0; t[o + TILLED] = 0;
+      if (c.perennial) {
+        t[o + PLANTED] = T;
+        t[o + RATE] = t[o + MOIST]! >= c.thirst && t[o + NITRO]! >= c.hunger ? 2 : 1;
+      } else {
+        t[o + CROP] = 0; t[o + PLANTED] = 0; t[o + RATE] = 0; t[o + TILLED] = 0;
+      }
       break;
     }
     case OP.deposit:
       if (barn) {
-        for (let k = 1; k <= 4; k++) { const n = bot.load[k]!; w.stock[k] = w.stock[k]! + n; res += n; bot.load[k] = 0; }
+        for (let k = 1; k < COMPOST; k++) {
+          const n = bot.load[k]!; w.stock[k] = w.stock[k]! + n; res += n; bot.load[k] = 0;
+        }
       }
       break;
     case OP.deliver: {
@@ -186,9 +251,49 @@ export function applyAction(w: World, e: LogEntry): number {
     case OP.wait: res = 1; break;
     case OP.sell:
       if (barn && w.stock[a]! >= b) {
-        const gain = b * CROPS[a]!.price;
+        const gain = b * ITEMS[a]!.price;
         addCoins(w, gain);
         w.stock[a] = w.stock[a]! - b; res = gain;
+      }
+      break;
+    case OP.build: {
+      settleInts(w, t, o, T);
+      const kind = BUILDINGS[a]!;
+      if (isUnlocked(w, kind.unlock) && w.coins >= kind.price && !barn && !t[o + TILLED] && !t[o + CROP]
+        && !t[o + BUILDING]) {
+        pay(w, kind.price);
+        t[o + BUILDING] = a; t[o + BUILT] = T; res = 1;
+      }
+      break;
+    }
+    case OP.clear:
+      settleInts(w, t, o, T);
+      if (!barn && (t[o + CROP] || t[o + BUILDING] || t[o + TILLED])) {
+        t[o + CROP] = 0; t[o + PLANTED] = 0; t[o + RATE] = 0; t[o + TILLED] = 0; t[o + BUILDING] = 0; t[o + BUILT] = 0;
+        res = 1;
+      }
+      break;
+    case OP.compost: {
+      if (t[o + BUILDING] !== COMPOSTER) break;
+      let produce = 0;
+      for (let k = 1; k <= CROP_COUNT; k++) produce += bot.load[k]!;
+      const made = Math.floor(produce / 4);
+      let left = made * 4;
+      for (let k = 1; k <= CROP_COUNT && left > 0; k++) {
+        const take = Math.min(left, bot.load[k]!);
+        bot.load[k] = bot.load[k]! - take; left -= take;
+      }
+      bot.load[COMPOST] = bot.load[COMPOST]! + made;
+      res = made;
+      break;
+    }
+    case OP.fertilize:
+      settleInts(w, t, o, T);
+      if (!barn && !t[o + BUILDING] && bot.load[COMPOST]! >= 1) {
+        bot.load[COMPOST] = bot.load[COMPOST]! - 1;
+        t[o + NITRO] = Math.min(100, t[o + NITRO]! + 25);
+        t[o + FATIGUE] = Math.max(0, t[o + FATIGUE]! - 20);
+        res = 1;
       }
       break;
   }
@@ -198,17 +303,17 @@ export function applyAction(w: World, e: LogEntry): number {
 }
 
 // ---- free queries: settle a COPY of the tile ints ----
-const scratch = new Int32Array(TILE_INTS);
 export function scanAt(w: World, x: number, y: number): ScanResult | null {
   if (!isInt(x) || !isInt(y)) return null;
   const plot = findPlot(w, x, y);
   if (!plot) return null;
   const o = tileOffset(plot, x, y);
-  for (let i = 0; i < TILE_INTS; i++) scratch[i] = plot.tiles[o + i]!;
-  settleInts(w, scratch, 0, w.tick);
+  const s = plot.tiles.slice(o, o + 10);
+  settleInts(w, s, 0, w.tick);
   return {
-    tilled: scratch[TILLED]!, crop: scratch[CROP]!, stage: stageOf(w, scratch, 0, w.tick),
-    moisture: scratch[MOIST]!, nitrogen: scratch[NITRO]!, fatigue: scratch[FATIGUE]!, barn: x === 0 && y === 0,
+    tilled: s[TILLED]!, crop: s[CROP]!, stage: stageOf(w, s, 0, w.tick),
+    moisture: s[MOIST]!, nitrogen: s[NITRO]!, fatigue: s[FATIGUE]!, barn: x === 0 && y === 0,
+    building: s[BUILDING]!, honey: s[BUILDING] === HIVE ? Math.max(0, honeyAt(s, 0, w.tick)) : 0,
   };
 }
 
@@ -220,3 +325,10 @@ export function scan(w: World, bot: number): ScanResult {
 
 export function openOrders(w: World): Order[] { return w.orders.map((o) => ({ ...o })); }
 
+/** FNV-1a 32-bit over UTF-8 of `tendril-daily:` + date; 0 -> 1. */
+export function dailySeed(date: string): number {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new Error('date must be YYYY-MM-DD');
+  let h = 0x811c9dc5;
+  for (const byte of new TextEncoder().encode('tendril-daily:' + date)) { h ^= byte; h = Math.imul(h, 0x01000193); }
+  return (h >>> 0) || 1;
+}

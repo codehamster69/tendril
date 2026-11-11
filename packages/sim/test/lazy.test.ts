@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { CROPS, createWorld, forecast, scanAt, tickWorld, weatherAt } from '../src/index.ts';
 import { tileHash } from '../src/tiles.ts';
-import { Driver, OP, farm } from './helpers.ts';
+import { CROP_UNLOCKS, Driver, OP, farm } from './helpers.ts';
 
 interface Ref { moisture: number; nitrogen: number; fatigue: number; crop: number; growth: number; rate: number; died: boolean }
 
@@ -35,12 +35,12 @@ function reference(seed: number, crop: number, P: number, at: number[]): Map<num
 
 describe('lazy settle equals eager', () => {
   for (const seed of [1, 4242, 987654321]) {
-    for (const crop of [1, 2, 3, 4]) {
+    for (const crop of [1, 2, 3, 4, 5, 6]) {
       it(`seed ${seed} crop ${crop}`, () => {
         for (const P of [5, 37, 1203, 4000]) {
           const at = [...new Set([P + 30, P + 100, P + 400, P + 1500, 5100, 7000])].sort((a, b) => a - b);
           const ref = reference(seed, crop, P, at);
-          const d = new Driver(farm(seed));
+          const d = new Driver(farm(seed), { unlocks: CROP_UNLOCKS });
           d.do(0, OP.move, 1);
           d.advance(P - 3 - d.w.tick);
           d.do(0, OP.till);

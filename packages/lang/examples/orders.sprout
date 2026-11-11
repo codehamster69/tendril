@@ -1,0 +1,22 @@
+# Fulfil contracts before selling surplus carrots.
+repeat forever:
+    for each tile in tiles():
+        go_to tile
+        if scan().ripe:
+            harvest
+        if scan().empty:
+            till
+            plant carrot
+        if carried() >= capacity():
+            go_to barn
+            deposit
+            for each order in orders():
+                if stock()[order.crop] >= order.qty:
+                    deliver order
+    go_to barn
+    deposit
+    for each order in orders():
+        if stock()[order.crop] >= order.qty:
+            deliver order
+    say "Weather ahead:", forecast(500)
+    wait 100

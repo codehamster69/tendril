@@ -1,18 +1,19 @@
 import { describe, expect, it } from 'vitest';
 import { IllegalAction, applyAction, hashWorld, scan, tickWorld } from '../src/index.ts';
 import type { LogEntry, World } from '../src/index.ts';
-import { Driver, OP } from './helpers.ts';
+import { CROP_UNLOCKS, Driver, OP, farm } from './helpers.ts';
 
 function illegal(w: World, e: unknown): void {
   const h = hashWorld(w);
   expect(() => applyAction(w, e as LogEntry)).toThrow(IllegalAction);
   expect(hashWorld(w)).toBe(h);
 }
-const raw = (w: World, x: number, y: number, i: number) => w.plots[0]!.tiles[(y * 8 + x) * 8 + i]!;
+const raw = (w: World, x: number, y: number, i: number) => w.plots[0]!.tiles[(y * 8 + x) * 10 + i]!;
 const east = (d: Driver) => d.do(0, OP.move, 1);
+const sandbox = () => new Driver(farm(), { unlocks: CROP_UNLOCKS });
 
 describe('common illegal cases', () => {
-  const d = new Driver();
+  const d = sandbox();
   const w = d.w;
   it('rejects bad envelope', () => {
     illegal(w, [1, 0, OP.wait, 1]);          // wrong tick
@@ -20,7 +21,7 @@ describe('common illegal cases', () => {
     illegal(w, [0, 1, OP.wait, 1]);          // no such bot
     illegal(w, [0, -1, OP.wait, 1]);         // -1 for bot op
     illegal(w, [0, 0, OP.buyPlot, 1, 0]);    // bot 0 for farm op
-    illegal(w, [0, 0, 11]);                  // unknown op
+    illegal(w, [0, 0, 16]);                  // unknown op
     illegal(w, [0, 0, -1]);
     illegal(w, [0, 0.5, OP.till]);
     illegal(w, [0, 0]);
@@ -34,7 +35,7 @@ describe('common illegal cases', () => {
 
 describe('move', () => {
   it('steps, fails on unowned land, illegal args', () => {
-    const d = new Driver();
+    const d = sandbox();
     expect(d.do(0, OP.move, 0)).toBe(0);           // north of barn unowned
     expect(d.w.bots[0]!.y).toBe(0);
     expect(d.do(0, OP.move, 1)).toBe(1);
@@ -44,7 +45,7 @@ describe('move', () => {
     for (const a of [4, -1, 1.5, undefined]) illegal(d.w, a === undefined ? [d.w.tick, 0, OP.move] : [d.w.tick, 0, OP.move, a]);
   });
   it('plot edge', () => {
-    const d = new Driver();
+    const d = sandbox();
     for (let i = 0; i < 7; i++) expect(d.do(0, OP.move, 1)).toBe(1);
     expect(d.do(0, OP.move, 1)).toBe(0);
   });
@@ -52,7 +53,7 @@ describe('move', () => {
 
 describe('till / plant / water', () => {
   it('till', () => {
-    const d = new Driver();
+    const d = sandbox();
     expect(d.do(0, OP.till)).toBe(0);              // barn
     east(d);
     expect(d.do(0, OP.till)).toBe(1);
@@ -62,7 +63,7 @@ describe('till / plant / water', () => {
     expect(d.do(0, OP.till)).toBe(0);              // crop present
   });
   it('plant', () => {
-    const d = new Driver();
+    const d = sandbox();
     expect(d.do(0, OP.plant, 1)).toBe(0);          // barn
     east(d);
     expect(d.do(0, OP.plant, 1)).toBe(0);          // not tilled
@@ -81,7 +82,7 @@ describe('till / plant / water', () => {
     expect(raw(d.w, 1, 0, 3)).toBe(1);             // moisture 25 < 40 -> rate 1
   });
   it('water', () => {
-    const d = new Driver();
+    const d = sandbox();
     east(d);
     expect(d.do(0, OP.water)).toBe(1);
     expect(raw(d.w, 1, 0, 4)).toBe(80);
@@ -93,7 +94,7 @@ describe('till / plant / water', () => {
 
 describe('harvest / deposit', () => {
   it('no crop, unripe, ripe, capacity', () => {
-    const d = new Driver();
+    const d = sandbox();
     east(d);
     expect(d.do(0, OP.harvest)).toBe(0);
     d.do(0, OP.till); d.do(0, OP.plant, 1);
@@ -116,7 +117,7 @@ describe('harvest / deposit', () => {
     expect(d.w.bots[0]!.load[2]).toBe(20 - units);
   });
   it('clover fixes nitrogen, clamps fatigue', () => {
-    const d = new Driver();
+    const d = sandbox();
     east(d);
     d.do(0, OP.till); d.do(0, OP.plant, 3);
     d.advance(120);
@@ -126,7 +127,7 @@ describe('harvest / deposit', () => {
     expect(raw(d.w, 1, 0, 6)).toBe(0);
   });
   it('deposit', () => {
-    const d = new Driver();
+    const d = sandbox();
     east(d);
     d.do(0, OP.till); d.do(0, OP.plant, 2); d.advance(140);
     expect(d.do(0, OP.harvest)).toBe(8);
@@ -141,7 +142,7 @@ describe('harvest / deposit', () => {
 
 describe('deliver / wait / sell', () => {
   it('deliver in-world failures and illegal', () => {
-    const d = new Driver();
+    const d = sandbox();
     d.advance(200);
     const o = d.w.orders[0]!;
     expect(d.do(0, OP.deliver, o.id)).toBe(0);     // stock short
@@ -154,7 +155,7 @@ describe('deliver / wait / sell', () => {
     illegal(d.w, [d.w.tick, 0, OP.deliver, 0]);
   });
   it('wait', () => {
-    const d = new Driver();
+    const d = sandbox();
     expect(d.do(0, OP.wait, 7)).toBe(1);
     expect(d.w.bots[0]!.busyUntil).toBe(7);
     d.advance(7);
@@ -164,7 +165,7 @@ describe('deliver / wait / sell', () => {
     expect(d.do(0, OP.wait, 1000)).toBe(1);
   });
   it('sell', () => {
-    const d = new Driver();
+    const d = sandbox();
     d.w.stock[4] = 5;
     expect(d.do(0, OP.sell, 4, 6)).toBe(0);        // short
     expect(d.do(0, OP.sell, 4, 2)).toBe(12);
@@ -172,14 +173,14 @@ describe('deliver / wait / sell', () => {
     expect(d.w.stock[4]).toBe(3);
     d.advance(1);
     illegal(d.w, [d.w.tick, 0, OP.sell, 4, 0]);
-    illegal(d.w, [d.w.tick, 0, OP.sell, 5, 1]);
+    illegal(d.w, [d.w.tick, 0, OP.sell, 8, 1]);    // compost is not sellable
     illegal(d.w, [d.w.tick, 0, OP.sell, 4]);
     d.do(0, OP.move, 1);
     d.advance(2);
     expect(d.do(0, OP.sell, 4, 1)).toBe(0);        // not on barn
   });
   it('overflow throws Error and leaves state', () => {
-    const d = new Driver();
+    const d = sandbox();
     d.w.stock[4] = 10;
     d.w.coins = Number.MAX_SAFE_INTEGER - 1;
     expect(() => d.do(0, OP.sell, 4, 1)).toThrow('overflow');
@@ -189,7 +190,7 @@ describe('deliver / wait / sell', () => {
 
 describe('buyPlot / buyBot', () => {
   it('buyPlot', () => {
-    const d = new Driver();
+    const d = sandbox();
     expect(d.do(-1, OP.buyPlot, 1, 0)).toBe(0);    // coins
     d.w.coins = 10000;
     expect(d.do(-1, OP.buyPlot, 0, 0)).toBe(0);    // owned
@@ -204,7 +205,7 @@ describe('buyPlot / buyBot', () => {
     illegal(d.w, [d.w.tick, -1, OP.buyPlot, 2.5, 0]);
   });
   it('buyBot', () => {
-    const d = new Driver();
+    const d = sandbox();
     expect(d.do(-1, OP.buyBot)).toBe(0);
     d.w.coins = 1000;
     expect(d.do(-1, OP.buyBot)).toBe(2);

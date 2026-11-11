@@ -1,0 +1,30 @@
+# Every bot farms a different column group.
+repeat forever:
+    for each tile in tiles():
+        if tile.x % bots() == my_id():
+            go_to tile
+            if scan().ripe:
+                harvest
+            if scan().empty:
+                till
+                if unlocked(wheat):
+                    plant wheat
+                else:
+                    plant carrot
+            if carried() >= capacity():
+                go_to barn
+                deposit
+                sell carrot, all
+                sell wheat, all
+    go_to barn
+    deposit
+    sell carrot, all
+    sell wheat, all
+    if my_id() == 0:
+        if coins() >= unlock_cost(wheat) and not unlocked(wheat):
+            unlock wheat
+        if coins() >= bot_cost() and bots() < 4:
+            buy_bot
+        if coins() >= plot_cost() and len(plots()) < 4:
+            buy_plot len(plots()), 0
+    wait 100

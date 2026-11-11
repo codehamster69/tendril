@@ -1,0 +1,17 @@
+{
+  "name": "@tendril/lang",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "main": "src/index.ts",
+  "bin": { "tendril": "src/cli.ts" },
+  "scripts": {
+    "test": "vitest run --reporter=dot",
+    "test:perf": "node --experimental-strip-types scripts/benchmark.ts",
+    "golden:write": "node --experimental-strip-types scripts/generate-golden.ts --write",
+    "typecheck": "tsc --noEmit",
+    "cli": "node --experimental-strip-types src/cli.ts"
+  },
+  "dependencies": { "@tendril/sim": "workspace:*" },
+  "devDependencies": { "@types/node": "^22.20.5", "typescript": "^5.9.3", "vitest": "^4.1.12" }
+}

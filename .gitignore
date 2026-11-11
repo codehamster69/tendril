@@ -6,3 +6,9 @@ out
 .env*
 test-results
 playwright-report
+.tmp
+packages/client/public/models
+release
+dist-*
+.data
+**/__pycache__

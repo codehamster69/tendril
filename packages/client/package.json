@@ -4,21 +4,25 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "vite build",
+    "dev": "node ../../scripts/copy-assets.mjs && vite",
+    "build": "node ../../scripts/copy-assets.mjs && vite build",
     "preview": "vite preview --port 4173 --strictPort",
     "typecheck": "tsc --noEmit",
     "electron": "electron electron/main.cjs",
-    "test:e2e": "playwright test --trace off"
+    "test:e2e": "playwright test --trace off",
+    "electron:smoke": "node e2e/electron-smoke.mjs"
   },
   "dependencies": {
+    "@tendril/sim": "workspace:*",
     "monaco-editor": "^0.57.0",
-    "three": "^0.187.0"
+    "three": "^0.187.0",
+    "@tendril/lang": "workspace:*"
   },
   "devDependencies": {
     "@playwright/test": "^1.65.0",
     "@types/three": "^0.187.0",
     "electron": "^45.3.0",
+    "electron-builder": "^26.18.0",
     "typescript": "^5.9.3",
     "vite": "^7.3.8"
   }

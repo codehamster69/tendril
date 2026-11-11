@@ -1,15 +1,17 @@
 import { applyAction, createWorld, tickWorld } from '../src/index.ts';
-import type { Farm, LogEntry, World } from '../src/index.ts';
+import type { Farm, LogEntry, Setup, World } from '../src/index.ts';
 import { OP } from '../src/rules.ts';
 
 export { OP };
 export const farm = (seed = 12345): Farm => ({ id: 'test', seed });
+/** Research bitmask with every crop (bits 0..5) unlocked but no satchel, so capacity stays 20. */
+export const CROP_UNLOCKS = 0b111111;
 
 /** Hand-drives a world and records the log. */
 export class Driver {
   w: World;
   log: LogEntry[] = [];
-  constructor(f: Farm = farm()) { this.w = createWorld(f); }
+  constructor(f: Farm = farm(), setup?: Setup) { this.w = createWorld(f, setup); }
   advance(n: number): void { for (let i = 0; i < n; i++) tickWorld(this.w); }
   /** Waits until the bot is free, then applies and records the action. */
   do(bot: number, op: number, a?: number, b?: number): number {

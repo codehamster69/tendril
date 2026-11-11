@@ -3,7 +3,37 @@
   "private": true,
   "packageManager": "pnpm@10.34.9",
   "scripts": {
-    "test": "pnpm -r test",
-    "typecheck": "pnpm -r typecheck"
+    "dev": "pnpm --filter @tendril/client dev",
+    "dev:server": "pnpm --filter @tendril/server dev",
+    "test": "pnpm -r --if-present test",
+    "typecheck": "pnpm -r --if-present typecheck",
+    "lint": "eslint .",
+    "build": "pnpm --filter @tendril/client build",
+    "assets:copy": "node scripts/copy-assets.mjs",
+    "assets:check": "node scripts/validate-assets.mjs",
+    "test:e2e": "pnpm assets:copy && pnpm --filter @tendril/client test:e2e",
+    "test:electron": "pnpm --filter @tendril/client electron:smoke",
+    "test:perf": "pnpm --filter @tendril/sim test:perf",
+    "test:desktop-policy": "node --test packages/client/electron/navigation.test.cjs",
+    "check": "pnpm lint && pnpm typecheck && pnpm test && pnpm build && pnpm test:e2e && pnpm test:electron",
+    "build:web": "node scripts/build-web.mjs",
+    "dev:site": "pnpm --filter @tendril/site dev"
+  },
+  "pnpm": {
+    "overrides": {
+      "dompurify": "3.4.17",
+      "minimatch@>=7 <11.0.1": "11.0.8"
+    },
+    "onlyBuiltDependencies": [
+      "electron",
+      "esbuild"
+    ]
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.14.0",
+    "globals": "^17.14.0",
+    "typescript-eslint": "^8.72.2",
+    "@vercel/node": "^5.0.0"
   }
 }

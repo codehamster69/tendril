@@ -1,9 +1,9 @@
 // Tile storage, lazy settle and growth.
-import { CROPS, PLOT_SIZE, TILE_INTS } from './rules.ts';
+import { CROPS, HONEY_INTERVAL, HONEY_MAX, PLOT_SIZE, TILE_INTS } from './rules.ts';
 import type { Plot, World } from './types.ts';
 import { firstEndAfter, frostTicks, rainTicks, ensureWeather } from './weather.ts';
 
-export const TILLED = 0, CROP = 1, PLANTED = 2, RATE = 3, MOIST = 4, NITRO = 5, FATIGUE = 6, UPDATED = 7;
+export const TILLED = 0, CROP = 1, PLANTED = 2, RATE = 3, MOIST = 4, NITRO = 5, FATIGUE = 6, UPDATED = 7, BUILDING = 8, BUILT = 9;
 
 export function tileHash(seed: number, x: number, y: number): number {
   let h = seed | 0;
@@ -81,4 +81,8 @@ export function settleInts(w: World, a: Int32Array, o: number, T: number): void 
     }
   }
   a[o + UPDATED] = T;
+}
+
+export function honeyAt(a: Int32Array, o: number, T: number): number {
+  return Math.min(HONEY_MAX, Math.floor((T - a[o + BUILT]!) / HONEY_INTERVAL));
 }

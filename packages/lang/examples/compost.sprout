@@ -1,0 +1,20 @@
+# Research composters before starting this example.
+unlock composter
+if not unlocked(composter):
+    say "A composter needs 200 coins of research, then 80 coins to build."
+    stop
+go_to 2, 0
+if scan().empty:
+    build composter
+repeat forever:
+    go_to 1, 0
+    if scan().empty:
+        till
+        plant carrot
+    wait 200
+    harvest
+    go_to 2, 0
+    compost
+    go_to 1, 0
+    fertilize
+    say "Soil nitrogen:", scan().nitrogen

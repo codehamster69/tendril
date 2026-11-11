@@ -1,16 +1,15 @@
-export interface Order { id: number; crop: number; qty: number; reward: number; opensAt: number; deadline: number }
-export interface Snapshot {
-  tick: number; coins: number; netWorth: number; weather: 'clear'|'rain'|'frost';
-  plots: { px: number; py: number }[];   // each plot is 8x8 tiles; plot (px,py) covers x in [8px, 8px+7], y in [8py, 8py+7]
-  tiles: { x: number; y: number; tilled: number; crop: number; stage: number; moisture: number; nitrogen: number; fatigue: number }[];
-  bots: { x: number; y: number; busyUntil: number; load: number; op: number | null }[];
-  stock: number[]; orders: Order[]; plotCost: number; botCost: number;
-}
+import type { Snapshot, Order } from '@tendril/sim/src/index.ts';
+import type { OutputLine, SimError } from './sim-protocol';
+
+export type { Snapshot, Order };
+
 export interface SimSource {
-  load(source: string): Promise<void>;        // (re)start with this Lua source
-  step(ticks: number): void;                  // advance the simulation
-  snapshot(): Snapshot;
-  drainOutput(): string[];                    // new console lines since last call
-  drainErrors(): { bot: number; message: string }[];
-  reset(): Promise<void>;
+  init(source: string): Promise<void>;          // loads the save or creates a new farm
+  setSource(source: string): Promise<void>;
+  requestStep(ticks: number): void;             // fire and forget; ignored while a previous step is still running
+  latest(): Snapshot | null;                    // most recent snapshot received
+  drainOutput(): OutputLine[];
+  drainErrors(): SimError[];
+  reset(source: string): Promise<void>;
+  onProgress?: (done: number, total: number) => void;
 }

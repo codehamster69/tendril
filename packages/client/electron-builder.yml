@@ -1,0 +1,47 @@
+appId: com.tendril.game
+productName: Tendril
+asar: true
+npmRebuild: false
+forceCodeSigning: false
+# Prevent electron-builder's automatic dependency inclusion. Vite has bundled
+# runtime dependencies; Electron is supplied by the packaging tool itself.
+files:
+  - dist/**/*
+  - electron/**/*
+  - '!electron/**/*.test.cjs'
+  - '!node_modules/**/*'
+extraMetadata:
+  main: electron/main.cjs
+  description: A farming game powered by player-written Lua programs.
+  author: Tendril
+directories:
+  output: release
+artifactName: '${productName}-${version}-${os}-${arch}.${ext}'
+publish: null
+mac:
+  category: public.app-category.games
+  identity: null
+  target:
+    - target: dmg
+      arch: [x64, arm64]
+    - target: zip
+      arch: [x64, arm64]
+win:
+  signAndEditExecutable: false
+  target:
+    - target: nsis
+      arch: [x64]
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+linux:
+  category: Game
+  maintainer: Tendril
+  synopsis: Tendril farming game
+  description: A farming game powered by player-written Lua programs.
+  target:
+    - target: AppImage
+      arch: [x64]
+    - target: deb
+      arch: [x64]

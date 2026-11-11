@@ -8,6 +8,7 @@
     "types": ["vite/client"],
     "skipLibCheck": true,
     "noEmit": true,
+    "allowImportingTsExtensions": true,
     "isolatedModules": true
   },
   "include": ["src", "e2e", "playwright.config.ts", "vite.config.ts"]

@@ -1,0 +1,17 @@
+# Start with carrots. Questions are free; actions cost ticks.
+repeat forever:
+    for each tile in tiles():
+        go_to tile
+        if scan().ripe:
+            harvest
+        if scan().empty:
+            till
+            plant carrot
+        if carried() >= capacity():
+            go_to barn
+            deposit
+            sell carrot, all
+    go_to barn
+    deposit
+    sell carrot, all
+    wait 100

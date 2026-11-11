@@ -1,0 +1,21 @@
+{
+  "name": "@tendril/server",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node --experimental-strip-types src/dev.ts",
+    "test": "vitest run --reporter=dot",
+    "typecheck": "tsc --noEmit",
+    "migrate": "node --experimental-strip-types src/migrate.ts"
+  },
+  "dependencies": {
+    "@tendril/sim": "workspace:*",
+    "@libsql/client": "^0.15.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.5",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.12"
+  }
+}

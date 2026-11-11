@@ -1,0 +1,20 @@
+{
+  "name": "@tendril/site",
+  "private": true,
+  "version": "0.0.1",
+  "type": "module",
+  "scripts": {
+    "dev": "astro dev --port 4321",
+    "build": "node scripts/copy-renders.mjs && astro build",
+    "preview": "astro preview",
+    "typecheck": "astro check"
+  },
+  "dependencies": {
+    "@tendril/lang": "workspace:*",
+    "@tendril/sim": "workspace:*",
+    "astro": "^5.0.0",
+    "@astrojs/mdx": "^4.0.0",
+    "@astrojs/sitemap": "^3.0.0"
+  },
+  "devDependencies": { "@astrojs/check": "^0.9.0", "typescript": "^5.9.3" }
+}

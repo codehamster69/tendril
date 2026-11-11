@@ -1,0 +1,26 @@
+#lesson-card { padding: 14px 16px; border-bottom: 1px solid var(--line); background: #223f35; }
+#lesson-card header { display: flex; align-items: center; justify-content: space-between; }
+#lesson-card h3 { font: italic 600 23px var(--serif); margin-top: 5px; }
+#lesson-card p { margin: 8px 0; color: var(--mist-2); }
+#lesson-card .goal { color: var(--wheat); font-weight: 600; }
+#lesson-card .goal.complete { color: #a7d59a; }
+.next-lesson { display: inline-block; color: var(--wheat); margin-left: 14px; }
+.research-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.research-node { text-align: left; padding: 10px; border-style: dashed; }
+.research-node b, .research-node span { display: block; }
+.research-node span { color: var(--mist-2); font: 11px var(--mono); margin-top: 4px; }
+.research-node.unlocked { border-style: solid; border-color: var(--sage); background: #294b3e; }
+.achievement-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.achievement { opacity: .6; padding: 9px; border: 1px solid var(--line-soft); border-radius: 8px; }
+.achievement.earned { opacity: 1; background: #284839; border-color: var(--sage); }
+.achievement b, .achievement span { display: block; }
+.achievement span { font-size: 11px; color: var(--mist-2); margin-top: 4px; }
+.campaign-map { width: min(750px, 95vw); max-height: 85vh; background: var(--deep); color: var(--mist); border: 1px solid var(--line); border-radius: 16px; padding: 20px; }
+.campaign-map::backdrop { background: #08191acc; }
+.campaign-map header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
+.lesson-link { display: flex; gap: 16px; padding: 12px; margin: 6px 0; border: 1px solid var(--line); border-radius: 10px; color: var(--mist); text-decoration: none; }
+.lesson-link > span { font: 22px var(--mono); color: var(--wheat); }
+.lesson-link small { display: block; color: var(--mist-2); }
+.lesson-link.locked { opacity: .4; pointer-events: none; }
+.daily-result { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+@media (max-width: 640px) { .achievement-grid, .research-grid { grid-template-columns: repeat(2, 1fr); } }

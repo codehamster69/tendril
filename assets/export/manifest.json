@@ -1,0 +1,395 @@
+{
+  "version": 1,
+  "assets": {
+    "bot_tender": {
+      "file": "bot_tender.glb",
+      "group": "bot",
+      "tris": 1212,
+      "size": [
+        0.557,
+        0.413,
+        0.657
+      ]
+    },
+    "bot_tender_v1": {
+      "file": "bot_tender_v1.glb",
+      "group": "bot",
+      "tris": 1316,
+      "size": [
+        0.557,
+        0.413,
+        0.672
+      ]
+    },
+    "bot_tender_v2": {
+      "file": "bot_tender_v2.glb",
+      "group": "bot",
+      "tris": 1304,
+      "size": [
+        0.564,
+        0.413,
+        0.708
+      ]
+    },
+    "bot_tender_v3": {
+      "file": "bot_tender_v3.glb",
+      "group": "bot",
+      "tris": 1476,
+      "size": [
+        0.555,
+        0.43,
+        0.769
+      ]
+    },
+    "crop_berry_s0": {
+      "file": "crop_berry_s0.glb",
+      "group": "crop",
+      "tris": 28,
+      "size": [
+        0.199,
+        0.103,
+        0.157
+      ]
+    },
+    "crop_berry_s1": {
+      "file": "crop_berry_s1.glb",
+      "group": "crop",
+      "tris": 96,
+      "size": [
+        0.334,
+        0.341,
+        0.285
+      ]
+    },
+    "crop_berry_s2": {
+      "file": "crop_berry_s2.glb",
+      "group": "crop",
+      "tris": 188,
+      "size": [
+        0.454,
+        0.454,
+        0.461
+      ]
+    },
+    "crop_berry_s3": {
+      "file": "crop_berry_s3.glb",
+      "group": "crop",
+      "tris": 268,
+      "size": [
+        0.571,
+        0.571,
+        0.58
+      ]
+    },
+    "crop_carrot_s0": {
+      "file": "crop_carrot_s0.glb",
+      "group": "crop",
+      "tris": 28,
+      "size": [
+        0.19,
+        0.098,
+        0.15
+      ]
+    },
+    "crop_carrot_s1": {
+      "file": "crop_carrot_s1.glb",
+      "group": "crop",
+      "tris": 152,
+      "size": [
+        0.227,
+        0.231,
+        0.32
+      ]
+    },
+    "crop_carrot_s2": {
+      "file": "crop_carrot_s2.glb",
+      "group": "crop",
+      "tris": 232,
+      "size": [
+        0.406,
+        0.401,
+        0.49
+      ]
+    },
+    "crop_carrot_s3": {
+      "file": "crop_carrot_s3.glb",
+      "group": "crop",
+      "tris": 272,
+      "size": [
+        0.647,
+        0.626,
+        0.67
+      ]
+    },
+    "crop_clover_s0": {
+      "file": "crop_clover_s0.glb",
+      "group": "crop",
+      "tris": 44,
+      "size": [
+        0.174,
+        0.106,
+        0.127
+      ]
+    },
+    "crop_clover_s1": {
+      "file": "crop_clover_s1.glb",
+      "group": "crop",
+      "tris": 120,
+      "size": [
+        0.255,
+        0.255,
+        0.137
+      ]
+    },
+    "crop_clover_s2": {
+      "file": "crop_clover_s2.glb",
+      "group": "crop",
+      "tris": 208,
+      "size": [
+        0.408,
+        0.408,
+        0.272
+      ]
+    },
+    "crop_clover_s3": {
+      "file": "crop_clover_s3.glb",
+      "group": "crop",
+      "tris": 296,
+      "size": [
+        0.478,
+        0.478,
+        0.327
+      ]
+    },
+    "crop_pumpkin_s0": {
+      "file": "crop_pumpkin_s0.glb",
+      "group": "crop",
+      "tris": 28,
+      "size": [
+        0.205,
+        0.105,
+        0.162
+      ]
+    },
+    "crop_pumpkin_s1": {
+      "file": "crop_pumpkin_s1.glb",
+      "group": "crop",
+      "tris": 128,
+      "size": [
+        0.361,
+        0.2,
+        0.185
+      ]
+    },
+    "crop_pumpkin_s2": {
+      "file": "crop_pumpkin_s2.glb",
+      "group": "crop",
+      "tris": 236,
+      "size": [
+        0.482,
+        0.448,
+        0.232
+      ]
+    },
+    "crop_pumpkin_s3": {
+      "file": "crop_pumpkin_s3.glb",
+      "group": "crop",
+      "tris": 280,
+      "size": [
+        0.619,
+        0.587,
+        0.347
+      ]
+    },
+    "crop_wheat_s0": {
+      "file": "crop_wheat_s0.glb",
+      "group": "crop",
+      "tris": 24,
+      "size": [
+        0.152,
+        0.149,
+        0.19
+      ]
+    },
+    "crop_wheat_s1": {
+      "file": "crop_wheat_s1.glb",
+      "group": "crop",
+      "tris": 100,
+      "size": [
+        0.323,
+        0.313,
+        0.348
+      ]
+    },
+    "crop_wheat_s2": {
+      "file": "crop_wheat_s2.glb",
+      "group": "crop",
+      "tris": 280,
+      "size": [
+        0.446,
+        0.433,
+        0.736
+      ]
+    },
+    "crop_wheat_s3": {
+      "file": "crop_wheat_s3.glb",
+      "group": "crop",
+      "tris": 288,
+      "size": [
+        0.552,
+        0.549,
+        1.06
+      ]
+    },
+    "prop_barn": {
+      "file": "prop_barn.glb",
+      "group": "building",
+      "tris": 1064,
+      "size": [
+        0.878,
+        0.847,
+        0.824
+      ]
+    },
+    "prop_beehive": {
+      "file": "prop_beehive.glb",
+      "group": "prop",
+      "tris": 604,
+      "size": [
+        0.534,
+        0.564,
+        0.703
+      ]
+    },
+    "prop_compost": {
+      "file": "prop_compost.glb",
+      "group": "prop",
+      "tris": 662,
+      "size": [
+        0.708,
+        0.621,
+        0.637
+      ]
+    },
+    "prop_crate": {
+      "file": "prop_crate.glb",
+      "group": "prop",
+      "tris": 1156,
+      "size": [
+        0.62,
+        0.576,
+        0.548
+      ]
+    },
+    "prop_fence": {
+      "file": "prop_fence.glb",
+      "group": "prop",
+      "tris": 492,
+      "size": [
+        0.977,
+        0.142,
+        0.77
+      ]
+    },
+    "prop_market": {
+      "file": "prop_market.glb",
+      "group": "building",
+      "tris": 1786,
+      "size": [
+        0.864,
+        0.768,
+        0.921
+      ]
+    },
+    "prop_rocks": {
+      "file": "prop_rocks.glb",
+      "group": "prop",
+      "tris": 306,
+      "size": [
+        0.869,
+        0.658,
+        0.44
+      ]
+    },
+    "prop_signpost": {
+      "file": "prop_signpost.glb",
+      "group": "prop",
+      "tris": 254,
+      "size": [
+        0.64,
+        0.142,
+        1.135
+      ]
+    },
+    "prop_tree": {
+      "file": "prop_tree.glb",
+      "group": "prop",
+      "tris": 668,
+      "size": [
+        1.003,
+        0.91,
+        1.789
+      ]
+    },
+    "prop_water_tank": {
+      "file": "prop_water_tank.glb",
+      "group": "prop",
+      "tris": 904,
+      "size": [
+        0.554,
+        0.632,
+        0.803
+      ]
+    },
+    "tile_grass": {
+      "file": "tile_grass.glb",
+      "group": "tile",
+      "tris": 66,
+      "size": [
+        1,
+        1,
+        0.2
+      ]
+    },
+    "tile_path": {
+      "file": "tile_path.glb",
+      "group": "tile",
+      "tris": 228,
+      "size": [
+        1,
+        1,
+        0.2
+      ]
+    },
+    "tile_soil": {
+      "file": "tile_soil.glb",
+      "group": "tile",
+      "tris": 214,
+      "size": [
+        1,
+        1,
+        0.2
+      ]
+    },
+    "tile_terrace_wall": {
+      "file": "tile_terrace_wall.glb",
+      "group": "tile",
+      "tris": 300,
+      "size": [
+        1,
+        1,
+        0.2
+      ]
+    },
+    "tile_wet": {
+      "file": "tile_wet.glb",
+      "group": "tile",
+      "tris": 274,
+      "size": [
+        1,
+        1,
+        0.2
+      ]
+    }
+  }
+}

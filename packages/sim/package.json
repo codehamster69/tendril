@@ -6,15 +6,12 @@
   "main": "src/index.ts",
   "scripts": {
     "test": "vitest run --reporter=dot",
-    "typecheck": "tsc --noEmit",
-    "cli": "node --experimental-strip-types src/cli.ts"
-  },
-  "dependencies": {
-    "wasmoon": "^1.16.0"
+    "test:perf": "node --experimental-strip-types scripts/benchmark.ts",
+    "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
+    "@types/node": "^22.0.0",
     "typescript": "^5.6.0",
-    "vitest": "^3.0.0",
-    "@types/node": "^22.0.0"
+    "vitest": "^4.1.12"
   }
 }
