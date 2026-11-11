@@ -17,4 +17,4 @@ Read these in order. Each file is short.
 - Edit only the files your brief says you own. If you need a change elsewhere, write it in your notes file as a request.
 - When you finish, write `brain/notes/<your-workstream>.md`: files changed, checks run with their real output, decisions you made (with reasons), open issues. The coordinator merges notes into the shared brain files. Do not edit `STATUS.md`, `MAP.md`, `DECISIONS.md` or `JOURNAL.md` yourself unless your brief says so.
 - Never commit, push or touch `main`. The coordinator reviews and commits on `dev`, and merges to `main` only after the full gate passes (see STATUS.md, "Gate").
-- Never edit `~/Developer/tendril`. That is the original project and stays untouched (D-001).
+- Since 2026-11-12 the project lives in `~/Developer/tendril` (branch `qoder-import`). The Qoder folder it was imported from is retired; D-001 no longer applies.

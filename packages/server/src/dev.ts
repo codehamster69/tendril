@@ -1,15 +1,17 @@
+import { mkdirSync } from 'node:fs';
 import { createServer } from 'node:http';
 import type { RequestListener } from 'node:http';
 import { resolve } from 'node:path';
 import { Readable } from 'node:stream';
 import { fileURLToPath } from 'node:url';
-import { PGlite } from '@electric-sql/pglite';
-import { createApp, initializeDb } from './index.ts';
+import { createApp } from './app.ts';
+import { createDb } from './db.ts';
 
-const hosts = new Set(['127.0.0.1:8787', 'localhost:8787', '[::1]:8787']);
+const PORT = 8787;
+const hosts = new Set([`127.0.0.1:${PORT}`, `localhost:${PORT}`, `[::1]:${PORT}`]);
 
-// Importing this factory must not open a database or bind the development port.
-export function createListener(app: ReturnType<typeof createApp>, allowedHosts: ReadonlySet<string> = hosts): RequestListener {
+/** Adapts Node requests to the Fetch-API app. Importing this module must not open a database or bind the port. */
+export function createListener(handler: (request: Request) => Promise<Response>, allowedHosts: ReadonlySet<string> = hosts): RequestListener {
   return async (incoming, outgoing) => {
     try {
       if (!allowedHosts.has(incoming.headers.host ?? '') || !incoming.url?.startsWith('/') || incoming.url.startsWith('//')) {
@@ -27,9 +29,17 @@ export function createListener(app: ReturnType<typeof createApp>, allowedHosts: 
         init.body = Readable.toWeb(incoming) as ReadableStream<Uint8Array>;
         init.duplex = 'half';
       }
-      const response = await app.handle(new Request(`http://127.0.0.1:8787${incoming.url}`, init));
-      outgoing.writeHead(response.status, Object.fromEntries(response.headers));
+      const response = await handler(new Request(`http://${incoming.headers.host}${incoming.url}`, init));
+      const out: Record<string, string | string[]> = {};
+      for (const [name, value] of response.headers) if (name !== 'set-cookie') out[name] = value;
+      const cookies = response.headers.getSetCookie();
+      if (cookies.length) out['set-cookie'] = cookies;
+      // An oversized upload may still be streaming: flush the response first, then close the connection.
+      const abandonUpload = response.status === 413;
+      if (abandonUpload) out.connection = 'close';
+      outgoing.writeHead(response.status, out);
       outgoing.end(Buffer.from(await response.arrayBuffer()));
+      if (abandonUpload) outgoing.once('finish', () => { setImmediate(() => { incoming.destroy(); }); });
     } catch {
       if (!outgoing.headersSent) outgoing.writeHead(500, { 'Content-Type': 'application/json' });
       outgoing.end(JSON.stringify({ error: 'Internal server error' }));
@@ -37,20 +47,23 @@ export function createListener(app: ReturnType<typeof createApp>, allowedHosts: 
   };
 }
 
-async function startDev(): Promise<void> {
-  const db = new PGlite(fileURLToPath(new URL('../../../.data', import.meta.url)));
-  await initializeDb(db);
-  const server = createServer(createListener(createApp({ db })));
+function startDev(): void {
+  const dataDir = fileURLToPath(new URL('../../../.data', import.meta.url));
+  mkdirSync(dataDir, { recursive: true });
+  const db = createDb({ url: process.env.TURSO_DATABASE_URL || `file:${resolve(dataDir, 'tendril.db')}`, authToken: process.env.TURSO_AUTH_TOKEN });
+  // Local defaults; real variables from the shell win. Dev login stays off when VERCEL_ENV=production.
+  const env = { TENDRIL_DEV_AUTH: '1', PUBLIC_ORIGIN: 'http://localhost:5173', ...process.env };
+  const server = createServer(createListener(createApp({ db, env })));
   server.requestTimeout = 15000;
   server.headersTimeout = 10000;
-  server.on('error', async () => { console.error('Unable to start local server'); await db.close(); process.exitCode = 1; });
-  server.listen(8787, '127.0.0.1', () => { console.info('Tendril local development API: http://127.0.0.1:8787 (not production authentication)'); });
+  server.on('error', () => { console.error('Unable to start local server'); db.close(); process.exitCode = 1; });
+  server.listen(PORT, '127.0.0.1', () => { console.info(`Tendril local API: http://127.0.0.1:${PORT}`); });
   for (const signal of ['SIGINT', 'SIGTERM'] as const) {
     process.once(signal, () => {
-      server.close(() => { void db.close(); });
+      server.close(() => { db.close(); });
       server.closeIdleConnections();
     });
   }
 }
 
-if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) await startDev();
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) startDev();

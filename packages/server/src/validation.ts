@@ -21,10 +21,9 @@ export async function readJson(request: Request): Promise<unknown> {
       const next = await reader.read();
       if (next.done) break;
       size += next.value.byteLength;
-      if (size > MAX_BODY_BYTES) {
-        await reader.cancel();
-        throw new HttpError(413, 'Request too large');
-      }
+      // Do not cancel the stream: tearing down the transport here would reset the connection before the
+      // 413 is written. The caller flushes the response and then closes the connection.
+      if (size > MAX_BODY_BYTES) throw new HttpError(413, 'Request too large');
       parts.push(next.value);
     }
     const bytes = new Uint8Array(size);
@@ -57,12 +56,10 @@ export interface ChunkInput {
   fromTick: number; toTick: number; actions: LogEntry[]; rulesVersion: number; checkpointHash: string;
 }
 
-export function chunkInput(value: unknown): ChunkInput {
-  const body = objectWithKeys(value, ['fromTick', 'toTick', 'actions', 'rulesVersion', 'checkpointHash'], 422);
-  const { fromTick, toTick, actions, rulesVersion, checkpointHash } = body;
-  if (!isInteger(fromTick) || !isInteger(toTick) || toTick <= fromTick) throw new HttpError(422, 'Invalid tick range');
-  if (toTick - fromTick > 20000 || (Array.isArray(actions) && actions.length > 20000)) throw new HttpError(413, 'Chunk too large');
-  if (!isInteger(rulesVersion, 1) || typeof checkpointHash !== 'string' || !/^[0-9a-f]{8}$/.test(checkpointHash) || !Array.isArray(actions)) throw new HttpError(422, 'Invalid chunk');
+/** Shape-checks an action log whose entries must fall in [fromTick, toTick). Throws 413/422. */
+export function validateActions(actions: unknown, fromTick: number, toTick: number): LogEntry[] {
+  if (!Array.isArray(actions)) throw new HttpError(422, 'Invalid actions');
+  if (actions.length > 20000) throw new HttpError(413, 'Chunk too large');
   for (const action of actions) {
     if (!Array.isArray(action) || !isInteger(action[0]) || action[0] < fromTick || action[0] >= toTick || !isInteger(action[1], -1) || !isInteger(action[2], 0, 10)) throw new HttpError(422, 'Invalid action');
     const op = action[2];
@@ -72,7 +69,16 @@ export function chunkInput(value: unknown): ChunkInput {
     const a = action[3], b = action[4];
     if ((op === 0 && !isInteger(a, 0, 3)) || (op === 2 && !isInteger(a, 1, 4)) || (op === 6 && !isInteger(a, 1)) || (op === 7 && !isInteger(a, 1, 1000)) || (op === 8 && (!isInteger(a, 1, 4) || !isInteger(b, 1))) || (op === 9 && (!isInteger(a, -1000000000, 1000000000) || !isInteger(b, -1000000000, 1000000000)))) throw new HttpError(422, 'Invalid action argument');
   }
-  return { fromTick, toTick, actions: actions as LogEntry[], rulesVersion, checkpointHash };
+  return actions as LogEntry[];
+}
+
+export function chunkInput(value: unknown): ChunkInput {
+  const body = objectWithKeys(value, ['fromTick', 'toTick', 'actions', 'rulesVersion', 'checkpointHash'], 422);
+  const { fromTick, toTick, actions, rulesVersion, checkpointHash } = body;
+  if (!isInteger(fromTick) || !isInteger(toTick) || toTick <= fromTick) throw new HttpError(422, 'Invalid tick range');
+  if (toTick - fromTick > 20000 || (Array.isArray(actions) && actions.length > 20000)) throw new HttpError(413, 'Chunk too large');
+  if (!isInteger(rulesVersion, 1) || typeof checkpointHash !== 'string' || !/^[0-9a-f]{8}$/.test(checkpointHash) || !Array.isArray(actions)) throw new HttpError(422, 'Invalid chunk');
+  return { fromTick, toTick, actions: validateActions(actions, fromTick, toTick), rulesVersion, checkpointHash };
 }
 
 export function rejectQuery(url: URL, allowed: string[] = []): void {
