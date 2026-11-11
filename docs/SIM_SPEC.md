@@ -107,8 +107,8 @@ bot busy; unknown op; any required arg missing, non-integer or out of range.
 `netWorth = coins + spent + sum(stock[c] * price(c))`.
 
 ## Hash and checkpoint
-- `hashWorld(world)`: FNV-1a 32-bit over, in order: tick, coins, spent, wrng, orng, nextOrderAt, nextOrderId,
-  stock[1..4], each weather segment (kind, start, end), each order (id, crop, qty, reward, opensAt, deadline),
+- `hashWorld(world)`: FNV-1a 32-bit over, in order: tick, coins, spent, orng, nextOrderAt, nextOrderId,
+  stock[1..4], each weather segment with `start <= tick` (kind, start, end; `wrng` itself is NOT hashed), each order (id, crop, qty, reward, opensAt, deadline),
   each bot (x, y, busyUntil, load[1..4]), each plot (px, py, all tile ints). Each int is mixed as 8 bytes
   (low 32 bits then high 32 bits, little-endian) so large values hash correctly. Result: 8 hex chars.
 - `serialize(world): string` (JSON) and `deserialize(s): World` round-trip exactly: `hashWorld(deserialize(serialize(w))) === hashWorld(w)`.
