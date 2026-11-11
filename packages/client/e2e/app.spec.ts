@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { API } from '@tendril/lang/src/index.ts';
 
 // Playwright supplies a fresh context (including IndexedDB) per test.
 test.beforeEach(async ({ page }) => {
@@ -33,11 +34,19 @@ test('greenhouse loads a real farm and a nonblank canvas', async ({ page }, test
   await page.screenshot({ path: testInfo.outputPath('greenhouse.png'), fullPage: true, animations: 'disabled' });
 });
 
-test('monaco suggests bot functions', async ({ page }) => {
-  await page.getByRole('textbox', { name: 'Farm Lua program' }).focus();
+test('monaco completion lists the built-ins generated from the language API', async ({ page }) => {
+  await page.getByRole('textbox', { name: 'Sprout program for your farm bots' }).focus();
   await page.keyboard.press('ControlOrMeta+A');
-  await page.keyboard.type('bot.');
-  await expect(page.locator('.suggest-widget .monaco-list-row', { hasText: 'move' }).first()).toBeVisible();
+  await page.keyboard.type('pla');
+  const expected = API.filter((entry) => entry.name.startsWith('pla')).map((entry) => entry.name);
+  expect(expected).toContain('plant');
+  for (const name of expected) {
+    await expect(page.locator('.suggest-widget .monaco-list-row', { hasText: name }).first()).toBeVisible();
+  }
+  // The row carries the API signature and tick cost as its detail text.
+  const plant = API.find((entry) => entry.name === 'plant')!;
+  await expect(page.locator('.suggest-widget .monaco-list-row.focused, .suggest-widget .monaco-list-row', { hasText: 'plant' }).first())
+    .toContainText(plant.signature);
 });
 
 test('sandbox steps exactly 100, runs at selected speed and pauses durably', async ({ page }) => {
@@ -55,17 +64,17 @@ test('sandbox steps exactly 100, runs at selected speed and pauses durably', asy
   await expect(page.locator('#save-status')).toHaveText(`Saved locally · tick ${tick}`);
 });
 
-test('examples edit the Lua without resetting or starting the farm', async ({ page }) => {
+test('examples edit the program without resetting or starting the farm', async ({ page }) => {
   await page.click('#btn-step');
   await expect(page.locator('#hud-tick')).toHaveText('100');
   page.once('dialog', (dialog) => dialog.accept());
-  await page.selectOption('#examples', 'expander.lua');
-  expect(await page.evaluate(() => window.tendril!.editor.getSource())).toContain('farm.buy_plot');
+  await page.selectOption('#examples', 'expander');
+  expect(await page.evaluate(() => window.tendril!.editor.getSource())).toContain('buy_plot');
   await expect(page.locator('#hud-tick')).toHaveText('100');
   await expect(page.locator('#status')).toHaveAttribute('data-state', 'paused');
   await page.reload();
   await expect(page.locator('#status')).toHaveAttribute('data-state', 'paused');
-  expect(await page.evaluate(() => window.tendril!.editor.getSource())).toContain('farm.buy_plot');
+  expect(await page.evaluate(() => window.tendril!.editor.getSource())).toContain('buy_plot');
   await expect(page.locator('#hud-tick')).toHaveText('100');
 });
 

@@ -3,6 +3,7 @@ import type { LogEntry, Snapshot } from '@tendril/sim/src/index.ts';
 import type { Editor } from './editor';
 import type { GameLoop } from './game-loop';
 import type { FarmApi } from './api-client';
+import type { FarmView } from './farm-view';
 import { cap, el, toast } from './palette';
 import { LESSONS, type Lesson } from './lessons';
 import './progression.css';
@@ -26,7 +27,7 @@ const ACHIEVEMENTS: Achievement[] = [
   { id: 'fertilize', title: 'Give back to the soil', detail: 'Apply compost to soil.', test: (_s, log) => log.some((e) => e[2] === 14) },
   { id: 'all-research', title: 'The whole almanac', detail: 'Research every upgrade.', test: (s) => s.unlocks === 511 },
 ];
-export function mountProgression({ loop, editor, api }: { loop: GameLoop; editor: Editor; api: FarmApi }): void {
+export function mountProgression({ loop, editor, api }: { loop: GameLoop; editor: Editor; view?: FarmView; api: FarmApi }): void {
   const goals = document.getElementById('deck-goals')!, research = document.getElementById('deck-research')!;
   const completed = loadSet('tendril.campaign.v1'), earned = loadSet('tendril.achievements.v1');
   const renderGoals = (): void => {

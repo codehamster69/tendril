@@ -7,7 +7,7 @@ async function sandbox(page: Page): Promise<void> {
   await expect(page.locator('#status')).toHaveAttribute('data-state', 'paused');
 }
 
-async function saved(page: Page, prefix = 'sandbox.'): Promise<{ world: string; logs: LogChunk[]; hash: string; source: string }> {
+async function saved(page: Page, prefix = 'sprout.v1.sandbox.'): Promise<{ world: string; logs: LogChunk[]; hash: string; source: string }> {
   return page.evaluate(async (prefix) => {
     const db = await new Promise<IDBDatabase>((resolve, reject) => {
       const req = indexedDB.open('tendril', 1);
@@ -28,26 +28,25 @@ async function saved(page: Page, prefix = 'sandbox.'): Promise<{ world: string; 
   }, prefix);
 }
 
-const harvest = `-- One restart-safe tile, one complete sale.
-local function walk(x, y)
-  local bx, by = bot.pos()
-  while bx < x do bot.move("east"); bx, by = bot.pos() end
-  while bx > x do bot.move("west"); bx, by = bot.pos() end
-  while by < y do bot.move("south"); bx, by = bot.pos() end
-  while by > y do bot.move("north"); bx, by = bot.pos() end
-end
-walk(1, 0)
-if not bot.scan().crop then bot.till(); bot.plant("carrot") end
-while bot.scan().stage < 3 do bot.wait(10) end
-bot.harvest()
-walk(0, 0)
-bot.deposit()
-local stock = market.stock()
-if stock.carrot then market.sell("carrot", stock.carrot) end
-log("carrots sold", market.coins())
-while true do bot.wait(100) end`;
+const harvest = `# One restart-safe tile, one complete sale.
+go_to 1, 0
+if scan().empty:
+    till
+    plant carrot
+while not scan().ripe:
+    wait 10
+harvest
+go_to barn
+deposit
+sell carrot, all
+say "carrots sold", coins()
+repeat forever:
+    wait 100
+`;
 
-test('golden path uses Lua, sells crops, checkpoints, replays and survives restart', async ({ page }) => {
+const idle = 'repeat forever:\n    wait 1\n';
+
+test('golden path uses Sprout, sells crops, checkpoints, replays and survives restart', async ({ page }) => {
   await sandbox(page);
   await page.evaluate((source) => window.tendril!.loop.setSource(source), harvest);
   await page.click('#btn-step');
@@ -82,7 +81,7 @@ test('run recompiles edits at the current farm and snapshot events match the sea
   await page.click('#btn-step');
   await expect(page.locator('#hud-tick')).toHaveText('100');
   await page.evaluate(() => {
-    window.tendril!.editor.setSource('log("edited", world.tick())\nwhile true do bot.wait(1) end');
+    window.tendril!.editor.setSource('say "edited", tick()\nrepeat forever:\n    wait 1\n');
     window.addEventListener('tendril:snapshot', (e) => {
       document.body.dataset.snapshotTick = String((e as CustomEvent).detail.tick);
     });
@@ -99,21 +98,23 @@ test('run recompiles edits at the current farm and snapshot events match the sea
   await expect(page.locator('#console')).toContainText('farm kept');
 });
 
-test('syntax and runtime errors show useful console text and the correct Lua line', async ({ page }) => {
+test('syntax and runtime errors show useful console text and the correct Sprout line', async ({ page }) => {
   await sandbox(page);
-  await page.evaluate(() => window.tendril!.editor.setSource('-- first line\nlocal = 2'));
+  await page.evaluate(() => window.tendril!.editor.setSource('# first line\nplnat carrot'));
   await page.click('#btn-run');
   await expect(page.locator('#status')).toHaveAttribute('data-state', 'error');
   await expect(page.locator('#editor')).toHaveAttribute('data-error-lines', '2');
-  await expect(page.locator('#console .err')).toContainText('bot:2:');
+  await expect(page.locator('#console .err').first()).toContainText('Line 2');
+  await expect(page.locator('#console .err').first()).toContainText('plnat');
   await expect(page.locator('#hud-tick')).toHaveText('0');
 
-  await page.evaluate(() => window.tendril!.editor.setSource('-- first line\nbot.move("diagonal")'));
+  await page.evaluate(() => window.tendril!.editor.setSource('# first line\nmove "diagonal"'));
   await page.click('#btn-run');
-  await expect(page.locator('#console')).toContainText("unknown direction 'diagonal'");
+  await expect(page.locator('#console')).toContainText('Bot 0 · line 2');
+  await expect(page.locator('#console')).toContainText('Move north, east, south or west.');
   await expect(page.locator('#status')).toHaveAttribute('data-state', 'error');
   await expect(page.locator('#editor')).toHaveAttribute('data-error-lines', '2');
-  await page.evaluate(() => window.tendril!.editor.setSource('while true do bot.wait(1) end'));
+  await page.evaluate((source) => window.tendril!.editor.setSource(source), idle);
   await page.click('#btn-run');
   await expect(page.locator('#status')).toHaveAttribute('data-state', 'running');
   await expect(page.locator('#editor')).toHaveAttribute('data-error-lines', '');
@@ -121,7 +122,7 @@ test('syntax and runtime errors show useful console text and the correct Lua lin
   await expect(page.locator('#status')).toHaveAttribute('data-state', 'paused');
 });
 
-test('pause cancels a run that is still compiling Lua', async ({ page }) => {
+test('pause cancels a run that is still compiling the program', async ({ page }) => {
   await sandbox(page);
   await page.evaluate(() => {
     const sim = window.tendril!.sim;
@@ -131,6 +132,7 @@ test('pause cancels a run that is still compiling Lua', async ({ page }) => {
     sim.setSource = async (source) => { await gate; await original(source); };
     window.addEventListener('test:release-compile', () => release(), { once: true });
   });
+  await page.evaluate((source) => window.tendril!.editor.setSource(source), idle);
   await page.click('#btn-run');
   await expect(page.locator('#status')).toHaveAttribute('data-state', 'compiling');
   await page.click('#btn-pause');
@@ -149,7 +151,7 @@ test('a damaged saved clock is reported without deleting it, and explicit reset 
       req.onsuccess = () => resolve(req.result);
     });
     const tx = db.transaction('kv', 'readwrite');
-    tx.objectStore('kv').delete('sandbox.meta');
+    tx.objectStore('kv').delete('sprout.v1.sandbox.meta');
     await new Promise<void>((resolve) => { tx.oncomplete = () => resolve(); });
     db.close();
   });
@@ -168,7 +170,7 @@ test('more than 200 chunks retain every action, with correct fromTick after relo
   await sandbox(page);
   await page.evaluate(async () => {
     const { sim, loop } = window.tendril!;
-    await loop.setSource('while true do bot.wait(1) end');
+    await loop.setSource('repeat forever:\n    wait 1\n');
     for (let i = 0; i < 205; i++) {
       sim.requestStep(1);
       await sim.flush();
@@ -193,7 +195,7 @@ test('flush is an ordered durability barrier and save failure retains logs for r
   await sandbox(page);
   const result = await page.evaluate(async () => {
     const { sim, loop } = window.tendril!;
-    await loop.setSource('while true do bot.wait(1) end');
+    await loop.setSource('repeat forever:\n    wait 1\n');
     const original = IDBObjectStore.prototype.put;
     let fail = true;
     IDBObjectStore.prototype.put = function (...args: Parameters<IDBObjectStore['put']>) {
@@ -243,21 +245,101 @@ test('live clock catches up offline, speed cannot mint ticks and reset needs con
   });
   expect(gate.tick).toBeLessThanOrEqual(gate.target);
   expect(gate.tick).toBeGreaterThan(oldTick);
-  const beforeReload = await saved(page, '');
+  const beforeReload = await saved(page, 'sprout.v1.live.');
   await page.reload();
   await expect(page.locator('#status')).toHaveAttribute('data-state', /running|catching-up/);
   expect(await page.evaluate(() => window.tendril!.sim.meta)).toEqual(meta);
   expect(Number(await page.locator('#hud-tick').textContent())).toBeGreaterThanOrEqual(deserialize(beforeReload.world).tick);
   await page.evaluate(() => window.tendril!.loop.pause());
-  const beforeReset = await saved(page, '');
+  const beforeReset = await saved(page, 'sprout.v1.live.');
   page.once('dialog', (dialog) => dialog.dismiss());
   await page.click('#btn-reset');
-  expect((await saved(page, '')).world).toBe(beforeReset.world);
+  expect((await saved(page, 'sprout.v1.live.')).world).toBe(beforeReset.world);
   page.once('dialog', (dialog) => dialog.accept());
   await page.click('#btn-reset');
   await expect(page.locator('#hud-tick')).toHaveText('0');
   await expect(page.locator('#status')).toHaveAttribute('data-state', 'paused');
-  expect((await saved(page, '')).logs).toEqual([]);
+  expect((await saved(page, 'sprout.v1.live.')).logs).toEqual([]);
   const resetMeta = await page.evaluate(() => window.tendril!.sim.meta);
   expect(resetMeta.startedAtMs).toBeGreaterThan(meta.startedAtMs);
+});
+
+async function gutterClick(page: Page, line: number): Promise<void> {
+  await page.locator('#editor .margin-view-overlays .line-numbers', { hasText: new RegExp(`^${line}$`) }).click();
+}
+
+test('a breakpoint pauses a bot at the chosen line and stepLine advances one line', async ({ page }) => {
+  await sandbox(page);
+  await page.evaluate(() => window.tendril!.editor.setSource('x = 1\ny = x + 1\nrepeat forever:\n    z = y + 1\n    wait 1\n'));
+  await gutterClick(page, 4);
+  await expect(page.locator('#editor')).toHaveAttribute('data-breakpoints', '4');
+  await page.selectOption('#speed', '64');
+  await page.click('#btn-run');
+  await expect(page.locator('#status')).toContainText('bot 0 on line 4');
+  await expect(page.locator('#debugger .bot.paused')).toContainText('line 4');
+  expect(await page.evaluate(() => window.tendril!.loop.debug()[0]!.line)).toBe(4);
+  expect(await page.evaluate(() => window.tendril!.loop.debug()[0]!.status)).toBe('paused');
+  const tick = await page.locator('#hud-tick').textContent();
+  await page.waitForTimeout(400); // Paused means paused: nothing advances.
+  await expect(page.locator('#hud-tick')).toHaveText(tick!);
+  await page.click('#btn-step-line');
+  await expect(page.locator('#status')).toContainText('bot 0 on line 5');
+  expect(await page.evaluate(() => window.tendril!.loop.debug()[0]!.line)).toBe(5);
+  await expect(page.locator('#hud-tick')).toHaveText(tick!);
+  // Removing the breakpoint and running continues past line 4 without pausing again.
+  await gutterClick(page, 4);
+  await expect(page.locator('#editor')).toHaveAttribute('data-breakpoints', '');
+  await page.click('#btn-run');
+  await expect.poll(async () => Number(await page.locator('#hud-tick').textContent())).toBeGreaterThan(Number(tick) + 20);
+  await page.click('#btn-pause');
+});
+
+test('stopping inside a tick keeps the saved log replayable and loses no action', async ({ page }) => {
+  await sandbox(page);
+  // buy_plot is an instant farm action logged at tick 0 before the breakpoint on line 2 stops the world mid-tick.
+  await page.evaluate(() => window.tendril!.loop.startScenario({
+    kind: 'sandbox', setup: { coins: 1000 }, seed: 7, source: 'buy_plot 1, 0\nsay "after"\nrepeat forever:\n    wait 1\n',
+  }));
+  await expect(page.locator('#hud-coins')).toHaveText('1,000');
+  await gutterClick(page, 2);
+  await page.click('#btn-run');
+  await expect(page.locator('#status')).toContainText('bot 0 on line 2');
+  expect(await page.evaluate(() => window.tendril!.loop.snapshot()!.plots.length)).toBe(2);
+  const midTick = await saved(page);
+  expect(deserialize(midTick.world).plots.length).toBe(1); // The unfinished tick is not a checkpoint.
+  await gutterClick(page, 2);
+  await page.click('#btn-step');
+  await expect(page.locator('#hud-tick')).toHaveText('100');
+  await page.evaluate(() => window.tendril!.sim.flush());
+  const checkpoint = await saved(page);
+  const world = deserialize(checkpoint.world);
+  expect(world.plots).toHaveLength(2);
+  const replay = createWorld({ id: world.id, seed: world.seed }, { coins: 1000 });
+  for (const chunk of checkpoint.logs) {
+    expect(replay.tick).toBe(chunk.fromTick);
+    expect(hashWorld(replay)).toBe(chunk.fromHash);
+    replayChunk(replay, chunk.actions, chunk.toTick);
+    expect(hashWorld(replay)).toBe(chunk.hash);
+  }
+  expect(hashWorld(replay)).toBe(hashWorld(world));
+});
+
+test('a compile error marks the right line and the farm keeps running the previous program', async ({ page }) => {
+  await sandbox(page);
+  await page.evaluate((source) => window.tendril!.editor.setSource(source), idle);
+  await page.selectOption('#speed', '64');
+  await page.click('#btn-run');
+  await expect(page.locator('#status')).toHaveAttribute('data-state', 'running');
+  const diagnostics = await page.evaluate(() => window.tendril!.loop.setSource('repeat forever:\n    wait 1\nplnat carrot\n'));
+  expect(diagnostics).toHaveLength(1);
+  expect(diagnostics[0]).toMatchObject({ line: 3, severity: 'error' });
+  expect(diagnostics[0]!.message).toContain('plnat');
+  await expect(page.locator('#editor')).toHaveAttribute('data-error-lines', '3');
+  await expect(page.locator('#console .err').first()).toContainText('Line 3');
+  await expect(page.locator('#status')).toHaveAttribute('data-state', 'running');
+  const tick = Number(await page.locator('#hud-tick').textContent());
+  await expect.poll(async () => Number(await page.locator('#hud-tick').textContent())).toBeGreaterThan(tick + 20);
+  // The bot is still executing the last good program (line 2), not an empty one.
+  expect(await page.evaluate(() => window.tendril!.loop.debug()[0]!.status)).not.toBe('done');
+  await page.click('#btn-pause');
 });

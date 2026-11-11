@@ -1,7 +1,6 @@
 import * as monaco from 'monaco-editor';
 import { API, KEYWORDS, monarchTokens } from '@tendril/lang/src/index.ts';
-import type { BotDebug, Diagnostic } from '@tendril/lang/src/index.ts';
-import type { SimError } from './sim-protocol';
+import type { BotDebug, Diagnostic, ScriptError } from '@tendril/lang/src/index.ts';
 
 import starter from '../../lang/examples/starter.sprout?raw';
 import expander from '../../lang/examples/expander.sprout?raw';
@@ -118,17 +117,23 @@ export interface Editor {
   getSource(): string;
   setSource(text: string): void;
   setDiagnostics(d: Diagnostic[]): void;
-  setErrors(e: SimError[]): void;
-  setMarkers(e: SimError[]): void;
+  setErrors(e: ScriptError[]): void;
   breakpoints(): number[];
   setBreakpoints(lines: number[]): void;
   onBreakpointsChange(cb: (lines: number[]) => void): void;
-  showBotLines(debug: BotDebug[], paused: { bot: number; line: number } | null): void;
+  showBotLines(debug: BotDebug[], paused?: { bot: number; line: number } | null): void;
   showHeat(heat: [number, number][]): void;
   setFeatures(features: ReadonlySet<string> | null): void;
   revealLine(line: number): void;
   onRun(cb: () => void): void;
   onStepLine(cb: () => void): void;
+}
+
+function loadBreakpoints(key: string): number[] {
+  try {
+    const value: unknown = JSON.parse(localStorage.getItem(key) ?? '[]');
+    return Array.isArray(value) ? value.filter((n): n is number => Number.isInteger(n) && n > 0) : [];
+  } catch { return []; }
 }
 
 export function createEditor(container: HTMLElement, storageKey: string, fallback = DEFAULT_SCRIPT): Editor {
@@ -143,7 +148,7 @@ export function createEditor(container: HTMLElement, storageKey: string, fallbac
     guides: { indentation: true }, bracketPairColorization: { enabled: true },
   });
   const model = ed.getModel()!;
-  let bps = new Set<number>(JSON.parse(localStorage.getItem(storageKey + '.bp') ?? '[]') as number[]);
+  let bps = new Set<number>(loadBreakpoints(storageKey + '.bp'));
   const bpListeners: ((lines: number[]) => void)[] = [];
   const bpDeco = ed.createDecorationsCollection();
   const botDeco = ed.createDecorationsCollection();
@@ -211,7 +216,7 @@ export function createEditor(container: HTMLElement, storageKey: string, fallbac
       publish();
     },
     setErrors(errors) {
-      lastErrors = errors.filter((e) => !e.kind || e.kind === 'script').map((e) => {
+      lastErrors = errors.map((e) => {
         const ln = clampLine(e.line);
         return {
           severity: monaco.MarkerSeverity.Error, message: `${e.bot < 0 ? 'Program' : `Bot ${e.bot}`}: ${e.message}`,
@@ -220,7 +225,6 @@ export function createEditor(container: HTMLElement, storageKey: string, fallbac
       });
       publish();
     },
-    setMarkers(errors) { this.setErrors(errors); },
     breakpoints: () => [...bps].sort((a, b) => a - b),
     setBreakpoints(lines) { bps = new Set(lines); renderBps(); },
     onBreakpointsChange(cb) { bpListeners.push(cb); },

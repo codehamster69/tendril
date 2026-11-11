@@ -72,13 +72,13 @@ function modelGlb(): Buffer {
   return output;
 }
 
-async function harness(page: Page): Promise<void> {
+async function harness(page: Page, snapshot: Snapshot = fixture()): Promise<void> {
   await page.route('**/__view/renderer.js', (route) => route.fulfill({ contentType: 'text/javascript', body: rendererModule }));
   await page.route('**/__view/sandbox?mode=sandbox', (route) => route.fulfill({ contentType: 'text/html', body: `<!doctype html>
     <html><head><meta name="viewport" content="width=device-width, initial-scale=1"><title>Renderer sandbox</title></head>
     <body style="margin:0"><canvas id="farm-canvas" style="display:block;width:900px;height:650px"></canvas>
     <script type="module">import { FarmView } from './renderer.js';
-    window.__snapshot = ${JSON.stringify(fixture())}; window.__tiles = [];
+    window.__snapshot = ${JSON.stringify(snapshot)}; window.__tiles = [];
     const canvas = document.getElementById('farm-canvas');
     canvas.addEventListener('tendril:tile', event => window.__tiles.push(event.detail));
     window.__view = new FarmView(canvas); window.__view.update(window.__snapshot);</script></body></html>` }));
@@ -348,4 +348,26 @@ test('disposal during a pending asset request stays disposed and releases instan
   await expect(canvas).toHaveAttribute('data-models-loaded', '0');
   expect(await page.evaluate(() => (window.__view as unknown as ViewInspection).batches.size)).toBe(0);
   expect(await page.evaluate(() => (window.__view as unknown as ViewInspection).scene.children.length)).toBe(0);
+});
+
+test('rules v3 content renders: perennials, buildings, honey and carried items, with quiet placeholders for missing models', async ({ page }) => {
+  const errors: string[] = [];
+  page.on('pageerror', (error) => errors.push(error.message));
+  page.on('console', (message) => { if (message.type() === 'error') errors.push(message.text()); });
+  const snapshot = fixture();
+  const at = (x: number, y: number) => snapshot.tiles.find((tile) => tile.x === x && tile.y === y)!;
+  Object.assign(at(2, 1), { tilled: 1, crop: 5, stage: 3 });   // berry bush, ripe
+  Object.assign(at(3, 1), { tilled: 1, crop: 6, stage: 1 });   // apple sapling
+  Object.assign(at(4, 1), { building: 1, honey: 3 });           // hive with honey
+  Object.assign(at(5, 1), { building: 2 });                     // composter
+  snapshot.bots[0].load = 6; snapshot.bots[0].items[1] = 4; snapshot.bots[0].items[7] = 2; // carrots and honey
+  snapshot.bots[1].load = 1; snapshot.bots[1].items[8] = 1;     // compost
+  // Neither the apple, honey nor compost-item models are exported yet; the loader must say so quietly.
+  await page.route('**/__view/models/manifest.json', (route) => route.fulfill({ status: 204 }));
+  await harness(page, snapshot);
+  const instances = await page.locator('#farm-canvas').evaluate((canvas) => JSON.parse(canvas.getAttribute('data-model-instances')!) as Record<string, number>);
+  expect(instances).toMatchObject({ crop_berry_s3: 1, crop_apple_s1: 1, prop_beehive: 1, prop_compost: 1, item_honey: 1,
+    'carry:item_carrot': 1, 'carry:item_honey': 1, 'carry:item_compost': 1 });
+  await page.waitForTimeout(300);
+  expect(errors).toEqual([]);
 });

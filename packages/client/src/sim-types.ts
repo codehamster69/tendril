@@ -1,5 +1,5 @@
 import type { Snapshot, Order } from '@tendril/sim/src/index.ts';
-import type { OutputLine, SimError } from './sim-protocol';
+import type { OutputLine, Scenario, SimError } from './sim-protocol';
 
 export type { Snapshot, Order };
 
@@ -10,6 +10,6 @@ export interface SimSource {
   latest(): Snapshot | null;                    // most recent snapshot received
   drainOutput(): OutputLine[];
   drainErrors(): SimError[];
-  reset(source: string): Promise<void>;
+  reset(source: string, over?: { scenario?: Scenario; seed?: number }): Promise<void>;
   onProgress?: (done: number, total: number) => void;
 }

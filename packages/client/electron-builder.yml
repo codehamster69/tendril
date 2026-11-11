@@ -12,7 +12,7 @@ files:
   - '!node_modules/**/*'
 extraMetadata:
   main: electron/main.cjs
-  description: A farming game powered by player-written Lua programs.
+  description: A farming game powered by player-written Sprout programs.
   author: Tendril
 directories:
   output: release
@@ -39,7 +39,7 @@ linux:
   category: Game
   maintainer: Tendril
   synopsis: Tendril farming game
-  description: A farming game powered by player-written Lua programs.
+  description: A farming game powered by player-written Sprout programs.
   target:
     - target: AppImage
       arch: [x64]

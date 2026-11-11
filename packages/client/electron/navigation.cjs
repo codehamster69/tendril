@@ -1,9 +1,10 @@
-const { pathToFileURL } = require('node:url');
-
 const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]']);
 
-function entryURL({ indexPath, devURL, packaged, smoke }) {
-  let entry = pathToFileURL(indexPath);
+// The built client is served from a privileged custom scheme, never file://.
+const APP_ENTRY = 'app://tendril/index.html';
+
+function entryURL({ devURL, packaged, smoke }) {
+  let entry = new URL(APP_ENTRY);
   // A packaged app never trusts a development URL from its environment.
   if (!packaged && devURL) {
     entry = new URL(devURL);

@@ -1,11 +1,13 @@
 import type { LogEntry, Setup, Snapshot } from '@tendril/sim/src/index.ts';
-import type { BotDebug, Diagnostic } from '@tendril/lang/src/index.ts';
+import type { BotDebug, Diagnostic, OutputLine, ScriptError } from '@tendril/lang/src/index.ts';
 
+export type { BotDebug, Diagnostic, OutputLine, ScriptError };
 export type ScenarioKind = 'live' | 'sandbox' | 'campaign' | 'daily';
+/** farmId is a local extra: daily challenges use a per-date world id. */
 export interface Scenario { kind: ScenarioKind; features?: string[]; setup?: Setup; tickLimit?: number; farmId?: string }
 
+/** Client-side error: a script error from the worker, or a storage/worker failure raised on the main thread. */
 export interface SimError { bot: number; message: string; line?: number; col?: number; tick?: number; kind?: 'script' | 'storage' | 'worker' }
-export interface OutputLine { bot: number; tick: number; text: string }
 
 type Command =
   | { type: 'init'; saved: string | null; seed: number; source: string; scenario: Scenario }
@@ -13,7 +15,8 @@ type Command =
   | { type: 'step'; ticks: number }
   | { type: 'reset'; seed: number; source: string; scenario: Scenario }
   | { type: 'setBreakpoints'; lines: number[] }
-  | { type: 'stepLine' };
+  | { type: 'stepLine' }
+  | { type: 'resume' };
 
 export type ToWorker = Command & { id: number };
 
@@ -25,7 +28,7 @@ export interface StateMessage {
   hash: string; // FNV diagnostic only, not verification.
   snapshot: Snapshot;
   output: OutputLine[];
-  errors: SimError[];
+  errors: ScriptError[];
   diagnostics: Diagnostic[];
   log: LogEntry[];
   saved: string; // Every completed command is a recoverable checkpoint.

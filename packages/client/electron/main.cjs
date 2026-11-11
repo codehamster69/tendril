@@ -2,9 +2,11 @@ const { app, BrowserWindow, session } = require('electron');
 const path = require('node:path');
 const { statSync } = require('node:fs');
 const { entryURL, hardenContents } = require('./navigation.cjs');
+const { registerScheme, serveApp } = require('./app-protocol.cjs');
 
 const smoke = process.env.TENDRIL_ELECTRON_SMOKE === '1';
 app.enableSandbox();
+registerScheme();
 
 // Only the explicit smoke flag changes mode. No renderer bridge or arbitrary
 // test URL is exposed, and smoke saves never overwrite the player's profile.
@@ -18,7 +20,6 @@ if (smoke && process.env.TENDRIL_ELECTRON_SMOKE_USER_DATA) {
 
 async function createWindow() {
   const entry = entryURL({
-    indexPath: path.join(__dirname, '..', 'dist', 'index.html'),
     devURL: process.env.VITE_DEV_URL,
     packaged: app.isPackaged,
     smoke,
@@ -47,6 +48,7 @@ function failStartup(error) {
 }
 
 app.whenReady().then(async () => {
+  serveApp(path.join(__dirname, '..', 'dist'));
   session.defaultSession.setPermissionRequestHandler((_contents, _permission, callback) => callback(false));
   session.defaultSession.setPermissionCheckHandler(() => false);
   session.defaultSession.on('will-download', (event) => event.preventDefault());

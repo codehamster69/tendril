@@ -1,69 +1,16 @@
 // Main-thread worker wrapper. Commands finish after checkpoint and logs are durable.
-import { deserialize, hashWorld, netWorth, replayChunk, RULES_VERSION, serialize } from '@tendril/sim/src/index.ts';
+import { deserialize, hashWorld, replayChunk } from '@tendril/sim/src/index.ts';
 import type { LogEntry, Snapshot } from '@tendril/sim/src/index.ts';
 import type { ChunkResponse, FarmResponse } from './api-client';
 import { targetTick, type Meta, type Mode } from './clock';
-import type { BotDebug, Diagnostic } from '@tendril/lang/src/index.ts';
-import type { FromWorker, OutputLine, Scenario, SimError, StateMessage, ToWorker } from './sim-protocol';
+import { planSubmission, validateFarm, type Accepted, type LogChunk, type Submission } from './chunks';
+import type { BotDebug, Diagnostic, FromWorker, OutputLine, Scenario, SimError, StateMessage, ToWorker } from './sim-protocol';
 import type { SimSource } from './sim-types';
 import { kvGetMany, kvSetMany } from './store';
 
-export interface LogChunk {
-  fromTick: number; toTick: number; actions: LogEntry[];
-  fromHash?: string; hash?: string; // Optional on imported legacy logs.
-}
-export interface Accepted { farm: FarmResponse; receivedAtMs: number | null }
-export interface Submission {
-  request: { fromTick: number; toTick: number; actions: LogEntry[]; rulesVersion: number; checkpointHash: string };
-  checkpoint: string; hash: string; netWorth: number;
-}
+export type { LogChunk, Accepted, Submission } from './chunks';
 export interface RealSimOptions { authoritative?: FarmResponse; replyTimeoutMs?: number; scenario?: Scenario; storageKey?: string; seed?: number }
 type Command = ToWorker extends infer T ? T extends ToWorker ? Omit<T, 'id'> : never : never;
-const MAX_ACTIONS = 20_000;
-const MAX_BYTES = 2 * 1024 * 1024;
-
-/** Build one advancing prefix, preserving complete same-tick action groups. */
-export function planSubmission(farm: FarmResponse, logs: LogChunk[], endTick: number): Submission | null {
-  validateFarm(farm);
-  if (endTick <= farm.tick) return null;
-  let toTick = Math.min(endTick, farm.tick + 20_000);
-  const actions: LogEntry[] = [];
-  const request = { fromTick: farm.tick, toTick, actions, rulesVersion: farm.rulesVersion, checkpointHash: farm.checkpointHash };
-  let bytes = new TextEncoder().encode(JSON.stringify(request)).length;
-  let group: LogEntry[] = [];
-  let groupTick = -1;
-  let stopped = false;
-  const appendGroup = (): void => {
-    if (!group.length || stopped) return;
-    const added = group.reduce((n, e) => n + new TextEncoder().encode(JSON.stringify(e)).length + 1, 0);
-    if (actions.length + group.length > MAX_ACTIONS || bytes + added > MAX_BYTES) {
-      if (groupTick <= farm.tick) throw new Error('A same-tick action group exceeds verifier limits. Logs retained; this group cannot be split.');
-      toTick = groupTick;
-      stopped = true;
-    } else { actions.push(...group); bytes += added; }
-    group = [];
-  };
-  outer: for (const chunk of logs) {
-    for (const entry of chunk.actions) {
-      if (entry[0] < farm.tick) throw new Error('Pending log precedes the accepted checkpoint. Recovery is required.');
-      if (entry[0] >= toTick) break outer;
-      if (entry[0] !== groupTick) { appendGroup(); if (stopped) break outer; groupTick = entry[0]; }
-      group.push(entry);
-    }
-  }
-  appendGroup();
-  request.toTick = toTick;
-  if (new TextEncoder().encode(JSON.stringify(request)).length > MAX_BYTES) throw new Error('Verifier request exceeds 2 MiB. Logs retained.');
-  const world = deserialize(farm.checkpoint);
-  replayChunk(world, actions, toTick);
-  return { request, checkpoint: serialize(world), hash: hashWorld(world), netWorth: netWorth(world) };
-}
-
-function validateFarm(farm: FarmResponse): void {
-  if (farm.rulesVersion !== RULES_VERSION || !Number.isSafeInteger(farm.startedAtMs) || farm.startedAtMs < 0 || !Number.isSafeInteger(farm.seed)) throw new Error('Server farm rules or clock are incompatible. Nothing was replaced.');
-  const world = deserialize(farm.checkpoint);
-  if (world.id !== farm.id || world.seed !== farm.seed || world.tick !== farm.tick || hashWorld(world) !== farm.checkpointHash || netWorth(world) !== farm.netWorth || world.coins !== farm.coins) throw new Error('Server checkpoint does not match its identity, tick, hash or score.');
-}
 
 export class RealSim implements SimSource {
   onProgress?: (done: number, total: number) => void;
@@ -78,7 +25,10 @@ export class RealSim implements SimSource {
   debug: BotDebug[] = [];
   paused: { bot: number; line: number } | null = null;
   heat: [number, number][] = [];
-  readonly scenario: Scenario;
+  scenario: Scenario;
+  /** Actions logged inside a tick a breakpoint interrupted. They become durable only once that tick completes. */
+  private held: { from: { tick: number; hash: string }; log: LogEntry[] } | null = null;
+  private durableHash: string | null = null;
   private errs: SimError[] = [];
   private pendingLog: LogChunk[] = [];
   readonly prefix: string;
@@ -105,7 +55,7 @@ export class RealSim implements SimSource {
   get workerError(): string | null { return this.fatal; }
   get ranked(): boolean { return !!this.options.authoritative; }
 
-  /** Explicit only: never retry an interrupted command or auto-resume Lua. */
+  /** Explicit only: never retry an interrupted command or auto-resume a program. */
   async restartWorker(): Promise<void> {
     if (!this.fatal) throw new Error('Cancel the busy worker before restarting it.');
     await this.serial;
@@ -176,12 +126,16 @@ export class RealSim implements SimSource {
     return this.enqueue(() => this.command({ type: 'setSource', source }, this.meta, source));
   }
 
-  reset(source: string): Promise<void> {
+  /** Replace the farm. A scenario and seed may be supplied to start a different challenge in the same keyspace. */
+  reset(source: string, over: { scenario?: Scenario; seed?: number } = {}): Promise<void> {
     if (this.ranked) return Promise.reject(new Error('Server-owned farms cannot be reset locally. Your local farm is still in its original keyspace.'));
     return this.enqueue(() => {
       const meta = this.newMeta();
+      if (over.seed !== undefined) meta.seed = over.seed;
+      const scenario = over.scenario ?? this.scenario;
       // Never delete the old save first: replace all related keys atomically.
-      return this.command({ type: 'reset', seed: meta.seed, source, scenario: this.scenario }, meta, source, true);
+      this.scenario = scenario;
+      return this.command({ type: 'reset', seed: meta.seed, source, scenario }, meta, source, true);
     });
   }
 
@@ -190,6 +144,9 @@ export class RealSim implements SimSource {
   }
   stepLine(): Promise<void> {
     return this.enqueue(() => this.command({ type: 'stepLine' }, this.meta, this.source));
+  }
+  resume(): Promise<void> {
+    return this.enqueue(() => this.command({ type: 'resume' }, this.meta, this.source));
   }
 
   requestStep(ticks: number): void {
@@ -238,7 +195,7 @@ export class RealSim implements SimSource {
       ? { ...c, fromTick: farm.tick, fromHash: farm.checkpointHash, actions: c.actions.filter((e) => e[0] >= farm.tick) } : c);
     const accepted = { farm, receivedAtMs };
     // Memory changes only after the acknowledgement transaction is durable.
-    await this.persist(this.savedWorld!, this.meta, this.source, remaining, this.hash!, accepted);
+    await this.persist(this.savedWorld!, this.meta, this.source, remaining, this.durableHash!, accepted);
     this.pendingLog = remaining;
     this.accepted = accepted;
   }
@@ -303,23 +260,30 @@ export class RealSim implements SimSource {
     if (!reset && this.snap && (state.fromTick !== this.snap.tick || state.fromHash !== this.hash)) {
       throw new Error('Simulation checkpoint is out of order. Cancel and restart before continuing.');
     }
-    if (reset) this.pendingLog = [];
+    if (reset) { this.pendingLog = []; this.held = null; }
     this.meta = meta;
     this.source = source;
     this.snap = state.snapshot;
     this.hash = state.hash;
-    this.savedWorld = state.saved;
     this.out.push(...state.output);
-    this.errs.push(...state.errors);
+    this.errs.push(...state.errors.map((e) => ({ ...e, kind: 'script' as const })));
     this.diagnostics = state.diagnostics;
     this.debug = state.debug;
     this.paused = state.paused;
     this.heat = state.heat;
-    if (state.fromTick !== state.snapshot.tick || state.log.length) {
-      this.pendingLog.push({
-        fromTick: state.fromTick, toTick: state.snapshot.tick, actions: state.log,
-        fromHash: state.fromHash, hash: state.hash,
-      });
+    // A breakpoint can stop the world inside tick T (some bots already acted). That state cannot be replayed
+    // from a log, so it is kept in memory and only becomes a checkpoint once the tick completes.
+    const log = [...(this.held?.log ?? []), ...state.log];
+    const from = this.held?.from ?? { tick: state.fromTick, hash: state.fromHash };
+    if (log.some((entry) => entry[0] >= state.snapshot.tick)) {
+      this.held = { from, log };
+      return;
+    }
+    this.held = null;
+    this.savedWorld = state.saved;
+    this.durableHash = state.hash;
+    if (from.tick !== state.snapshot.tick || log.length) {
+      this.pendingLog.push({ fromTick: from.tick, toTick: state.snapshot.tick, actions: log, fromHash: from.hash, hash: state.hash });
     }
     await this.persist(state.saved, meta, source, this.pendingLog, state.hash, this.accepted);
     this.durableTick = state.snapshot.tick;
