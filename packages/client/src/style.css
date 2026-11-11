@@ -1,0 +1,19 @@
+:root { color-scheme: dark; --bg: #14171c; --panel: #1b1f26; --line: #2a303a; --fg: #d7dce4; --dim: #8a94a6; --accent: #5fb36a; }
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg); font: 13px/1.4 system-ui, sans-serif; overflow: hidden; }
+body { display: flex; flex-direction: column; }
+#topbar { display: flex; align-items: center; gap: 24px; height: 40px; padding: 0 16px; background: var(--panel); border-bottom: 1px solid var(--line); }
+#topbar h1 { margin: 0 16px 0 0; font-size: 18px; color: var(--accent); letter-spacing: 1px; }
+#topbar span { color: var(--dim); }
+#topbar b { color: var(--fg); font-variant-numeric: tabular-nums; }
+main { flex: 1; display: flex; min-height: 0; }
+#view { width: 60%; position: relative; min-width: 0; }
+#farm-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+#side { width: 40%; display: flex; flex-direction: column; border-left: 1px solid var(--line); min-width: 0; }
+#toolbar { display: flex; gap: 8px; padding: 6px 8px; background: var(--panel); border-bottom: 1px solid var(--line); }
+button, select { background: #262c36; color: var(--fg); border: 1px solid var(--line); border-radius: 4px; padding: 4px 12px; font: inherit; cursor: pointer; }
+button:hover, select:hover { background: #313845; }
+#btn-run { background: #2f6b3a; }
+#editor { flex: 1; min-height: 0; }
+#console { height: 30%; overflow-y: auto; padding: 6px 10px; background: #0f1215; border-top: 1px solid var(--line); font: 12px/1.5 ui-monospace, Menlo, monospace; white-space: pre-wrap; }
+#console .err { color: #ff6b6b; }

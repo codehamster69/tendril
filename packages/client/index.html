@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Tendril</title>
+  </head>
+  <body>
+    <header id="topbar">
+      <h1>Tendril</h1>
+      <span>Tick <b id="hud-tick">0</b></span>
+      <span>Coins <b id="hud-coins">0</b></span>
+      <span>Net worth <b id="hud-networth">0</b></span>
+      <span>Weather <b id="hud-weather">clear</b></span>
+    </header>
+    <main>
+      <section id="view"><canvas id="farm-canvas"></canvas></section>
+      <section id="side">
+        <div id="toolbar">
+          <button id="btn-run">Run</button>
+          <button id="btn-pause">Pause</button>
+          <select id="speed">
+            <option value="1">1x</option>
+            <option value="4">4x</option>
+            <option value="16">16x</option>
+            <option value="64">64x</option>
+          </select>
+          <button id="btn-reset">Reset</button>
+        </div>
+        <div id="editor"></div>
+        <div id="console"></div>
+      </section>
+    </main>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

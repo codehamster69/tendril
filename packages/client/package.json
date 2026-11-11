@@ -1,0 +1,25 @@
+{
+  "name": "@tendril/client",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview --port 4173 --strictPort",
+    "typecheck": "tsc --noEmit",
+    "electron": "electron electron/main.cjs",
+    "test:e2e": "playwright test --trace off"
+  },
+  "dependencies": {
+    "monaco-editor": "^0.57.0",
+    "three": "^0.187.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.65.0",
+    "@types/three": "^0.187.0",
+    "electron": "^45.3.0",
+    "typescript": "^5.9.3",
+    "vite": "^7.3.8"
+  }
+}
