@@ -3,7 +3,7 @@ import tseslint from 'typescript-eslint';
 import globals from 'globals';
 
 export default [
-  { ignores: ['**/node_modules/**', '**/dist*/**', '**/out/**', '**/release/**', '**/test-results/**', '**/playwright-report/**', '**/public/models/**', '**/.data/**', '**/.tmp/**'] },
+  { ignores: ['**/node_modules/**', '**/dist*/**', '**/out/**', '**/release/**', '**/test-results/**', '**/playwright-report/**', '**/public/models/**', '**/.data/**', '**/.tmp/**', '**/.astro/**'] },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   { files: ['**/*.cjs'], rules: { '@typescript-eslint/no-require-imports': 'off' } },
