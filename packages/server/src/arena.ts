@@ -58,6 +58,8 @@ export type AuthorKind = 'human' | 'model';
 export interface ChallengeRow {
   id: string; kind: ChallengeKind; number: number | null; seed: number; ticks: number; par: number | null;
   opens_at: number; closes_at: number | null; created_by: string | null; rules_version: number;
+  /** Players with an entry for each medal, kept by submitEntry so a board total never needs a scan. */
+  n_wealth?: number; n_speed?: number; n_brevity?: number;
 }
 export interface ChallengeInfo {
   id: string; kind: ChallengeKind; number: number | null; seed: number; ticks: number; par: number | null;
@@ -118,10 +120,12 @@ export async function loadChallenge(db: Db, ref: string, now: number): Promise<C
 }
 
 export async function challengeInfo(db: Db, c: ChallengeRow): Promise<ChallengeInfo> {
-  const [stats] = await db.query<{ players: number; best: number | null }>('SELECT COUNT(DISTINCT user_id) AS players, MAX(net_worth) AS best FROM entries WHERE challenge_id = ?', [c.id]);
+  // players comes from the stored counter; MAX(net_worth) reads one index entry.
+  const [stats] = await db.query<{ players: number; best: number | null }>(
+    'SELECT (SELECT n_wealth FROM challenges WHERE id = ?1) AS players, (SELECT MAX(net_worth) FROM entries WHERE challenge_id = ?1) AS best', [c.id]);
   return {
     id: c.id, kind: c.kind, number: c.number, seed: c.seed, ticks: c.ticks, par: c.par, opensAt: c.opens_at,
-    closesAt: c.closes_at, rulesVersion: c.rules_version, players: stats!.players, best: stats!.best,
+    closesAt: c.closes_at, rulesVersion: c.rules_version, players: stats!.players ?? 0, best: stats!.best,
   };
 }
 
@@ -174,16 +178,26 @@ export const logHash = (actions: LogEntry[]): string => createHash('sha256').upd
 const newEntryId = (): string => randomBytes(9).toString('base64url');
 
 // Ordering for each medal, best first. `value` is the board value; later keys break ties deterministically.
-const MEDALS: Record<Medal, { where: string; value: string; keys: (a: string) => string }> = {
-  wealth: { where: '1 = 1', value: 'net_worth', keys: (a) => `${a}.net_worth DESC` },
-  speed: { where: 'e.par_tick IS NOT NULL', value: 'par_tick', keys: (a) => `${a}.par_tick ASC, ${a}.net_worth DESC` },
-  brevity: { where: 'e.tokens IS NOT NULL', value: 'tokens', keys: (a) => `${a}.tokens ASC, ${a}.net_worth DESC` },
+/** The sort-key columns of an entry; `atOrAhead` is the index range "this entry or anything ranked before it". */
+export interface EntryKeys { net_worth: number; par_tick: number | null; tokens: number | null }
+const MEDALS: Record<Medal, { where: string; value: string; keys: (a: string) => string; atOrAhead: (a: string, k: EntryKeys) => { sql: string; args: number[] } }> = {
+  wealth: { where: '1 = 1', value: 'net_worth', keys: (a) => `${a}.net_worth DESC`,
+    atOrAhead: (a, k) => ({ sql: `${a}.net_worth >= ?`, args: [k.net_worth] }) },
+  speed: { where: 'e.par_tick IS NOT NULL', value: 'par_tick', keys: (a) => `${a}.par_tick ASC, ${a}.net_worth DESC`,
+    atOrAhead: (a, k) => ({ sql: `(${a}.par_tick < ? OR (${a}.par_tick = ? AND ${a}.net_worth >= ?))`, args: [k.par_tick!, k.par_tick!, k.net_worth] }) },
+  brevity: { where: 'e.tokens IS NOT NULL', value: 'tokens', keys: (a) => `${a}.tokens ASC, ${a}.net_worth DESC`,
+    atOrAhead: (a, k) => ({ sql: `(${a}.tokens < ? OR (${a}.tokens = ? AND ${a}.net_worth >= ?))`, args: [k.tokens!, k.tokens!, k.net_worth] }) },
 };
 /** One player's entries, best first: the medal's keys, then earlier wins. */
 const playerOrder = (medal: Medal, a: string): string => `${MEDALS[medal].keys(a)}, ${a}.created_at ASC, ${a}.id ASC`;
 const MEDAL_NAMES = Object.keys(MEDALS) as Medal[];
 
-interface Filters { viewerId?: string; friends?: boolean; author?: AuthorKind }
+/**
+ * `upTo` limits the ranking to entries at or ahead of that key. Every row ranked before an included row is itself included
+ * (the bound is a prefix of the sort order, ties kept), so ranks inside the range are exact, and the work is proportional to the
+ * rank asked about instead of the size of the board.
+ */
+interface Filters { viewerId?: string; friends?: boolean; author?: AuthorKind; upTo?: EntryKeys }
 
 /**
  * CTE giving one row per player (their best entry for the medal) with a global rank. Only constants are
@@ -193,6 +207,11 @@ function rankedCte(medal: Medal, challengeId: string, filters: Filters = {}): { 
   const m = MEDALS[medal];
   const args: (string | number)[] = [challengeId];
   let extra = '';
+  if (filters.upTo) {
+    const bound = m.atOrAhead('e', filters.upTo);
+    extra += ` AND ${bound.sql}`;
+    args.push(...bound.args);
+  }
   if (filters.friends) {
     extra += ' AND (e.user_id = ? OR e.user_id IN (SELECT followee_id FROM follows WHERE follower_id = ?))';
     args.push(filters.viewerId!, filters.viewerId!);
@@ -215,13 +234,20 @@ function rankedCte(medal: Medal, challengeId: string, filters: Filters = {}): { 
   return { sql, args };
 }
 
-async function rankOf(q: Queryable, medal: Medal, challengeId: string, userId: string): Promise<{ rank: number | null; total: number }> {
-  const { sql, args } = rankedCte(medal, challengeId);
-  const [row] = await q.query<{ rank: number | null; total: number }>(
-    `${sql} SELECT (SELECT rank FROM ranked WHERE user_id = ?) AS rank, (SELECT COUNT(*) FROM ranked) AS total`,
-    [...args, userId],
-  );
-  return { rank: row!.rank, total: row!.total };
+/** The entry that stands for this player on a medal: their best one, by the medal's keys then the earlier one. */
+async function bestEntry(q: Queryable, medal: Medal, challengeId: string, userId: string): Promise<EntryKeys | undefined> {
+  const [row] = await q.query<EntryKeys>(
+    `SELECT e.net_worth, e.par_tick, e.tokens FROM entries e WHERE e.challenge_id = ? AND e.user_id = ? AND ${MEDALS[medal].where} ORDER BY ${playerOrder(medal, 'e')} LIMIT 1`,
+    [challengeId, userId]);
+  return row;
+}
+
+async function rankOf(q: Queryable, medal: Medal, challengeId: string, userId: string): Promise<number | null> {
+  const mine = await bestEntry(q, medal, challengeId, userId);
+  if (!mine) return null;
+  const { sql, args } = rankedCte(medal, challengeId, { upTo: mine });
+  const [row] = await q.query<{ rank: number | null }>(`${sql} SELECT rank FROM ranked WHERE user_id = ?`, [...args, userId]);
+  return row?.rank ?? null;
 }
 
 /** "At or above X% of players": 100 for first place, rises with rank, never 0 for a ranked player. */
@@ -246,14 +272,10 @@ export function keepIds(rows: Pick<EntryRow, 'id' | 'net_worth' | 'par_tick' | '
 
 async function standing(q: Queryable, challengeId: string, userId: string): Promise<{ ranks: Ranks; percentile: number | null; total: number }> {
   const ranks: Ranks = { wealth: null, speed: null, brevity: null };
-  let percentile: number | null = null;
-  let total = 0;
-  for (const medal of MEDAL_NAMES) {
-    const r = await rankOf(q, medal, challengeId, userId);
-    ranks[medal] = r.rank;
-    if (medal === 'wealth') { total = r.total; if (r.rank !== null) percentile = percentileOf(r.rank, r.total); }
-  }
-  return { ranks, percentile, total };
+  for (const medal of MEDAL_NAMES) ranks[medal] = await rankOf(q, medal, challengeId, userId);
+  const [counts] = await q.query<{ n: number }>('SELECT n_wealth AS n FROM challenges WHERE id = ?', [challengeId]);
+  const total = counts?.n ?? 0;
+  return { ranks, percentile: ranks.wealth === null ? null : percentileOf(ranks.wealth, total), total };
 }
 
 export interface SubmitOptions {
@@ -283,6 +305,12 @@ export async function submitEntry(db: Db, userId: string, c: ChallengeRow, input
         [id, c.id, userId, replayed.netWorth, replayed.parTick, JSON.stringify(actions), actions.length, hash, replayed.mosaic, input.authorKind, input.model, now],
       );
       const mine = await tx.query<EntryRow>('SELECT * FROM entries WHERE challenge_id = ? AND user_id = ?', [c.id, userId]);
+      // Players per medal: this player joins a medal's board the first time they hold an entry that qualifies for it.
+      const prior = mine.filter((r) => r.id !== id);
+      const joined = [prior.length === 0, !prior.some((r) => r.par_tick !== null) && replayed.parTick !== null, false /* brevity: tokens arrive with the source check (C3) */];
+      if (joined.some(Boolean)) {
+        await tx.execute('UPDATE challenges SET n_wealth = n_wealth + ?, n_speed = n_speed + ?, n_brevity = n_brevity + ? WHERE id = ?', [...joined.map(Number), c.id]);
+      }
       const keep = keepIds(mine);
       for (const row of mine) if (!keep.has(row.id)) await tx.execute('DELETE FROM entries WHERE id = ?', [row.id]);
       improved = keep.has(id);
@@ -315,11 +343,14 @@ const boardRow = (r: RankedRow): BoardRow => ({
 });
 const RANKED_SELECT = 'SELECT r.rank, r.id, r.user_id, r.value, r.mosaic, r.author_kind, r.model, r.created_at, u.login, u.display_name, u.avatar_url FROM ranked r JOIN users u ON u.id = r.user_id';
 
-export interface BoardQuery { medal: Medal; friends: boolean; author?: AuthorKind; limit: number; viewerId?: string }
+export interface BoardQuery { medal: Medal; friends: boolean; author?: AuthorKind; limit: number; viewerId?: string; now?: number; /** Tests: the largest board still computed in full. */ fullMax?: number }
 
-export async function board(db: Db, c: ChallengeRow, q: BoardQuery): Promise<BoardResult> {
-  const { sql, args } = rankedCte(q.medal, c.id, { friends: q.friends, viewerId: q.viewerId, author: q.author });
-  const rows = await db.query<RankedRow>(`${sql} ${RANKED_SELECT} ORDER BY r.rank LIMIT ?`, [...args, q.limit]);
+/** Boards up to this many players are computed in full on every request (cheap, and exact in every detail). */
+export const FULL_BOARD_MAX = 300;
+/** On bigger open boards the histogram (a coarse picture of the whole field) is recomputed at most this often. */
+export const HISTOGRAM_TTL_MS = 5 * 60_000;
+
+async function histogramOf(db: Db, sql: string, args: (string | number)[]): Promise<{ histogram: Histogram; total: number }> {
   const [agg] = await db.query<{ n: number; lo: number | null; hi: number | null }>(`${sql} SELECT COUNT(*) AS n, MIN(value) AS lo, MAX(value) AS hi FROM ranked`, args);
   const total = agg!.n;
   const lo = agg!.lo ?? 0, hi = agg!.hi ?? 0;
@@ -329,12 +360,64 @@ export async function board(db: Db, c: ChallengeRow, q: BoardQuery): Promise<Boa
     const grouped = await db.query<{ b: number; n: number }>(`${sql} SELECT CAST((value - ?) / ? AS INTEGER) AS b, COUNT(*) AS n FROM ranked GROUP BY b`, [...args, lo, width]);
     for (const g of grouped) counts[Math.min(BOARD_BUCKETS - 1, g.b)]! += g.n;
   }
+  return { histogram: { min: lo, max: hi, width, counts }, total };
+}
+
+const COUNT_COLUMN: Record<Medal, string> = { wealth: 'n_wealth', speed: 'n_speed', brevity: 'n_brevity' };
+
+export async function board(db: Db, c: ChallengeRow, q: BoardQuery): Promise<BoardResult> {
+  if (!q.friends && !q.author) {
+    const [counted] = await db.query<{ n: number }>(`SELECT ${COUNT_COLUMN[q.medal]} AS n FROM challenges WHERE id = ?`, [c.id]);
+    if ((counted?.n ?? 0) > (q.fullMax ?? FULL_BOARD_MAX)) return bigBoard(db, c, q, counted!.n);
+  }
+  const { sql, args } = rankedCte(q.medal, c.id, { friends: q.friends, viewerId: q.viewerId, author: q.author });
+  const rows = await db.query<RankedRow>(`${sql} ${RANKED_SELECT} ORDER BY r.rank LIMIT ?`, [...args, q.limit]);
+  const { histogram, total } = await histogramOf(db, sql, args);
   let me: BoardResult['me'] = null;
   if (q.viewerId) {
     const [mine] = await db.query<RankedRow>(`${sql} ${RANKED_SELECT} WHERE r.user_id = ?`, [...args, q.viewerId]);
     if (mine) me = { ...boardRow(mine), percentile: percentileOf(mine.rank, total) };
   }
-  return { medal: q.medal, entries: rows.map(boardRow), histogram: { min: lo, max: hi, width, counts }, total, me };
+  return { medal: q.medal, entries: rows.map(boardRow), histogram, total, me };
+}
+
+/**
+ * A big unfiltered board. Reads about 3 x limit entries for the top rows, about the viewer's rank for their own row, one counter
+ * for the total, and a stored histogram that is refreshed every HISTOGRAM_TTL_MS (a closed challenge never changes, so it is
+ * computed once). The full pass over every entry that small boards use would cost the whole field on every request.
+ */
+async function bigBoard(db: Db, c: ChallengeRow, q: BoardQuery, total: number): Promise<BoardResult> {
+  const m = MEDALS[q.medal];
+  // A player holds at most three entries, so the top `limit` players all sit within the first 3 x limit entries in sort order.
+  const [edge] = await db.query<EntryKeys>(
+    `SELECT e.net_worth, e.par_tick, e.tokens FROM entries e WHERE e.challenge_id = ? AND ${m.where} ORDER BY ${playerOrder(q.medal, 'e')} LIMIT 1 OFFSET ?`,
+    [c.id, 3 * q.limit - 1]);
+  const top = rankedCte(q.medal, c.id, { upTo: edge });
+  const rows = await db.query<RankedRow>(`${top.sql} ${RANKED_SELECT} ORDER BY r.rank LIMIT ?`, [...top.args, q.limit]);
+
+  let me: BoardResult['me'] = null;
+  if (q.viewerId) {
+    const best = await bestEntry(db, q.medal, c.id, q.viewerId);
+    if (best) {
+      const own = rankedCte(q.medal, c.id, { upTo: best });
+      const [mine] = await db.query<RankedRow>(`${own.sql} ${RANKED_SELECT} WHERE r.user_id = ?`, [...own.args, q.viewerId]);
+      if (mine) me = { ...boardRow(mine), percentile: percentileOf(mine.rank, total) };
+    }
+  }
+
+  const key = `hist:${c.id}:${q.medal}`;
+  const now = q.now ?? Date.now();
+  const [stored] = await db.query<{ value: string }>('SELECT value FROM arena_meta WHERE key = ?', [key]);
+  const cached = stored ? (JSON.parse(stored.value) as { at: number; final: boolean; histogram: Histogram }) : null;
+  let histogram: Histogram;
+  const closed = isClosed(c, now);
+  if (cached && (cached.final || (!closed && now >= cached.at && now - cached.at < HISTOGRAM_TTL_MS))) histogram = cached.histogram;
+  else {
+    const full = rankedCte(q.medal, c.id);
+    histogram = (await histogramOf(db, full.sql, full.args)).histogram;
+    await db.execute('INSERT INTO arena_meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value', [key, JSON.stringify({ at: now, final: closed, histogram })]);
+  }
+  return { medal: q.medal, entries: rows.map(boardRow), histogram, total, me };
 }
 
 // ---- single entries ----
@@ -396,6 +479,16 @@ export async function legacyLeaderboard(db: Db, date: string, limit: number) {
 }
 
 /** Copies daily_entries into challenges/entries once. The old table stays as an archive. Safe to re-run. */
+/** Rebuilds a challenge's per-medal player counters from its entries (after a bulk move, or to repair drift). */
+export async function recountPlayers(q: Queryable, challengeId: string): Promise<void> {
+  await q.execute(
+    `UPDATE challenges SET
+       n_wealth  = (SELECT COUNT(DISTINCT user_id) FROM entries e WHERE e.challenge_id = ?1),
+       n_speed   = (SELECT COUNT(DISTINCT user_id) FROM entries e WHERE e.challenge_id = ?1 AND e.par_tick IS NOT NULL),
+       n_brevity = (SELECT COUNT(DISTINCT user_id) FROM entries e WHERE e.challenge_id = ?1 AND e.tokens IS NOT NULL)
+     WHERE id = ?1`, [challengeId]);
+}
+
 export async function moveLegacyDaily(db: Db): Promise<void> {
   const [done] = await db.query<{ value: string }>("SELECT value FROM arena_meta WHERE key = 'daily_entries_moved'");
   if (done) return;
@@ -411,6 +504,7 @@ export async function moveLegacyDaily(db: Db): Promise<void> {
         [id, dailyId(r.date), r.user_id, r.net_worth, hash, r.achieved_at],
       );
     }
+    for (const date of new Set(rows.map((r) => r.date))) await recountPlayers(tx, dailyId(date));
     await tx.execute("INSERT OR IGNORE INTO arena_meta (key, value) VALUES ('daily_entries_moved', '1')");
   });
 }

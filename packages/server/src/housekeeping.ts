@@ -1,6 +1,6 @@
 import type { Db } from './db.ts';
 import type { Env } from './auth.ts';
-import { DAY_MS } from './game.ts';
+import { DAY_MS, SYNC_TAIL_MS, SYNC_TIERS } from './game.ts';
 
 /**
  * Housekeeping and the free-tier budget guard (task F2). Nothing here is load-bearing on a schedule: the daily prune
@@ -24,8 +24,8 @@ export const GUARD_REFRESH_MS = 10 * 60 * 1000;
 /** Write rate is sampled over this window and projected to a month. Short on purpose: it is a read cost every refresh. */
 export const SAMPLE_MS = 5 * 60 * 1000;
 const MONTH_MS = 30 * DAY_MS;
-/** Rows written per verified chunk (farm update, chunk, worth sample, attempt) and per stored entry (entry, attempt, trims). */
-const WRITES_PER_CHUNK = 4;
+/** Rows written per verified sync (the farm row; the buffered chunk and the worth sample add about 0.1 on average) and per stored entry (entry, attempt, trims). */
+const WRITES_PER_SYNC = 1.1;
 const WRITES_PER_ENTRY = 3;
 
 export const TOP_KEEP = 100;
@@ -63,12 +63,23 @@ export async function storageBytes(db: Db): Promise<number> {
   return Number(row?.bytes ?? 0);
 }
 
-/** Projected rows written per month from the last few minutes of verified chunks and stored entries. */
+/**
+ * Projected rows written per month: every farm that synced in the last few minutes is assumed to keep syncing at the
+ * cadence its rank earns (game.ts SYNC_TIERS), plus stored entries. To keep the measurement itself cheap on a big table it
+ * reads a hex-prefix slice of the farms (about 4,000 rows at most) and scales the answer up.
+ */
 export async function projectedMonthlyWrites(db: Db, now: number): Promise<number> {
   const since = now - SAMPLE_MS;
-  const [c] = await db.query<{ n: number }>('SELECT COUNT(*) AS n FROM chunks WHERE created_at > ?', [since]);
+  const [size] = await db.query<{ n: number | null }>('SELECT MAX(rowid) AS n FROM farms');
+  const rows = Number(size?.n ?? 0);
+  // Farm ids are random UUIDs: a one- or two-character hex prefix is a uniform 1/16 or 1/256 slice, read through the primary key.
+  const [slice, factor] = rows <= 4000 ? ['', 1] : rows <= 64000 ? ["AND id >= '0' AND id < '1'", 16] : ["AND id >= '00' AND id < '01'", 256];
+  const perMonth = (ms: number): number => MONTH_MS / ms;
+  const cases = SYNC_TIERS.map((t) => `WHEN rank <= ${t.maxRank} THEN ${perMonth(t.ms)}`).join(' ');
+  const [f] = await db.query<{ syncs: number | null }>(
+    `SELECT SUM(CASE ${cases} ELSE ${perMonth(SYNC_TAIL_MS)} END) AS syncs FROM farms WHERE verified_at > ? ${slice}`, [since]);
   const [e] = await db.query<{ n: number }>('SELECT COUNT(*) AS n FROM entries WHERE created_at > ?', [since]);
-  return Math.round(((c!.n * WRITES_PER_CHUNK + e!.n * WRITES_PER_ENTRY) * MONTH_MS) / SAMPLE_MS);
+  return Math.round(Number(f?.syncs ?? 0) * factor * WRITES_PER_SYNC + (e!.n * WRITES_PER_ENTRY * MONTH_MS) / SAMPLE_MS);
 }
 
 const positive = (raw: string | undefined, fallback: number): number => {
@@ -111,6 +122,9 @@ export function createGuard(db: Db, env: Env, now: () => number) {
     forget(): void { cached = undefined; },
   };
 }
+
+/** Sync hints stretch as the budget tightens: lean mode halves the sync rate, tight mode quarters it. */
+export const syncScale = (mode: GuardMode): number => (mode === 'readonly' || mode === 'tight' ? 4 : mode === 'lean' ? 2 : 1);
 
 export const rateScale = (mode: GuardMode): number => (mode === 'tight' || mode === 'readonly' ? TIGHT_SCALE : 1);
 

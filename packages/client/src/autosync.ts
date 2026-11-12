@@ -4,10 +4,13 @@ import { ApiError, type ChunkResponse, type FarmApi } from './api-client';
 import type { RealSim } from './real-sim';
 import { toast } from './palette';
 
-/** Normal spacing. The server allows 360 chunk attempts per rolling hour (one per 10 s); this uses about 240. */
+/** Default spacing, used until the server says otherwise. The server allows 360 chunk attempts per hour; this uses about 240. */
 export const SYNC_INTERVAL_MS = 15_000;
-/** A chunk carries at most 20,000 ticks; while further behind than this, the next chunk goes straight away. */
-const BACKLOG_TICKS = 300;
+/** The server's `nextSyncMs` hint is followed within this range: 15 s for the top of the board, minutes for the long tail. */
+const HINT_MIN_MS = 15_000;
+const HINT_MAX_MS = 10 * 60_000;
+/** A chunk carries at most 20,000 ticks; only while further behind than that does the next chunk go straight away. */
+const BACKLOG_TICKS = 20_000;
 const BACKLOG_INTERVAL_MS = 1_000;
 /** Retry after offline, 5xx or a fast device clock: doubles from 15 s up to 5 minutes. */
 const RETRY_MIN_MS = 15_000;
@@ -61,11 +64,13 @@ export function mountAutoSync(api: FarmApi, sim: RealSim, status: HTMLElement | 
       const response = await syncOnce(api, sim);
       retryMs = RETRY_MIN_MS;
       if (response) {
-        show(`On the leaderboard · rank ${fmt.format(response.rank)} · verified to tick ${fmt.format(response.tick)}`);
-        if (!announced) { announced = true; toast('Farm verified', `On the leaderboard at rank ${response.rank}.`); }
+        const place = response.rank === null ? 'outside the top 500' : `rank ${fmt.format(response.rank)}`;
+        show(`On the leaderboard · ${place} · verified to tick ${fmt.format(response.tick)}`);
+        if (!announced) { announced = true; toast('Farm verified', `On the leaderboard, ${place}.`); }
       }
       const behind = response !== null && (sim.latest()?.tick ?? 0) - response.tick > BACKLOG_TICKS;
-      schedule(behind ? BACKLOG_INTERVAL_MS : SYNC_INTERVAL_MS);
+      const hint = response?.nextSyncMs ?? SYNC_INTERVAL_MS;
+      schedule(behind ? BACKLOG_INTERVAL_MS : Math.min(HINT_MAX_MS, Math.max(HINT_MIN_MS, hint)));
     } catch (e) {
       if (retryable(e)) {
         const rateLimited = e instanceof ApiError && e.status === 429;
