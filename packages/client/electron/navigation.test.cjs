@@ -36,11 +36,14 @@ test('development accepts only HTTP loopback without credentials', () => {
 test('navigation allows only the entry and anchors, not neighboring local files or pages', () => {
   const sandbox = entry({ smoke: true });
   assert.equal(allowsNavigation(`${sandbox}#help`, sandbox), true);
-  for (const destination of [file, `${file}?mode=live`, `${file}?mode=sandbox`]) {
+  for (const destination of [file, `${file}?mode=live`, `${file}?mode=sandbox`, `${file}?mode=campaign`,
+    `${file}?mode=daily`, `${file}?mode=live&ranked=1`, `${file}?mode=campaign&lesson=first-crop`]) {
     assert.equal(allowsNavigation(destination, sandbox), true);
   }
   for (const destination of [
     `${file}?mode=evil`, `${file}?mode=sandbox&mode=live`, `${file}?arbitrary=true`,
+    `${file}?mode=sandbox&ranked=1`, `${file}?mode=live&ranked=2`, `${file}?mode=live&ranked=1&ranked=1`,
+    `${file}?mode=live&lesson=x`, `${file}?mode=campaign&lesson=../../x`, `${file}?mode=live&ranked=1&url=x`,
     'app://tendril/package.json', 'app://other/index.html', 'file:///index.html',
     'https://example.com', 'file://remote/index.html', 'javascript:alert(1)',
     'data:text/html,test', 'about:blank', 'not a URL',
