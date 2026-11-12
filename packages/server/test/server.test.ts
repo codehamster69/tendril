@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { createWorld, dailySeed, DAILY_TICKS, deserialize, hashWorld, netWorth, replayChunk, RULES_VERSION, serialize } from '@tendril/sim/src/index.ts';
+import { createWorld, dailySeed, DAILY_TICKS, deserialize, hashWorld, netWorth, replayChunk, BASE_RULES_VERSION, serialize } from '@tendril/sim/src/index.ts';
 import type { LogEntry } from '@tendril/sim/src/index.ts';
 import { createApp, createDb, migrate } from '../src/index.ts';
 import type { Db, FarmResponse, FetchFn, LeaderEntry, Profile } from '../src/index.ts';
@@ -109,13 +109,13 @@ afterEach(() => { db.close(); });
 
 describe('migrations', () => {
   it('are idempotent, recorded in schema_version, and applied lazily on the first request', async () => {
-    expect(await db.query('SELECT version FROM schema_version')).toEqual([{ version: 1 }, { version: 2 }, { version: 3 }, { version: 4 }, { version: 5 }, { version: 6 }]);
+    expect(await db.query('SELECT version FROM schema_version')).toEqual([{ version: 1 }, { version: 2 }, { version: 3 }, { version: 4 }, { version: 5 }, { version: 6 }, { version: 7 }]);
     expect(await migrate(db)).toEqual([]);
     const fresh = createDb({ url: ':memory:' });
     try {
       const lazy = createApp({ db: fresh, env, fetch: github.fetch, setupVersion: 0, now: () => time });
       expect((await lazy(new Request('http://localhost:8787/api/stats'))).status).toBe(200);
-      expect(await fresh.query('SELECT version FROM schema_version')).toEqual([{ version: 1 }, { version: 2 }, { version: 3 }, { version: 4 }, { version: 5 }, { version: 6 }]);
+      expect(await fresh.query('SELECT version FROM schema_version')).toEqual([{ version: 1 }, { version: 2 }, { version: 3 }, { version: 4 }, { version: 5 }, { version: 6 }, { version: 7 }]);
     } finally { fresh.close(); }
   });
   it('persist in a file database across reopen', async () => {
@@ -180,9 +180,9 @@ describe('dev login and farms', () => {
     expect(farm).toEqual({
       id: expect.any(String), seed: expect.any(Number), startedAtMs: BASE, tick: 0,
       checkpoint: expect.any(String), checkpointHash: expect.stringMatching(/^[0-9a-f]{8}$/),
-      rulesVersion: RULES_VERSION, coins: 0, netWorth: 0,
+      rulesVersion: BASE_RULES_VERSION, coins: 0, netWorth: 0,
     });
-    expect(RULES_VERSION).toBe(3);
+    expect(BASE_RULES_VERSION).toBe(3);
     expect(farm.seed).toBeGreaterThan(0);
     expect(hashWorld(deserialize(farm.checkpoint))).toBe(farm.checkpointHash);
     const created = await request('/farms', { token: user.token, body: {} });
@@ -273,7 +273,7 @@ describe('GitHub OAuth', () => {
     expect((await request('/farms', { token: user.token, body: {} })).status).toBe(200);
     const blocked = await request(`/farms/${farm.id}/chunks`, { cookie, body: chunkBody([], 10) });
     expect(blocked.status).toBe(403);
-    expect((await request('/daily/submit', { cookie, body: { date: '2026-11-12', rulesVersion: RULES_VERSION, actions: [] } })).status).toBe(403);
+    expect((await request('/daily/submit', { cookie, body: { date: '2026-11-12', rulesVersion: BASE_RULES_VERSION, actions: [] } })).status).toBe(403);
     expect((await myFarm()).tick).toBe(0);
   });
   it.each([
@@ -382,7 +382,7 @@ describe('transactional verification', () => {
     expect(next.status).toBe(200);
     // Both chunks are still buffered in the farm row, and replay serves them as one chunk.
     const replay = await (await request(`/farms/${farm.id}/replay`)).json() as ReplayPage;
-    expect(replay).toEqual({ seed: farm.seed, rulesVersion: RULES_VERSION, chunks: [{ fromTick: 0, toTick: 200, actions: harvest }], nextFromTick: null });
+    expect(replay).toEqual({ seed: farm.seed, rulesVersion: BASE_RULES_VERSION, chunks: [{ fromTick: 0, toTick: 200, actions: harvest }], nextFromTick: null });
     const replayed = createWorld({ id: farm.id, seed: replay.seed });
     for (const chunk of replay.chunks) replayChunk(replayed, chunk.actions, chunk.toTick);
     expect(hashWorld(replayed)).toBe((await next.json() as Accepted).checkpointHash);
@@ -427,7 +427,7 @@ describe('transactional verification', () => {
     await rejected({ ...chunkBody(), checkpoint: farm.checkpoint });
   });
   it('rejects rules mismatches, stale ticks, and wrong precondition hashes', async () => {
-    await rejected({ ...chunkBody(), rulesVersion: RULES_VERSION + 1 }, 409);
+    await rejected({ ...chunkBody(), rulesVersion: BASE_RULES_VERSION + 1 }, 409);
     await rejected({ ...chunkBody(), fromTick: 1 }, 409);
     await rejected({ ...chunkBody(), checkpointHash: 'ffffffff' }, 409);
   });
@@ -527,7 +527,7 @@ describe('bounded public replay', () => {
     expect(between.chunks.map((c) => c.fromTick)).toEqual([200]);
     expect(between.nextFromTick).toBe(400);
     for (const fromTick of [500, Number.MAX_SAFE_INTEGER]) {
-      expect(await (await request(`/farms/${farm.id}/replay?fromTick=${fromTick}&limit=2`)).json()).toEqual({ seed: farm.seed, rulesVersion: RULES_VERSION, chunks: [], nextFromTick: null });
+      expect(await (await request(`/farms/${farm.id}/replay?fromTick=${fromTick}&limit=2`)).json()).toEqual({ seed: farm.seed, rulesVersion: BASE_RULES_VERSION, chunks: [], nextFromTick: null });
     }
   });
   it.each([
@@ -644,12 +644,12 @@ describe('ranking and 24-hour history', () => {
 
 describe('daily challenge', () => {
   const day = () => new Date(time).toISOString().slice(0, 10);
-  const dailyBody = (actions: unknown = [], date = day()) => ({ date, rulesVersion: RULES_VERSION, actions });
+  const dailyBody = (actions: unknown = [], date = day()) => ({ date, rulesVersion: BASE_RULES_VERSION, actions });
   const post = (body: unknown, token = user.token) => request('/daily/submit', { token, body });
 
   it('serves a deterministic seed derived from the UTC date', async () => {
     const info = await (await request('/daily')).json();
-    expect(info).toEqual({ date: '2026-11-12', seed: dailySeed('2026-11-12'), ticks: DAILY_TICKS, rulesVersion: RULES_VERSION });
+    expect(info).toEqual({ date: '2026-11-12', seed: dailySeed('2026-11-12'), ticks: DAILY_TICKS, rulesVersion: BASE_RULES_VERSION });
     expect(DAILY_TICKS).toBe(3000);
     time += DAY_MS;
     expect(((await (await request('/daily')).json()) as { seed: number }).seed).not.toBe(dailySeed('2026-11-12'));

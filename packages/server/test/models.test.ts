@@ -1,7 +1,7 @@
 // D1: the humans vs models board. A model entry must carry a program the server ran and must publish it.
 import { readFileSync } from 'node:fs';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { SETUP_LEGACY, challengeSetup, createWorld, dailySeed, RULES_VERSION } from '@tendril/sim/src/index.ts';
+import { SETUP_LEGACY, challengeSetup, createWorld, dailySeed, BASE_RULES_VERSION } from '@tendril/sim/src/index.ts';
 import type { LogEntry } from '@tendril/sim/src/index.ts';
 import { createRun } from '../../lang/src/index.ts';
 import { verifySource } from '../../lang/src/verify.ts';
@@ -38,7 +38,7 @@ async function call(path: string, o: { token?: string; body?: unknown } = {}) {
   return { status: res.status, json: (text ? JSON.parse(text) : null) as Json };
 }
 const login = async (name: string): Promise<Login> => (await call('/dev/login', { body: { displayName: name } })).json as Login;
-const enter = (token: string, body: Json) => call(`/challenges/${DAILY}/entries`, { token, body: { rulesVersion: RULES_VERSION, ...body } });
+const enter = (token: string, body: Json) => call(`/challenges/${DAILY}/entries`, { token, body: { rulesVersion: BASE_RULES_VERSION, ...body } });
 const asModel = (source: string | undefined, extra: Json = {}) => ({ actions: logOf(source ?? daily), authorKind: 'model', model: 'test-model-1', ...(source === undefined ? {} : { source, sourcePublic: true }), ...extra });
 
 let ann: Login, bo: Login, robot: Login;
@@ -86,7 +86,7 @@ describe('refusing a model entry without verified, published source', () => {
   });
 
   it('refuses a signed-out model entry, and malformed or abusive model names', async () => {
-    expect((await call(`/challenges/${DAILY}/entries`, { body: { rulesVersion: RULES_VERSION, ...asModel(daily) } })).status).toBe(401);
+    expect((await call(`/challenges/${DAILY}/entries`, { body: { rulesVersion: BASE_RULES_VERSION, ...asModel(daily) } })).status).toBe(401);
     for (const model of ['', ' '.repeat(3) + '‮', 'x'.repeat(65), 'a\nb', 7, null, ['a']]) {
       expect((await enter(robot.token, asModel(daily, { model }))).status).toBe(422);
     }

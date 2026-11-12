@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { readFileSync, writeFileSync } from 'node:fs';
-import { createWorld, hashWorld, netWorth, replayChunk, RULES_VERSION } from '@tendril/sim/src/index.ts';
+import { createWorld, hashWorld, netWorth, replayChunk, BASE_RULES_VERSION } from '@tendril/sim/src/index.ts';
 import type { LogEntry } from '@tendril/sim/src/index.ts';
 import { createRun } from './index.ts';
 import { login, parseSubmitOptions, play, submit } from './arena-cli.ts';
@@ -21,11 +21,11 @@ try {
     for (const line of run.output) console.log(`[${line.tick} bot ${line.bot}] ${line.text}`);
     for (const error of run.errors) console.error(`Line ${error.line}, bot ${error.bot}: ${error.message}`);
     console.log(JSON.stringify({ hash: hashWorld(run.world), coins: run.world.coins, netWorth: netWorth(run.world), actions: run.pending.length }));
-    if (options.includes('--log')) writeFileSync(option('--log', 'run.json'), JSON.stringify({ rulesVersion: RULES_VERSION, seed, ticks, actions: run.pending }));
+    if (options.includes('--log')) writeFileSync(option('--log', 'run.json'), JSON.stringify({ rulesVersion: BASE_RULES_VERSION, seed, ticks, actions: run.pending }));
     if (run.errors.length) process.exitCode = 1;
   } else {
     const log = JSON.parse(readFileSync(file, 'utf8')) as { rulesVersion: number; seed: number; ticks: number; actions: LogEntry[] };
-    if (log.rulesVersion !== RULES_VERSION) throw new Error('Rules version mismatch.');
+    if (log.rulesVersion !== BASE_RULES_VERSION) throw new Error('Rules version mismatch.');
     const world = createWorld({ id: 'cli', seed: log.seed }); replayChunk(world, log.actions, log.ticks);
     console.log(JSON.stringify({ hash: hashWorld(world), coins: world.coins, netWorth: netWorth(world), actions: log.actions.length }));
   }

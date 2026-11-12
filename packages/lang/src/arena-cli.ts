@@ -3,7 +3,7 @@ import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'n
 import { randomBytes } from 'node:crypto';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
-import { challengeSetup, createWorld, replayWithPar, RULES_VERSION, SETUP_LEGACY, describeModifiers } from '@tendril/sim/src/index.ts';
+import { challengeSetup, createWorld, replayWithPar, SETUP_LEGACY, SUPPORTED_RULES_VERSIONS, describeModifiers, marketPrices } from '@tendril/sim/src/index.ts';
 import type { ChallengeKind, LogEntry } from '@tendril/sim/src/index.ts';
 import { createRun } from './index.ts';
 
@@ -31,7 +31,7 @@ export function loadToken(): string | null {
   return saved && saved.api === apiOrigin() ? saved.token : null;
 }
 
-export interface Challenge { id: string; kind: ChallengeKind; number: number | null; seed: number; ticks: number; par: number | null; rulesVersion: number; setupVersion?: number }
+export interface Challenge { id: string; kind: ChallengeKind; number: number | null; seed: number; ticks: number; par: number | null; rulesVersion: number; setupVersion?: number; market?: { prices: number[]; multipliers: number[]; shares: number[] | null } | null }
 export interface LastRun { api: string; challengeId: string; rulesVersion: number; actions: LogEntry[]; netWorth: number; parTick: number | null; mosaic: string; source: string }
 
 async function api<T>(path: string, init: { body?: unknown; token?: string | null } = {}): Promise<{ status: number; json: T }> {
@@ -72,8 +72,9 @@ export async function getChallenge(id: string): Promise<Challenge> {
 
 /** Run a Sprout file on the challenge's world, then replay its log with par tracking (the same check the server makes). */
 export function playLocal(c: Challenge, source: string): LastRun & { errors: string[] } {
-  if (c.rulesVersion !== RULES_VERSION) throw new Error(`This CLI plays rules v${RULES_VERSION} but the challenge uses v${c.rulesVersion}. Update the CLI.`);
-  const { setup } = challengeSetup(c.kind, c.seed, c.setupVersion ?? SETUP_LEGACY);
+  if (!SUPPORTED_RULES_VERSIONS.includes(c.rulesVersion)) throw new Error('This day needs a newer Tendril. Update the CLI.');
+  const { setup } = challengeSetup(c.kind, c.seed, c.setupVersion ?? SETUP_LEGACY, c.market ? { p: c.market.prices } : null);
+  if (c.market && marketPrices(c.market.multipliers).some((p, i) => p !== c.market!.prices[i])) throw new Error('The challenge has an invalid price table.');
   const run = createRun(createWorld({ id: c.id, seed: c.seed }, setup), source);
   for (let left = c.ticks; left > 0; left -= Math.min(left, 20_000)) run.step(Math.min(left, 20_000));
   const actions = run.pending.slice();

@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { SETUP_LEGACY, challengeSetup, createWorld, dailyNumber, dailySeed, DAILY_PAR, DAILY_TICKS, replayWithPar, RULES_VERSION, SEASON_TICKS } from '@tendril/sim/src/index.ts';
+import { SETUP_LEGACY, challengeSetup, createWorld, dailyNumber, dailySeed, DAILY_PAR, DAILY_TICKS, replayWithPar, BASE_RULES_VERSION, SEASON_TICKS } from '@tendril/sim/src/index.ts';
 import type { LogEntry } from '@tendril/sim/src/index.ts';
 import { createApp, createDb, migrate } from '../src/index.ts';
 import type { Db, Profile } from '../src/index.ts';
@@ -46,7 +46,7 @@ async function login(name = 'Farmer'): Promise<Login> {
   return r.json as Login;
 }
 const enter = (id: string, actions: unknown, token = user.token, extra: Json = {}) =>
-  call(`/challenges/${id}/entries`, { token, body: { rulesVersion: RULES_VERSION, actions, ...extra } });
+  call(`/challenges/${id}/entries`, { token, body: { rulesVersion: BASE_RULES_VERSION, actions, ...extra } });
 async function duel(token = user.token, body: Json = { seed: 7 }): Promise<string> {
   const r = await call('/duels', { token, body });
   expect(r.status).toBe(201);
@@ -106,7 +106,7 @@ describe('GET /challenges', () => {
     const start = Date.UTC(2026, 10, 12);
     expect(r.json).toEqual({
       id: DAILY, kind: 'daily', number: dailyNumber(TODAY), seed: dailySeed(TODAY), ticks: DAILY_TICKS, par: DAILY_PAR,
-      opensAt: start, closesAt: start + DAY_MS, rulesVersion: RULES_VERSION, setupVersion: 0, players: 0, best: null,
+      opensAt: start, closesAt: start + DAY_MS, rulesVersion: BASE_RULES_VERSION, setupVersion: 0, players: 0, best: null, market: null,
     });
     expect((await call(`/challenges/${DAILY}`)).json).toEqual(r.json);
     expect(await db.query('SELECT id FROM challenges')).toHaveLength(1);
@@ -149,7 +149,7 @@ describe('GET /challenges', () => {
 
 describe('POST /challenges/:id/entries', () => {
   it('requires a session', async () => {
-    expect((await call(`/challenges/${DAILY}/entries`, { body: { rulesVersion: RULES_VERSION, actions: [] } })).status).toBe(401);
+    expect((await call(`/challenges/${DAILY}/entries`, { body: { rulesVersion: BASE_RULES_VERSION, actions: [] } })).status).toBe(401);
   });
 
   it('verifies a 3,000-tick run, matches an independent replay, and finishes in under a second', async () => {
@@ -216,7 +216,7 @@ describe('POST /challenges/:id/entries', () => {
   });
 
   it('refuses a rules version mismatch with 409', async () => {
-    const r = await call(`/challenges/${DAILY}/entries`, { token: user.token, body: { rulesVersion: RULES_VERSION + 1, actions: [] } });
+    const r = await call(`/challenges/${DAILY}/entries`, { token: user.token, body: { rulesVersion: BASE_RULES_VERSION + 1, actions: [] } });
     expect(r.status).toBe(409);
   });
 
@@ -366,7 +366,7 @@ describe('entries and sealing', () => {
     expect((await call(path, { token: stranger.token })).status).toBe(403);
     const mine = await call(path, { token: user.token });
     expect(mine.status).toBe(200);
-    expect(mine.json).toEqual({ seed: dailySeed(TODAY), ticks: DAILY_TICKS, rulesVersion: RULES_VERSION, setupVersion: 0, kind: 'daily', actions: SMALL });
+    expect(mine.json).toEqual({ seed: dailySeed(TODAY), ticks: DAILY_TICKS, rulesVersion: BASE_RULES_VERSION, setupVersion: 0, kind: 'daily', market: null, actions: SMALL });
     time += DAY_MS;
     expect((await call(path)).status).toBe(403); // closed, but the legacy alias still takes yesterday (D2 F1)
     time += DAY_MS;
@@ -473,7 +473,7 @@ describe('size caps', () => {
     // The widest legal action: five fields, a 15-digit bot id, the largest final argument.
     const widest: LogEntry = [SEASON_TICKS - 1, 999_999_999_999_999, 8, 7, Number.MAX_SAFE_INTEGER];
     for (const kind of ['daily', 'season', 'duel'] as const) {
-      const bytes = JSON.stringify({ rulesVersion: RULES_VERSION, actions: new Array(KIND_LIMITS[kind].maxActions).fill(widest), source: 'x'.repeat(32 * 1024), sourcePublic: true, authorKind: 'model', model: 'm'.repeat(64) }).length;
+      const bytes = JSON.stringify({ rulesVersion: BASE_RULES_VERSION, actions: new Array(KIND_LIMITS[kind].maxActions).fill(widest), source: 'x'.repeat(32 * 1024), sourcePublic: true, authorKind: 'model', model: 'm'.repeat(64) }).length;
       expect(bytes).toBeLessThan(MAX_BODY_BYTES);
       expect(bytes).toBeLessThan(VERCEL_BODY_LIMIT);
     }
@@ -486,17 +486,17 @@ describe('size caps', () => {
 
 describe('old /api/daily routes', () => {
   it('still answer in the old shapes while writing through the new pipeline', async () => {
-    const r = await call('/daily/submit', { token: user.token, body: { date: TODAY, rulesVersion: RULES_VERSION, actions: SMALL } });
+    const r = await call('/daily/submit', { token: user.token, body: { date: TODAY, rulesVersion: BASE_RULES_VERSION, actions: SMALL } });
     expect(r.status).toBe(200);
     expect(Object.keys(r.json).sort()).toEqual(['best', 'netWorth', 'rank']);
     const board = await call(`/challenges/${DAILY}/board`);
     expect(board.json.entries[0].value).toBe(r.json.netWorth);
     const old = await call('/daily/leaderboard');
     expect(old.json.entries[0]).toMatchObject({ rank: 1, userId: user.profile.id, netWorth: r.json.netWorth });
-    expect((await call('/daily')).json).toEqual({ date: TODAY, seed: dailySeed(TODAY), ticks: DAILY_TICKS, rulesVersion: RULES_VERSION });
+    expect((await call('/daily')).json).toEqual({ date: TODAY, seed: dailySeed(TODAY), ticks: DAILY_TICKS, rulesVersion: BASE_RULES_VERSION });
   });
   it('treat a repeat of your own log as a harmless retry, and share rank for identical logs', async () => {
-    const body = { date: TODAY, rulesVersion: RULES_VERSION, actions: SMALL };
+    const body = { date: TODAY, rulesVersion: BASE_RULES_VERSION, actions: SMALL };
     const first = await call('/daily/submit', { token: user.token, body });
     expect((await call('/daily/submit', { token: user.token, body })).json).toEqual(first.json);
     const rival = await login('Rival');

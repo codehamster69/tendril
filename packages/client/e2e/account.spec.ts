@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { createWorld, deserialize, hashWorld, netWorth, replayChunk, serialize, RULES_VERSION } from '@tendril/sim/src/index.ts';
+import { createWorld, deserialize, hashWorld, netWorth, replayChunk, serialize, BASE_RULES_VERSION } from '@tendril/sim/src/index.ts';
 
 const KEY = 'tendril.unrankedNotice.dismissedUntil';
 const profile = { id: 'u1', login: 'octo', displayName: 'Octo Cat', avatarUrl: null };
@@ -10,7 +10,7 @@ function farm() {
   const world = createWorld({ id: 'farm-1', seed: 7 });
   return {
     id: 'farm-1', seed: 7, startedAtMs: Date.now() - farmAgeMs, tick: world.tick, checkpoint: serialize(world),
-    checkpointHash: hashWorld(world), rulesVersion: RULES_VERSION, coins: world.coins, netWorth: netWorth(world),
+    checkpointHash: hashWorld(world), rulesVersion: BASE_RULES_VERSION, coins: world.coins, netWorth: netWorth(world),
   };
 }
 

@@ -130,14 +130,16 @@ export function entryInput(value: unknown, maxSourceBytes: number): EntryInput {
 }
 
 /** POST /duels body: both fields optional. */
-export function duelInput(value: unknown, maxTicks: number): { seed: number | null; ticks: number | null } {
+export function duelInput(value: unknown, maxTicks: number): { seed: number | null; ticks: number | null; from: string | null } {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new HttpError(422, 'Invalid request');
   const body = value as Record<string, unknown>;
-  if (Object.keys(body).some((key) => key !== 'seed' && key !== 'ticks')) throw new HttpError(422, 'Invalid request fields');
+  if (Object.keys(body).some((key) => key !== 'seed' && key !== 'ticks' && key !== 'from')) throw new HttpError(422, 'Invalid request fields');
   const seed = body.seed ?? null, ticks = body.ticks ?? null;
   if (seed !== null && !isInteger(seed, 1, 0xFFFFFFFF)) throw new HttpError(422, 'Invalid seed');
   if (ticks !== null && !isInteger(ticks, 100, maxTicks)) throw new HttpError(422, 'Invalid ticks');
-  return { seed, ticks };
+  const from = body.from ?? null;
+  if (from !== null && (typeof from !== 'string' || !/^d-\d{4}-\d{2}-\d{2}$/.test(from))) throw new HttpError(422, 'Invalid from');
+  return { seed, ticks, from };
 }
 
 export function entryIdParam(value: string): string {

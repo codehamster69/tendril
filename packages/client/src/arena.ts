@@ -1,6 +1,6 @@
 // Challenge play: daily (`?mode=daily`) and any challenge (`?mode=challenge&id=`). The sim mode is always 'daily'.
 import { setupOf, challengeScenario } from './challenge-setup';
-import { challengeSetup, createWorld, dailyNumber, dailySeed, DAILY_PAR, describeModifiers, replayWithPar, RULES_VERSION, SETUP_VERSION } from '@tendril/sim/src/index.ts';
+import { challengeSetup, createWorld, dailyNumber, dailySeed, DAILY_PAR, describeModifiers, replayWithPar, BASE_RULES_VERSION, SETUP_VERSION, SUPPORTED_RULES_VERSIONS } from '@tendril/sim/src/index.ts';
 import type { LogEntry, Snapshot } from '@tendril/sim/src/index.ts';
 import { ApiError, signedInHint } from './api-client';
 import type { ChallengeInfo, EntryResult, FarmApi } from './api-client';
@@ -21,7 +21,8 @@ export const utcToday = (): string => new Date().toISOString().slice(0, 10);
 export async function loadChallenge(api: FarmApi, query: URLSearchParams): Promise<ChallengeInfo> {
   const requested = query.get('mode') === 'challenge' ? query.get('id') ?? '' : `d-${utcToday()}`;
   if (!CHALLENGE_ID.test(requested)) { location.replace('?mode=daily'); throw new Error('Unknown challenge'); }
-  try { return await api.challenge(requested); } catch (e) {
+  try { return requireKnownRules(await api.challenge(requested)); } catch (e) {
+    if (e instanceof RulesTooNew) throw e;
     if (query.get('mode') === 'challenge') {
       if (e instanceof ApiError && e.status !== 0) { toast('Challenge not found', 'Opening today\'s farm instead.'); location.replace('?mode=daily'); }
       throw e;
@@ -29,9 +30,26 @@ export async function loadChallenge(api: FarmApi, query: URLSearchParams): Promi
     const date = utcToday();
     return {
       id: `d-${date}`, kind: 'daily', number: dailyNumber(date), seed: dailySeed(date), ticks: challengeSetup('daily', dailySeed(date)).ticks, par: DAILY_PAR,
-      opensAt: null, closesAt: null, rulesVersion: RULES_VERSION, setupVersion: SETUP_VERSION, players: 0, best: null,
+      opensAt: null, closesAt: null, rulesVersion: BASE_RULES_VERSION, setupVersion: SETUP_VERSION, players: 0, best: null,
+      market: null, // offline: base prices, practice only (a market day's table comes from the server)
     };
   }
+}
+
+export const UPDATE_NEEDED = 'This day needs a newer Tendril. Update the app.';
+export class RulesTooNew extends Error { constructor() { super(UPDATE_NEEDED); this.name = 'RulesTooNew'; } }
+
+/**
+ * A client plays only rules versions it knows (SIM_SPEC 4.6). Anything newer, or a market day without its table, is refused
+ * before the game starts, with a visible message instead of a run that could never be accepted.
+ */
+export function requireKnownRules(c: ChallengeInfo): ChallengeInfo {
+  const known = SUPPORTED_RULES_VERSIONS.includes(c.rulesVersion) && (c.rulesVersion === BASE_RULES_VERSION) === !c.market;
+  if (known) return c;
+  const banner = el('div', { id: 'update-needed', class: 'update-needed', role: 'alert' }, UPDATE_NEEDED);
+  banner.style.cssText = 'position:fixed;inset:0 0 auto 0;z-index:1000;padding:14px 16px;background:#b3261e;color:#fff;font:600 15px system-ui,sans-serif;text-align:center';
+  document.body.prepend(banner);
+  throw new RulesTooNew();
 }
 
 export { challengeScenario, setupOf };

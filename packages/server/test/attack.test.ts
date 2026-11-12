@@ -3,7 +3,7 @@
 // Findings that currently succeed are kept as `it.fails('VULN: ...')` so the suite documents them and
 // flips red the day they are fixed. See brain/notes/ATTACK1.md for the written report.
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { createWorld, dailySeed, DAILY_TICKS, deserialize, hashWorld, netWorth, replayChunk, RULES_VERSION, serialize } from '@tendril/sim/src/index.ts';
+import { createWorld, dailySeed, DAILY_TICKS, deserialize, hashWorld, netWorth, replayChunk, BASE_RULES_VERSION, serialize } from '@tendril/sim/src/index.ts';
 import type { LogEntry, World } from '@tendril/sim/src/index.ts';
 import { addPlot } from '@tendril/sim/src/tiles.ts';
 import { createApp, createDb } from '../src/index.ts';
@@ -572,7 +572,7 @@ describe('5. resource exhaustion', () => {
 
   it('daily replay with many actions finishes quickly', async () => {
     const actions = waits(DAILY_TICKS);
-    const r = await api('/daily/submit', { token: user.token, body: { date: '2026-11-12', rulesVersion: RULES_VERSION, actions } });
+    const r = await api('/daily/submit', { token: user.token, body: { date: '2026-11-12', rulesVersion: BASE_RULES_VERSION, actions } });
     timings['daily 3,000 waits'] = Math.round(r.ms);
     expect(r.status).toBe(200);
     expect(r.ms).toBeLessThan(2000);
@@ -872,7 +872,7 @@ describe('9. rate limit bypass', () => {
   });
 
   it('the daily limit (20 per UTC day) holds across query/casing variants', async () => {
-    const body = { date: '2026-11-12', rulesVersion: RULES_VERSION, actions: [] };
+    const body = { date: '2026-11-12', rulesVersion: BASE_RULES_VERSION, actions: [] };
     for (let i = 0; i < 20; i++) expect((await api('/daily/submit', { token: user.token, body })).status).toBe(200);
     for (const path of ['/api/daily/submit', '/api/daily/submit?x=1']) expect((await send(path, { token: user.token, body })).status).toBe(429);
     for (const path of ['/api/daily/submit/', '/API/daily/submit', '/api/Daily/submit']) expect((await send(path, { token: user.token, body })).status).toBe(404);
@@ -897,8 +897,8 @@ describe('10. daily challenge', () => {
 
   it('the stored score is the server-side replay on the SUBMITTED date seed, whichever date the log was tuned for', async () => {
     expect(dailySeed(TODAY)).not.toBe(dailySeed(YESTERDAY));
-    const t = await daily({ date: TODAY, rulesVersion: RULES_VERSION, actions: GOOD });
-    const y = await daily({ date: YESTERDAY, rulesVersion: RULES_VERSION, actions: GOOD });
+    const t = await daily({ date: TODAY, rulesVersion: BASE_RULES_VERSION, actions: GOOD });
+    const y = await daily({ date: YESTERDAY, rulesVersion: BASE_RULES_VERSION, actions: GOOD });
     expect(t.status).toBe(200);
     expect(y.status).toBe(200);
     expect((t.json as { netWorth: number }).netWorth).toBe(dailyExpected(TODAY, GOOD));
@@ -919,57 +919,57 @@ describe('10. daily challenge', () => {
     ['null', null, 422],
     ['padded', ' 2026-11-12', 422],
   ] as [string, unknown, number][])('date %s is refused', async (_name, date, status) => {
-    await expectRejected(null, status, () => daily({ date, rulesVersion: RULES_VERSION, actions: GOOD }));
+    await expectRejected(null, status, () => daily({ date, rulesVersion: BASE_RULES_VERSION, actions: GOOD }));
   });
 
   it('claimed fields (netWorth, seed, ticks) are rejected, and a wrong rules version is a 409', async () => {
-    await expectRejected(null, 422, () => daily({ date: TODAY, rulesVersion: RULES_VERSION, actions: GOOD, netWorth: 1e9 }));
-    await expectRejected(null, 422, () => daily({ date: TODAY, rulesVersion: RULES_VERSION, actions: GOOD, seed: 1 }));
+    await expectRejected(null, 422, () => daily({ date: TODAY, rulesVersion: BASE_RULES_VERSION, actions: GOOD, netWorth: 1e9 }));
+    await expectRejected(null, 422, () => daily({ date: TODAY, rulesVersion: BASE_RULES_VERSION, actions: GOOD, seed: 1 }));
     await expectRejected(null, 409, () => daily({ date: TODAY, rulesVersion: 2, actions: GOOD }));
-    await expectRejected(null, 422, () => daily({ date: TODAY, rulesVersion: RULES_VERSION }));
+    await expectRejected(null, 422, () => daily({ date: TODAY, rulesVersion: BASE_RULES_VERSION }));
   });
 
   it('actions at or past tick 3000 are refused; tick 2999 is fine', async () => {
-    await expectRejected(null, 422, () => daily({ date: TODAY, rulesVersion: RULES_VERSION, actions: [[3000, 0, 7, 1]] }));
-    await expectRejected(null, 422, () => daily({ date: TODAY, rulesVersion: RULES_VERSION, actions: [[3001, 0, 3]] }));
-    await expectRejected(null, 422, () => daily({ date: TODAY, rulesVersion: RULES_VERSION, actions: [[1e9, 0, 3]] }));
-    expect((await daily({ date: TODAY, rulesVersion: RULES_VERSION, actions: [[2999, 0, 3]] })).status).toBe(200);
+    await expectRejected(null, 422, () => daily({ date: TODAY, rulesVersion: BASE_RULES_VERSION, actions: [[3000, 0, 7, 1]] }));
+    await expectRejected(null, 422, () => daily({ date: TODAY, rulesVersion: BASE_RULES_VERSION, actions: [[3001, 0, 3]] }));
+    await expectRejected(null, 422, () => daily({ date: TODAY, rulesVersion: BASE_RULES_VERSION, actions: [[1e9, 0, 3]] }));
+    expect((await daily({ date: TODAY, rulesVersion: BASE_RULES_VERSION, actions: [[2999, 0, 3]] })).status).toBe(200);
   });
 
   it('illegal moves in a daily log reject the whole run', async () => {
-    await expectRejected(null, 422, () => daily({ date: TODAY, rulesVersion: RULES_VERSION, actions: [...GOOD, [307, 5, 3]] }));
-    await expectRejected(null, 422, () => daily({ date: TODAY, rulesVersion: RULES_VERSION, actions: [[0, 0, 0, 1], [1, 0, 1]] }));
-    await expectRejected(null, 413, () => daily({ date: TODAY, rulesVersion: RULES_VERSION, actions: waits(20_001) }));
+    await expectRejected(null, 422, () => daily({ date: TODAY, rulesVersion: BASE_RULES_VERSION, actions: [...GOOD, [307, 5, 3]] }));
+    await expectRejected(null, 422, () => daily({ date: TODAY, rulesVersion: BASE_RULES_VERSION, actions: [[0, 0, 0, 1], [1, 0, 1]] }));
+    await expectRejected(null, 413, () => daily({ date: TODAY, rulesVersion: BASE_RULES_VERSION, actions: waits(20_001) }));
   });
 
   it('resubmitting a lower or equal score does not replace the best, nor move achievedAt or rank', async () => {
-    const good = await daily({ date: TODAY, rulesVersion: RULES_VERSION, actions: GOOD });
+    const good = await daily({ date: TODAY, rulesVersion: BASE_RULES_VERSION, actions: GOOD });
     const best = (good.json as { netWorth: number }).netWorth;
     expect(best).toBeGreaterThan(0);
     const rival = await login('Rival');
     time += 60_000;
     // A byte-identical log would share rank 1 (see arena.test.ts); one extra idle action keeps the score and tests the tie-break.
-    const rivalRun = await daily({ date: TODAY, rulesVersion: RULES_VERSION, actions: [...GOOD, [2999, 0, 3]] }, rival.token);
+    const rivalRun = await daily({ date: TODAY, rulesVersion: BASE_RULES_VERSION, actions: [...GOOD, [2999, 0, 3]] }, rival.token);
     expect((rivalRun.json as { rank: number }).rank).toBe(2); // tie broken by earlier achievement
-    const lower = await daily({ date: TODAY, rulesVersion: RULES_VERSION, actions: [] });
+    const lower = await daily({ date: TODAY, rulesVersion: BASE_RULES_VERSION, actions: [] });
     expect(lower.status).toBe(200);
     expect(lower.json).toMatchObject({ netWorth: 0, best, rank: 1 });
-    const equal = await daily({ date: TODAY, rulesVersion: RULES_VERSION, actions: GOOD });
+    const equal = await daily({ date: TODAY, rulesVersion: BASE_RULES_VERSION, actions: GOOD });
     expect(equal.json).toMatchObject({ netWorth: best, best, rank: 1 });
     const entries = ((await api(`/daily/leaderboard?date=${TODAY}`)).json as { entries: { userId: string; netWorth: number; achievedAtMs: number }[] }).entries;
     expect(entries.map((e) => [e.userId, e.netWorth, e.achievedAtMs])).toEqual([[user.profile.id, best, time - 60_000], [rival.profile.id, best, time]]);
   });
 
   it('only a strictly higher score replaces the best', async () => {
-    const small = await daily({ date: TODAY, rulesVersion: RULES_VERSION, actions: [[0, 0, 0, 1], [2, 0, 1], [5, 0, 2, 1], [7, 0, 3], [9, 0, 3], [300, 0, 4], [303, 0, 0, 3], [305, 0, 5], [306, 0, 8, 1, 2]] });
-    const full = await daily({ date: TODAY, rulesVersion: RULES_VERSION, actions: GOOD });
+    const small = await daily({ date: TODAY, rulesVersion: BASE_RULES_VERSION, actions: [[0, 0, 0, 1], [2, 0, 1], [5, 0, 2, 1], [7, 0, 3], [9, 0, 3], [300, 0, 4], [303, 0, 0, 3], [305, 0, 5], [306, 0, 8, 1, 2]] });
+    const full = await daily({ date: TODAY, rulesVersion: BASE_RULES_VERSION, actions: GOOD });
     expect((full.json as { best: number }).best).toBeGreaterThanOrEqual((small.json as { netWorth: number }).netWorth);
     const rows = await db.query<{ net_worth: number }>('SELECT net_worth FROM entries WHERE user_id = ?', [user.profile.id]);
     expect(rows).toEqual([{ net_worth: dailyExpected(TODAY, GOOD) }]);
   });
 
   it("a user's daily score never touches the farm leaderboard, and farm scores never touch the daily board", async () => {
-    await daily({ date: TODAY, rulesVersion: RULES_VERSION, actions: GOOD });
+    await daily({ date: TODAY, rulesVersion: BASE_RULES_VERSION, actions: GOOD });
     expect(((await api('/leaderboard')).json as { entries: unknown[] }).entries).toEqual([]);
     expect((await submit(chunkBody(GOOD, GOOD_TO))).status).toBe(200);
     expect(((await api(`/daily/leaderboard?date=${YESTERDAY}`)).json as { entries: unknown[] }).entries).toEqual([]);
@@ -977,8 +977,8 @@ describe('10. daily challenge', () => {
 
   it('the day rolls over by the injected clock: after midnight UTC yesterday-of-yesterday is closed', async () => {
     time = Date.UTC(2026, 10, 13, 0, 0, 0);
-    expect((await daily({ date: YESTERDAY, rulesVersion: RULES_VERSION, actions: [] })).status).toBe(422);
-    expect((await daily({ date: TODAY, rulesVersion: RULES_VERSION, actions: [] })).status).toBe(200);
+    expect((await daily({ date: YESTERDAY, rulesVersion: BASE_RULES_VERSION, actions: [] })).status).toBe(422);
+    expect((await daily({ date: TODAY, rulesVersion: BASE_RULES_VERSION, actions: [] })).status).toBe(200);
   });
 });
 

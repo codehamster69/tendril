@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { RULES_VERSION } from '@tendril/sim/src/index.ts';
+import { BASE_RULES_VERSION } from '@tendril/sim/src/index.ts';
 import type { LogEntry } from '@tendril/sim/src/index.ts';
 import { createApp, createDb } from '../src/index.ts';
 import type { Db, Profile } from '../src/index.ts';
@@ -31,7 +31,7 @@ async function login(name: string): Promise<Login> {
   return r.json as Login;
 }
 const enter = (id: string, token: string, actions: LogEntry[] = SMALL) =>
-  call(`/challenges/${id}/entries`, { token, body: { rulesVersion: RULES_VERSION, actions } });
+  call(`/challenges/${id}/entries`, { token, body: { rulesVersion: BASE_RULES_VERSION, actions } });
 const dailyOf = (ms: number): string => `d-${new Date(ms).toISOString().slice(0, 10)}`;
 
 let a: Login, b: Login;

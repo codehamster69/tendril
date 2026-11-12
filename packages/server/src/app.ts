@@ -1,4 +1,4 @@
-import { DAILY_TICKS, RULES_VERSION } from '@tendril/sim/src/index.ts';
+import { DAILY_TICKS } from '@tendril/sim/src/index.ts';
 import { authenticate, clearSessionCookie, devAuthEnabled, devLogin, finishGithub, getProfile, logout, pollDesktop, sessionCookie, startGithub } from './auth.ts';
 import type { Ctx, Env, FetchFn, Identity } from './auth.ts';
 import type { Db } from './db.ts';
@@ -254,9 +254,9 @@ function createInnerApp(options: AppOptions): (request: Request) => Promise<Resp
         rejectQuery(url);
         const body = objectWithKeys(await readJson(request), ['date', 'rulesVersion', 'actions'], 422);
         if (!isValidDate(body.date)) throw new HttpError(422, 'Invalid date');
-        if (body.rulesVersion !== RULES_VERSION) throw new HttpError(409, 'Rules version mismatch');
+        if (!Number.isInteger(body.rulesVersion)) throw new HttpError(409, 'Rules version mismatch');
         const actions = validateActions(body.actions, 0, DAILY_TICKS);
-        return json(await legacySubmit(db, identity.userId, body.date, actions, now(), options.setupVersion));
+        return json(await legacySubmit(db, identity.userId, body.date, actions, now(), options.setupVersion, body.rulesVersion as number));
       }
 
       // ---- arena: challenges, entries, duels ----

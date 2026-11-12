@@ -14,7 +14,7 @@ The coordinator owns this file. An agent requests a contract change in its notes
 - Root `api/index.ts`: the one Vercel Node function; adapts `createApp(...)` from the server package.
 
 ## Simulation
-See SIM_SPEC. `RULES_VERSION = 3`. `LogEntry = [tick,bot,op,a?,b?]`. Server never passes `Setup`.
+See SIM_SPEC. `RULES_VERSION = 4` (newest; the daily market, section 4), `BASE_RULES_VERSION = 3`, `SUPPORTED_RULES_VERSIONS = [3, 4]`. Challenge rows carry `rules_version` and `market`; every world builder passes the row's table to `challengeSetup(kind, seed, setupV, market)`. `LogEntry = [tick,bot,op,a?,b?]`. Server never passes `Setup`.
 
 ## Language
 See LANGUAGE.md section 10 (`compile`, `createRun`, `ScriptRun`, `BotDebug`, `API`, `LANGUAGE_VERSION`).

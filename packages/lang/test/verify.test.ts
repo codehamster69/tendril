@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { challengeSetup, createWorld, RULES_VERSION, SETUP_LEGACY, SETUP_VERSION } from '@tendril/sim/src/index.ts';
+import { challengeSetup, createWorld, BASE_RULES_VERSION, SETUP_LEGACY, SETUP_VERSION } from '@tendril/sim/src/index.ts';
 import { createRun } from '../src/index.ts';
 import { countTokens, STRING_CHUNK } from '../src/tokens.ts';
 import { handleVerify, verifySecret } from '../src/vercel-verify.ts';
@@ -8,7 +8,7 @@ import { hashLog, verifySource } from '../src/verify.ts';
 import type { VerifyRequest } from '../src/verify.ts';
 
 const daily = readFileSync(new URL('../examples/daily.sprout', import.meta.url), 'utf8');
-const req = (source: string, over: Partial<VerifyRequest> = {}): VerifyRequest => ({ source, challengeId: 'd-2026-12-01', kind: 'daily', seed: 7, ticks: 3000, rulesVersion: RULES_VERSION, setupVersion: SETUP_VERSION, ...over });
+const req = (source: string, over: Partial<VerifyRequest> = {}): VerifyRequest => ({ source, challengeId: 'd-2026-12-01', kind: 'daily', seed: 7, ticks: 3000, rulesVersion: BASE_RULES_VERSION, setupVersion: SETUP_VERSION, ...over });
 /** The log a program really produces, made the way the client and CLI make it. */
 function produce(r: VerifyRequest) {
   const run = createRun(createWorld({ id: r.challengeId, seed: r.seed }, challengeSetup(r.kind, r.seed, r.setupVersion).setup), r.source);
@@ -70,7 +70,7 @@ describe('verifySource', () => {
     if (!v.ok) { expect(v.reason).toBe('compile'); expect(v.message).toMatch(/^Line \d+: /); }
   });
   it('rejects other rules versions and oversized sources', () => {
-    expect(verifySource(req(daily, { rulesVersion: RULES_VERSION + 1 }))).toMatchObject({ ok: false, reason: 'rules' });
+    expect(verifySource(req(daily, { rulesVersion: 5 }))).toMatchObject({ ok: false, reason: 'rules' });
     expect(verifySource(req(`x = 1\n${'# pad\n'.repeat(8000)}`))).toMatchObject({ ok: false, reason: 'bad' });
     expect(verifySource(req(daily, { ticks: 0 }))).toMatchObject({ ok: false, reason: 'bad' });
   });
@@ -150,5 +150,41 @@ describe('verifySource bounds (D2)', () => {
   });
   it('reports absurdly nested source as a compile error, not a crash', () => {
     expect(verifySource(req(`x = ${'('.repeat(15000)}1${')'.repeat(15000)}`))).toMatchObject({ ok: false, reason: 'compile' });
+  });
+});
+
+describe('market days (rules v4)', () => {
+  const m = { m: [0, 1250, 750, 1000, 1000, 1000, 1000, 1000], p: [0, 250, 225, 100, 600, 400, 500, 800], t: [0, 1000, 1000, 1000, 1000, 1000, 1000, 1000], sh: null, n: 0, from: null };
+  const marketReq = (source: string, over: Partial<VerifyRequest> = {}): VerifyRequest => req(source, { rulesVersion: 4, market: m, ...over });
+
+  it('checks a program under the day\'s table and the table changes the run\'s value', () => {
+    const base = verifySource(req(daily)), market = verifySource(marketReq(daily));
+    expect(base.ok && market.ok).toBe(true);
+    if (base.ok && market.ok) { expect(market.logHash).toBe(base.logHash); expect(market.netWorth).not.toBe(base.netWorth); }
+  });
+  it('dispatches by data: v4 needs a table, v3 refuses one, a damaged table is refused', () => {
+    expect(verifySource(req(daily, { rulesVersion: 4 }))).toMatchObject({ ok: false, reason: 'rules' });
+    expect(verifySource(req(daily, { market: m }))).toMatchObject({ ok: false, reason: 'rules' });
+    expect(verifySource(marketReq(daily, { market: { ...m, p: m.p.map((x) => x + 1) } as never }))).toMatchObject({ ok: false, reason: 'rules' });
+  });
+  it('the price query is the base price in coins on a v3 day and the day\'s price in centicoins on a market day', () => {
+    const probe = 'say price(carrot)\nsay price(wheat)\nsay price(honey)\n';
+    const out = (r: VerifyRequest): string[] => {
+      const world = createWorld({ id: r.challengeId, seed: r.seed }, challengeSetup(r.kind, r.seed, r.setupVersion, r.market).setup);
+      const run = createRun(world, r.source); run.step(1);
+      return run.output.map((l) => l.text);
+    };
+    expect(out(req(probe))).toEqual(['2', '3', '8']);
+    expect(out(marketReq(probe))).toEqual(['250', '225', '800']);
+  });
+  it('price(compost) is a script error, not a free sale price', () => {
+    const world = createWorld({ id: 'p', seed: 1 }, { prices: m.p });
+    const run = createRun(world, 'say price(compost)\n'); run.step(1);
+    expect(run.errors.length).toBe(1);
+  });
+  it('the verify route passes the table through', async () => {
+    const env = { VERIFY_SECRET: 's' };
+    const res = await handleVerify(new Request('https://x/api/verify', { method: 'POST', headers: { 'x-tendril-verify': verifySecret(env) }, body: JSON.stringify(marketReq(daily)) }), env);
+    expect((await res.json() as { ok: boolean }).ok).toBe(true);
   });
 });

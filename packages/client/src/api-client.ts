@@ -23,6 +23,8 @@ export interface ChallengeInfo {
   opensAt: number | null; closesAt: number | null; rulesVersion: number;
   /** How the starting conditions derive from the seed (0 plain farm, 1 the day's modifiers). Absent from an old server: 0. */ setupVersion?: number;
   players: number; best: number | null;
+  /** The day's market (rules v4): prices in centicoins and multipliers in permille of base, index = item id, plus yesterday's observed shares. Absent or null: base prices. */
+  market?: { prices: number[]; multipliers: number[]; shares: number[] | null } | null;
 }
 export interface EntryResult {
   entryId: string; netWorth: number; parTick: number | null; tokens: number | null; mosaic: string;
@@ -85,7 +87,7 @@ export class FarmApi {
   }
   replay(id: string, fromTick = 0): Promise<ReplayResponse> { return this.request(`/farms/${encodeURIComponent(id)}/replay?fromTick=${fromTick}&limit=1`); }
   challenge(id: string): Promise<ChallengeInfo> { return this.request(`/challenges/${encodeURIComponent(id)}`); }
-  createDuel(body: { seed: number; ticks: number }): Promise<{ challengeId: string }> { return this.request('/duels', 'POST', body); }
+  createDuel(body: { seed: number; ticks: number; from?: string }): Promise<{ challengeId: string }> { return this.request('/duels', 'POST', body); }
   duel(id: string): Promise<DuelPage> { return this.request(`/duels/${encodeURIComponent(id)}`); }
   acceptDuel(id: string): Promise<{ accepted: true; changed: boolean; challenger: { login: string; displayName: string } }> {
     return this.request(`/duels/${encodeURIComponent(id)}/accept`, 'POST', {});
