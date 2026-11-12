@@ -99,6 +99,15 @@ describe('GET /players/:login', () => {
     expect((await call(`/players/${a.profile.login}`)).json.medals.wealth).toBe(1);
     expect((await call(`/players/${b.profile.login}`)).json.medals.wealth).toBe(0);
   });
+  it('gives a medal to every player who submitted the winning log', async () => {
+    const id = dailyOf(BASE);
+    await enter(id, a.token);
+    time += 1000;
+    await enter(id, b.token); // identical log: shares rank 1 with Alice
+    time = BASE + 3 * DAY_MS;
+    expect((await call(`/players/${a.profile.login}`)).json.medals.wealth).toBe(1);
+    expect((await call(`/players/${b.profile.login}`)).json.medals.wealth).toBe(1);
+  });
   it('shows whether the viewer follows the player', async () => {
     await call(`/players/${a.profile.login}/follow`, { token: b.token, body: {} });
     const r = await call(`/players/${a.profile.login}`, { token: b.token });

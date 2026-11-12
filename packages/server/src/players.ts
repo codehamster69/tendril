@@ -85,7 +85,7 @@ function standings(medal: Medal, extraWhere: string): string {
   const s = SPEC[medal];
   return `WITH mine AS (
       SELECT * FROM (
-        SELECT e.id, e.challenge_id, e.net_worth, e.par_tick, e.tokens, e.created_at,
+        SELECT e.id, e.challenge_id, e.net_worth, e.par_tick, e.tokens, e.created_at, e.log_hash, e.actions_count,
           ROW_NUMBER() OVER (PARTITION BY e.challenge_id ORDER BY ${s.order}) AS pick
         FROM entries e JOIN challenges c ON c.id = e.challenge_id
         WHERE e.user_id = ? AND c.kind IN ('daily', 'season') AND ${s.where}${extraWhere}
@@ -93,18 +93,21 @@ function standings(medal: Medal, extraWhere: string): string {
     )
     SELECT m.challenge_id,
       1 + (SELECT COUNT(DISTINCT o.user_id) FROM entries o WHERE o.challenge_id = m.challenge_id AND o.user_id <> ? AND ${s.where.replace(/\be\./g, 'o.')} AND ${s.better('o', 'm')}) AS rank,
-      (SELECT COUNT(DISTINCT o.user_id) FROM entries o WHERE o.challenge_id = m.challenge_id AND ${s.where.replace(/\be\./g, 'o.')}) AS total
+      (SELECT COUNT(DISTINCT o.user_id) FROM entries o WHERE o.challenge_id = m.challenge_id AND ${s.where.replace(/\be\./g, 'o.')}) AS total,
+      -- Identical non-empty logs share a rank (A2): true when my log is the same run as the top entry's, so it is also first.
+      EXISTS (SELECT 1 FROM entries t WHERE t.challenge_id = m.challenge_id AND ${s.where.replace(/\be\./g, 't.')} AND m.actions_count > 0 AND t.log_hash = m.log_hash
+        AND NOT EXISTS (SELECT 1 FROM entries x WHERE x.challenge_id = m.challenge_id AND ${s.where.replace(/\be\./g, 'x.')} AND ${s.better('x', 't')})) AS shares_first
     FROM mine m`;
 }
 
 export interface MedalCounts { wealth: number; speed: number; brevity: number }
 
-/** A medal is a first place on a closed daily or season board. */
+/** A medal is a first place (or a share of it, for an identical log) on a closed daily or season board. */
 async function medalCounts(db: Db, userId: string, now: number): Promise<MedalCounts> {
   const out: MedalCounts = { wealth: 0, speed: 0, brevity: 0 };
   for (const medal of Object.keys(out) as Medal[]) {
-    const rows = await db.query<{ rank: number }>(`${standings(medal, ' AND c.closes_at IS NOT NULL AND c.closes_at <= ?')}`, [userId, now, userId]);
-    out[medal] = rows.filter((r) => r.rank === 1).length;
+    const rows = await db.query<{ rank: number; shares_first: number }>(`${standings(medal, ' AND c.closes_at IS NOT NULL AND c.closes_at <= ?')}`, [userId, now, userId]);
+    out[medal] = rows.filter((r) => r.rank === 1 || r.shares_first).length;
   }
   return out;
 }

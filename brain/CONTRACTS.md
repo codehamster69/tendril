@@ -174,7 +174,7 @@ GET  /badge/:login.svg         -> image/svg+xml, Cache-Control public max-age=36
 ```
 Logins match case-insensitively (newest account wins a clash). `streak`: consecutive UTC dates of daily challenges the player
 has an entry for (the challenge's date, not the submit time); `current` is the run ending today or yesterday, else 0.
-`medals`: first places on closed daily/season boards (ties go to the earlier entry; identical logs are not merged here).
+`medals`: first places on closed daily/season boards (ties go to the earlier entry; players with the identical winning log all count, as on the board).
 `topPercent`: best "top N%" (ceil(100*rank/total), min 1) on any daily/season wealth board; null with no entries. `recent`:
 10 newest daily/season entries (duels excluded). Follow and unfollow are idempotent; `scope=friends` boards use the same graph.
 Cookie sessions need `X-Tendril-Client: 1` on POST. B3 reads `/players/:login`; C1 makes accepted duels follow each other via the same table.
