@@ -21,10 +21,10 @@ jobs:
       matrix:
         include:
           - name: mac-arm64
-            os: macos-14
+            os: macos-latest
             args: --mac dmg:arm64 zip:arm64
           - name: mac-x64
-            os: macos-14
+            os: macos-latest
             args: --mac dmg:x64 zip:x64
           - name: win-x64
             os: windows-latest
