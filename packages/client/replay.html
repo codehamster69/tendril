@@ -27,6 +27,7 @@
       footer.controls { display: flex; gap: 10px; align-items: center; padding: 8px 16px; border-top: 1px solid var(--line); }
       footer.controls input[type=range] { flex: 1; min-width: 0; }
       footer.controls button, footer.controls select { background: #1b4147; color: var(--ink); border: 1px solid var(--line); border-radius: 6px; padding: 6px 12px; font: inherit; }
+      #clip-status { color: var(--soft); font-size: 13px; }
       #clock { font-variant-numeric: tabular-nums; color: var(--soft); min-width: 7.5em; text-align: right; }
       body.embed header.bar { display: none; }
       [hidden] { display: none !important; }
@@ -55,6 +56,8 @@
       <button id="btn-play" type="button">Play</button>
       <input id="scrub" type="range" min="0" max="3000" value="0" step="1" aria-label="Scrub through the run" />
       <select id="speed" aria-label="Speed"><option value="1">1×</option><option value="4" selected>4×</option><option value="16">16×</option><option value="64">64×</option></select>
+      <button id="btn-clip" type="button" title="Record a 10-second clip of this run">Export clip</button>
+      <span id="clip-status" role="status" aria-live="polite"></span>
       <span id="clock">tick 0 / 0</span>
     </footer>
     <script type="module" src="/src/replay-main.ts"></script>
