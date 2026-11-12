@@ -1,0 +1,78 @@
+---
+layout: ../../layouts/Docs.astro
+title: Getting started
+description: Install Tendril, watch the starter program farm for you, and make your first change.
+---
+
+## Install or play in the browser
+
+Download the game for [Windows, macOS or Linux](/download/), or [play it in your browser](/play/). Both are the
+same game. The desktop app keeps your farm on your computer and can sync it to the leaderboard; the browser
+version keeps it in the browser you play in.
+
+## What you start with
+
+Every new farm gets one 8 by 8 plot of land, a barn in the corner at position `(0, 0)`, one bot standing on
+the barn, no coins, and this program:
+
+```sprout
+# Start with carrots. Questions are free; actions cost ticks.
+repeat forever:
+    for each tile in tiles():
+        go_to tile
+        if scan().ripe:
+            harvest
+        if scan().empty:
+            till
+            plant carrot
+        if carried() >= capacity():
+            go_to barn
+            deposit
+            sell carrot, all
+    go_to barn
+    deposit
+    sell carrot, all
+    wait 100
+```
+
+Press **Run** and watch. The bot walks every tile, plants carrots, harvests the ripe ones, and sells them at
+the barn. Coins start coming in after about a minute.
+
+## The screen
+
+- **The farm** on the left. Click a tile to inspect its soil. Overlays show moisture, nitrogen and fatigue.
+- **The editor** on the right, with autocomplete and inline errors. The line each bot is running is marked as it runs.
+- **The console** under the editor shows anything your program prints with `say`, plus runtime errors.
+- **Run, Pause, Step** control the program. Breakpoints pause on a line so you can look at every bot's variables.
+- **The top bar** shows the tick, your coins, your net worth and the weather.
+
+## Make your first change
+
+Carrots sell for 2 coins. Wheat sells for 3, yields twice as much, and survives frost, but you have to research
+it first for 40 coins. Change the planting lines to this:
+
+```sprout
+        if scan().empty:
+            till
+            if unlocked(wheat):
+                plant wheat
+            else:
+                plant carrot
+```
+
+And add a line near the bottom of the loop, next to the selling:
+
+```sprout
+    unlock wheat
+    sell wheat, all
+```
+
+`unlock` is a farm action. It costs no time, and it simply does nothing until you can afford it. Press **Run**
+again. Every bot restarts from the top of the new program, and the farm carries on where it was.
+
+## Where to go next
+
+- [How the farm works](/docs/how-to-play/): land, soil, weather, orders and money.
+- [Learn Sprout](/docs/sprout/): the whole language on one page.
+- [Reference](/docs/reference/): every command and question your bots can use.
+- [Example programs](/docs/examples/): bigger programs to read and borrow from.

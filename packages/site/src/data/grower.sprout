@@ -1,0 +1,51 @@
+# The farm on the home page. Every bot runs this program.
+define best_crop():
+    soil = scan()
+    if soil.nitrogen < 15 and unlocked(clover):
+        return clover
+    if soil.nitrogen >= 20 and unlocked(wheat):
+        return wheat
+    return carrot
+
+define next_plot():
+    for r from 1 to 100:
+        for py from -r to r:
+            for px from -r to r:
+                if not owns(px * 8, py * 8):
+                    if owns(px * 8 - 8, py * 8) or owns(px * 8 + 8, py * 8) or owns(px * 8, py * 8 - 8) or owns(px * 8, py * 8 + 8):
+                        return {px: px, py: py}
+
+define grow():
+    unlock wheat
+    unlock clover
+    if bots() < len(plots()):
+        buy_bot
+    else:
+        spot = next_plot()
+        buy_plot spot.px, spot.py
+
+define unload():
+    go_to barn
+    deposit
+    for each order in orders():
+        if stock()[order.crop] >= order.qty:
+            deliver order
+    sell carrot, all
+    sell wheat, all
+    sell clover, all
+    if my_id() == 0:
+        grow()
+
+repeat forever:
+    mine = plots()[my_id() % len(plots())]
+    for each tile in tiles():
+        if tile.x / 8 == mine.px and tile.y / 8 == mine.py and tile != barn:
+            go_to tile
+            if scan().ripe:
+                harvest
+            if scan().empty:
+                till
+                plant best_crop()
+            if carried() >= capacity():
+                unload()
+    unload()

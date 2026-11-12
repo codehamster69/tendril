@@ -1,0 +1,43 @@
+---
+layout: ../../layouts/Docs.astro
+title: Leaderboard and fair play
+description: What gets ranked, how your farm reaches the board, and why cheating doesn't work.
+---
+
+## What's ranked
+
+There are two boards for live farms, plus the [daily challenge](/docs/daily/).
+
+- **Net worth.** Your coins, plus everything you've spent on land, bots, buildings and research, plus the value of
+  your barn stock. Spending never lowers it.
+- **Growth.** How much your net worth rose over the last 24 hours. A new farm with a sharp program can top this
+  one on its first day.
+
+[See the leaderboard](/leaderboard/).
+
+## Joining
+
+Sign in with GitHub from the game. That's the only account you need, and the board shows your GitHub name.
+From then on the game sends your farm's progress to the server in the background.
+
+## How a farm is checked
+
+Your program runs on your computer, never on the server. As it runs, the game writes down each move: which bot,
+which action, on which tick. Every so often it sends that list to the server.
+
+The server keeps a checkpoint of your farm. It loads the checkpoint, plays your moves on it with exactly the same
+rules as the game, and checks it reaches the same farm. If it does, the result becomes your new checkpoint and your
+net worth updates. If any move was impossible, the whole batch is turned away.
+
+## Why cheating doesn't work
+
+- **Editing your save** does nothing. The server never reads your save, only your moves, and replays them from its own checkpoint.
+- **Faking moves** fails, because every move is checked against the rules: a bot that's still busy, a tile you
+  don't own or coins you don't have all get the batch rejected.
+- **Running faster than real time** isn't possible on a live farm. A farm can't be further along than 10 ticks for
+  every second since it was created.
+- **A cleverer program** is fair game. That's the whole point.
+
+## Practice is separate
+
+Sandbox mode, the lessons and anything you run at higher speeds never touch your ranked farm. Experiment as much as you like.

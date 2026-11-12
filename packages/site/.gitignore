@@ -1,0 +1,4 @@
+dist/
+.astro/
+# Copied from assets/ at build time by scripts/copy-renders.mjs
+public/art/

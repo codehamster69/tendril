@@ -1,0 +1,92 @@
+---
+layout: ../../layouts/Docs.astro
+title: How the farm works
+description: Ticks, land, bots, soil, weather, orders and the number the leaderboard ranks.
+---
+import CropTable from '../../components/CropTable.astro';
+import { COST, OPS } from '@tendril/sim';
+
+## Time
+
+The farm moves in **ticks**. Your live farm runs at 10 ticks a second, all the time, whether or not you are
+watching. Every action a bot takes costs a few ticks, and a bot can only start its next action when the last one
+has finished. Questions, like looking at the soil or checking your coins, cost nothing.
+
+## Land
+
+The world is an endless grid of tiles. You own land in **plots** of 8 by 8 tiles. Your first plot covers
+tiles `(0, 0)` to `(7, 7)`; the plot next to it on the east is plot `(1, 0)` and covers `(8, 0)` to `(15, 7)`.
+Tile `x` grows to the east and `y` grows to the south.
+
+The **barn** is tile `(0, 0)`. You can't farm it, and it's where bots drop off their harvest and where all
+selling happens.
+
+You can buy any plot that shares an edge with one you already own, with `buy_plot px, py`. The price is
+150 × n², where n is the number of plots you own now: 150 for your second plot, 600 for the third, 1,350 for the
+fourth. Bots can only walk on land you own.
+
+## Bots
+
+Each bot carries up to 20 units (30 after researching the satchel). A new bot appears on the barn and costs
+80 × m², where m is the number of bots you own now. All bots run the same program, and `my_id()` tells each one
+which bot it is.
+
+What each action costs:
+
+<div class="table-scroll">
+  <table>
+    <thead><tr><th>Action</th><th>Ticks</th></tr></thead>
+    <tbody>
+      {[['move', 0], ['till', 1], ['plant', 2], ['water', 3], ['harvest', 4], ['deposit', 5], ['deliver', 6], ['sell', 8], ['build', 11], ['clear', 12], ['compost', 13], ['fertilize', 14]].map(([n, i]) => (
+        <tr><td><code>{n}</code></td><td>{COST[i]}</td></tr>
+      ))}
+      <tr><td><code>wait n</code></td><td>n</td></tr>
+      <tr><td><code>buy_plot</code>, <code>buy_bot</code>, <code>unlock</code></td><td>0, and they don't end the bot's turn</td></tr>
+    </tbody>
+  </table>
+</div>
+
+## Crops
+
+<CropTable detail />
+
+A crop goes through stages 0 to 3 and is **ripe** at stage 3. Harvesting it before then gives nothing.
+Berries and apples are **perennial**: after a harvest they stay planted and grow again. Every other crop
+leaves the tile bare and untilled, ready to till and plant again.
+
+**Fast growth.** When you plant, the crop checks the soil. If the moisture is at least the crop's *Water*
+number and the nitrogen is at least its *Nitrogen* number, it grows at double speed. Otherwise it grows at normal
+speed. The check happens once, at planting (and again each time a perennial regrows), so water first, then plant.
+
+## Soil
+
+Every tile has three numbers from 0 to 100. Look at them with `scan()` or the overlays in the game.
+
+- **Moisture.** Starts at 50. Planting drinks some of it. `water` adds 30. Rain adds it back slowly.
+- **Nitrogen.** Starts between 30 and 50, different on every tile. Most crops use it up when harvested.
+  Clover adds 20. Compost adds 25.
+- **Fatigue.** Starts at 0. Harvests raise it, and every point of fatigue cuts the harvest by 1%. A tile with no
+  crop on it rests and recovers one point every 16 ticks. Clover and compost lower it faster.
+
+## Weather
+
+The sky is clear most of the time. Rain comes in spells and slowly waters every tile. **Frost** comes less
+often, and kills any carrot or pumpkin that isn't ripe yet when it arrives. Frost also pauses their growth.
+Wheat, clover, berries and apples don't mind it.
+
+The weather is fixed in advance for every farm, so `forecast(500)` tells you exactly which rain and frost spells
+start in the next 500 ticks.
+
+## Selling and orders
+
+At the barn, `deposit` moves everything a bot carries into barn stock, and `sell item, n` sells it at the
+item's base price. `sell carrot, all` sells the whole stock.
+
+Every so often a buyer posts an **order**: a crop, a quantity and a deadline. Filling it with `deliver`
+pays twice the market price plus 10 coins. Orders get bigger as your farm does. `orders()` lists the open ones.
+
+## Net worth
+
+Your score is your **net worth**: your coins, plus everything you've ever spent on land, bots, buildings and
+research, plus the market value of what's in the barn. Spending never lowers it, so buying a plot is never a
+step back on the leaderboard.

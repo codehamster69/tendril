@@ -1,0 +1,64 @@
+---
+// Crop numbers come straight from the rules engine (@tendril/sim), so this table can't drift from the game.
+import { CROPS, UNLOCKS } from '@tendril/sim';
+import { art } from '../data/art';
+interface Props { detail?: boolean }
+const { detail = false } = Astro.props;
+const crops = CROPS.slice(1).map((c, i) => ({ ...c, research: UNLOCKS[i]!.price, img: art(`crop_${c.name}_s3`) }));
+const secs = (ticks: number) => {
+  const s = Math.round(ticks / 10);
+  return s >= 60 ? `${Math.floor(s / 60)} min ${s % 60 ? `${s % 60} s` : ''}`.trim() : `${s} s`;
+};
+const signed = (n: number) => (n > 0 ? `+${n}` : String(n));
+---
+<div class="table-scroll">
+  <table class:list={["crops", { detail }]}>
+    <thead>
+      <tr>
+        <th>Crop</th>
+        <th>Ripe after</th>
+        <th>Yield</th>
+        <th>Price</th>
+        {detail && <th>Water</th>}
+        {detail && <th>Nitrogen</th>}
+        <th>Soil nitrogen</th>
+        <th>Soil fatigue</th>
+        <th>Frost</th>
+        <th>Research</th>
+      </tr>
+    </thead>
+    <tbody>
+      {crops.map((c) => (
+        <tr>
+          <td class="name">
+            {c.img
+              ? <img src={c.img} alt="" width="40" height="40" loading="lazy" />
+              : <span class={`dot ${c.name}`} aria-hidden="true" />}
+            <span>{c.name}{c.perennial && <small>Regrows</small>}</span>
+          </td>
+          <td>{secs(3 * c.stageLen)} <span class="dim">({secs(1.5 * c.stageLen)} if fed)</span></td>
+          <td>{c.yield}</td>
+          <td>{c.price}</td>
+          {detail && <td>{c.thirst}</td>}
+          {detail && <td>{c.hunger}</td>}
+          <td>{signed(c.nDelta)}</td>
+          <td>{signed(c.fatigue)}</td>
+          <td>{c.hardy ? 'Survives' : 'Dies'}</td>
+          <td>{c.research ? `${c.research} coins` : 'Free'}</td>
+        </tr>
+      ))}
+    </tbody>
+  </table>
+</div>
+<style>
+  .crops td { vertical-align: middle; }
+  .crops.detail { min-width: 50rem; }
+  .dim { white-space: nowrap; }
+  .name { display: flex; align-items: center; gap: 0.6rem; text-transform: capitalize; font-weight: 700; white-space: nowrap; }
+  .name img { width: 40px; height: 40px; object-fit: contain; }
+  .name small { display: block; font-weight: 400; color: var(--dim); text-transform: none; font-size: 0.8rem; }
+  .dot { display: inline-block; width: 22px; height: 22px; margin: 9px; border-radius: 50%; }
+  .carrot { background: var(--carrot); } .wheat { background: var(--wheat); } .clover { background: var(--leaf); }
+  .pumpkin { background: var(--pumpkin); } .berry { background: var(--berry); } .apple { background: var(--apple); }
+  .dim { color: var(--dim); font-size: 0.88em; }
+</style>

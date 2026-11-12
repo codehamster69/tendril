@@ -1,0 +1,173 @@
+---
+// Live farm on the home page: the real rules engine and Sprout interpreter, running src/data/grower.sprout.
+---
+<figure class="demo" aria-label="A farm being grown by a script, simulated live in your browser">
+  <div class="stage">
+    <canvas id="farm" width="640" height="480"></canvas>
+  </div>
+  <figcaption>
+    <dl class="hud" aria-live="off">
+      <div><dt>Tick</dt><dd data-k="tick">0</dd></div>
+      <div><dt>Coins</dt><dd data-k="coins">0</dd></div>
+      <div><dt>Plots</dt><dd data-k="plots">1</dd></div>
+      <div><dt>Bots</dt><dd data-k="bots">1</dd></div>
+    </dl>
+    <button type="button" class="toggle" aria-pressed="false">Pause</button>
+  </figcaption>
+</figure>
+
+<script>
+  import { createWorld, snapshot } from '@tendril/sim';
+  import { createRun } from '@tendril/lang';
+  import source from '../data/grower.sprout?raw';
+
+  const createDemoFarm = (seed: number) => createRun(createWorld({ id: 'demo', seed }), source);
+
+  const canvas = document.getElementById('farm') as HTMLCanvasElement;
+  const ctx = canvas.getContext('2d')!;
+  const btn = document.querySelector<HTMLButtonElement>('.demo .toggle')!;
+  const hud = Object.fromEntries([...document.querySelectorAll<HTMLElement>('.hud dd')].map((e) => [e.dataset.k, e]));
+  const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  const MAX_PLOTS = 16;
+  let farm = createDemoFarm(7);
+  let playing = !reduced;
+  let visible = true;
+  let view = { cx: 4, cy: 4, span: 10 }; // eased camera, in tiles
+
+  const css = (n: string) => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+  let C: Record<string, string> = {};
+  const readColors = () => {
+    C = {
+      ground: css('--grass'), line: css('--line'), soil: css('--soil'), ink: css('--ink'),
+      leaf: css('--leaf'), carrot: css('--carrot'), wheat: css('--wheat'), paper: css('--paper'),
+      berry: css('--berry'), apple: css('--apple'), pumpkin: css('--pumpkin'),
+    };
+  };
+  readColors();
+  matchMedia('(prefers-color-scheme: dark)').addEventListener('change', readColors);
+  const CROP_COLOR = ['', 'carrot', 'wheat', 'leaf', 'pumpkin', 'berry', 'apple'];
+
+  function resize() {
+    const r = canvas.getBoundingClientRect();
+    const dpr = Math.min(2, devicePixelRatio || 1);
+    canvas.width = Math.round(r.width * dpr);
+    canvas.height = Math.round(r.height * dpr);
+  }
+  new ResizeObserver(resize).observe(canvas);
+  resize();
+
+  function draw() {
+    const s = snapshot(farm.world);
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const p of s.plots) {
+      minX = Math.min(minX, p.px * 8); minY = Math.min(minY, p.py * 8);
+      maxX = Math.max(maxX, p.px * 8 + 8); maxY = Math.max(maxY, p.py * 8 + 8);
+    }
+    const W = canvas.width, H = canvas.height;
+    const target = { cx: (minX + maxX) / 2, cy: (minY + maxY) / 2, span: Math.max(maxX - minX, (maxY - minY) * W / H) + 4 };
+    const k = playing ? 0.12 : 1;
+    view = { cx: view.cx + (target.cx - view.cx) * k, cy: view.cy + (target.cy - view.cy) * k, span: view.span + (target.span - view.span) * k };
+    const size = W / view.span;
+    const ox = W / 2 - view.cx * size, oy = H / 2 - view.cy * size;
+
+    ctx.clearRect(0, 0, W, H);
+    // plots
+    for (const p of s.plots) {
+      ctx.fillStyle = C.ground!;
+      ctx.fillRect(ox + p.px * 8 * size, oy + p.py * 8 * size, 8 * size, 8 * size);
+    }
+    // tiles
+    const g = Math.max(1, size * 0.08);
+    for (const t of s.tiles) {
+      const x = ox + t.x * size, y = oy + t.y * size;
+      if (t.x === 0 && t.y === 0) {
+        ctx.fillStyle = C.soil!;
+        ctx.fillRect(x + g, y + g, size - 2 * g, size - 2 * g);
+        ctx.fillStyle = C.paper!;
+        ctx.fillRect(x + size * 0.38, y + size * 0.5, size * 0.24, size * 0.38);
+        continue;
+      }
+      ctx.strokeStyle = C.paper!;
+      ctx.globalAlpha = 0.35;
+      ctx.lineWidth = Math.max(0.5, size * 0.03);
+      ctx.strokeRect(x, y, size, size);
+      ctx.globalAlpha = 1;
+      if (t.tilled || t.crop) {
+        ctx.globalAlpha = 0.35 + Math.min(0.5, t.moisture / 200);
+        ctx.fillStyle = C.soil!;
+        ctx.fillRect(x + g, y + g, size - 2 * g, size - 2 * g);
+        ctx.globalAlpha = 1;
+      }
+      if (t.building) {
+        const m = size * 0.18;
+        ctx.fillStyle = t.building === 1 ? C.wheat! : C.soil!;
+        ctx.fillRect(x + m, y + m, size - 2 * m, size - 2 * m);
+        continue;
+      }
+      if (t.crop) {
+        const r = size * (0.12 + 0.09 * t.stage);
+        ctx.fillStyle = C[CROP_COLOR[t.crop]!]!;
+        ctx.beginPath();
+        ctx.arc(x + size / 2, y + size / 2, r, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+    // plot borders
+    ctx.strokeStyle = C.line!;
+    ctx.lineWidth = Math.max(1, size * 0.06);
+    for (const p of s.plots) ctx.strokeRect(ox + p.px * 8 * size, oy + p.py * 8 * size, 8 * size, 8 * size);
+    // bots
+    for (const b of s.bots) {
+      const x = ox + b.x * size, y = oy + b.y * size, m = size * 0.2;
+      ctx.fillStyle = C.ink!;
+      ctx.beginPath();
+      ctx.roundRect(x + m, y + m, size - 2 * m, size - 2 * m, size * 0.15);
+      ctx.fill();
+      ctx.fillStyle = C.paper!;
+      ctx.fillRect(x + size * 0.35, y + size * 0.38, size * 0.1, size * 0.1);
+      ctx.fillRect(x + size * 0.55, y + size * 0.38, size * 0.1, size * 0.1);
+    }
+
+    hud.tick!.textContent = s.tick.toLocaleString();
+    hud.coins!.textContent = s.coins.toLocaleString();
+    hud.plots!.textContent = String(s.plots.length);
+    hud.bots!.textContent = String(s.bots.length);
+  }
+
+  let lastT = 0;
+  function frame(t: number) {
+    if (playing && visible) {
+      const dt = Math.min(64, t - lastT || 16);
+      farm.step(Math.max(1, Math.round(dt / 2)));
+      if (farm.world.plots.length >= MAX_PLOTS && farm.world.tick > 90_000) { farm.close(); farm = createDemoFarm(farm.world.tick % 9973 || 1); }
+    }
+    lastT = t;
+    if (visible) draw();
+    requestAnimationFrame(frame);
+  }
+
+  if (reduced) farm.step(9000);
+  btn.textContent = playing ? 'Pause' : 'Play';
+  btn.setAttribute('aria-pressed', String(!playing));
+  btn.addEventListener('click', () => {
+    playing = !playing;
+    btn.textContent = playing ? 'Pause' : 'Play';
+    btn.setAttribute('aria-pressed', String(!playing));
+  });
+  new IntersectionObserver(([e]) => { visible = !!e?.isIntersecting; }).observe(canvas);
+  requestAnimationFrame(frame);
+</script>
+
+<style>
+  .demo { margin: 0; }
+  .stage { aspect-ratio: 4 / 3; border-radius: 14px; background: var(--paper); border: 1.5px solid var(--line); overflow: hidden; }
+  canvas { width: 100%; height: 100%; }
+  figcaption { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-top: 0.75rem; }
+  .hud { display: flex; flex-wrap: wrap; gap: 0.25rem 1.5rem; margin: 0; }
+  .hud div { display: flex; gap: 0.4rem; align-items: baseline; }
+  .hud dt { color: var(--dim); font-size: 0.9rem; }
+  .hud dd { margin: 0; font: 650 1.05rem var(--display); font-variant-numeric: tabular-nums; min-width: 2ch; }
+  .toggle { background: none; border: 1.5px solid var(--line); color: var(--ink); border-radius: 999px; padding: 0.3rem 0.9rem; font: 600 0.9rem var(--display); cursor: pointer; }
+  .toggle:hover { border-color: var(--dim); }
+</style>

@@ -1,0 +1,37 @@
+---
+// Main call to action. "Play in browser" always works; the download button appears once the latest
+// GitHub release has an installer for the visitor's system (checked in the browser, so no redeploy is needed).
+import { PLATFORMS } from '../data/downloads';
+const names = Object.fromEntries(PLATFORMS.map((p) => [p.os, p.name]));
+---
+<div class="cta" data-names={JSON.stringify(names)}>
+  <a class="btn primary" href="/play/" data-play>Play in browser</a>
+  <a class="btn" href="/download/" data-dl>Desktop app<small data-sub>Windows, macOS, Linux</small></a>
+</div>
+<script>
+  import { detectOs, latestRelease, preferredBuild } from '../scripts/releases';
+
+  const ctas = [...document.querySelectorAll<HTMLElement>('.cta')];
+  const os = detectOs();
+  if (os && ctas.length) {
+    void latestRelease().then(async (release) => {
+      const id = await preferredBuild(os);
+      const asset = release?.assets[id];
+      if (!release || !asset) return;
+      for (const el of ctas) {
+        const names = JSON.parse(el.dataset.names ?? '{}') as Record<string, string>;
+        const dl = el.querySelector<HTMLAnchorElement>('[data-dl]')!;
+        const play = el.querySelector<HTMLAnchorElement>('[data-play]')!;
+        dl.href = asset.url;
+        dl.firstChild!.textContent = `Download for ${names[os]}`;
+        dl.querySelector('[data-sub]')!.textContent = `v${release.version}`;
+        dl.classList.add('primary');
+        play.classList.remove('primary');
+        el.prepend(dl);
+      }
+    });
+  }
+</script>
+<style>
+  .cta { display: flex; flex-wrap: wrap; gap: 0.75rem; }
+</style>

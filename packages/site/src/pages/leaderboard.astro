@@ -1,0 +1,124 @@
+---
+import Base from '../layouts/Base.astro';
+---
+<Base title="Leaderboard" description="The top Tendril farms by net worth, by growth over the last day, and in today's daily challenge.">
+  <section class="wrap page">
+    <h1>Leaderboard</h1>
+    <p class="lede">Every farm here was checked by replaying its moves on the server. <a href="/docs/leaderboard/">How that works</a></p>
+
+    <div class="tabs" role="tablist" aria-label="Boards">
+      <button role="tab" id="tab-networth" aria-controls="board" aria-selected="true" data-board="networth">Net worth</button>
+      <button role="tab" id="tab-growth" aria-controls="board" aria-selected="false" data-board="growth" tabindex="-1">Growth today</button>
+      <button role="tab" id="tab-daily" aria-controls="board" aria-selected="false" data-board="daily" tabindex="-1">Daily challenge</button>
+    </div>
+
+    <div id="board" role="tabpanel" aria-labelledby="tab-networth" aria-live="polite">
+      <p class="about" data-about></p>
+      <div class="table-scroll">
+        <table>
+          <thead><tr><th class="rank">Rank</th><th>Farmer</th><th class="num" data-col>Net worth</th></tr></thead>
+          <tbody data-rows></tbody>
+        </table>
+      </div>
+      <p class="state" data-state>Loading…</p>
+    </div>
+  </section>
+</Base>
+
+<script>
+  type Entry = { rank: number; displayName: string; netWorth: number; growth24h?: number };
+  type Board = 'networth' | 'growth' | 'daily';
+
+  const panel = document.getElementById('board')!;
+  const rows = panel.querySelector<HTMLElement>('[data-rows]')!;
+  const state = panel.querySelector<HTMLElement>('[data-state]')!;
+  const col = panel.querySelector<HTMLElement>('[data-col]')!;
+  const about = panel.querySelector<HTMLElement>('[data-about]')!;
+  const tabs = [...document.querySelectorAll<HTMLButtonElement>('[role=tab]')];
+  const fmt = new Intl.NumberFormat();
+  const today = new Date().toISOString().slice(0, 10);
+
+  const ABOUT: Record<Board, string> = {
+    networth: 'Coins, plus everything spent on land, bots, buildings and research, plus barn stock.',
+    growth: 'How much each farm\'s net worth rose in the last 24 hours.',
+    daily: `Today's challenge (${today} UTC): the same new farm for everyone, scored at tick 3,000.`,
+  };
+  const URLS: Record<Board, string> = {
+    networth: '/api/leaderboard?board=networth&limit=50',
+    growth: '/api/leaderboard?board=growth&limit=50',
+    daily: `/api/daily/leaderboard?date=${today}&limit=50`,
+  };
+
+  let token = 0;
+  async function show(board: Board) {
+    const mine = ++token;
+    about.textContent = ABOUT[board];
+    col.textContent = board === 'growth' ? 'Growth' : board === 'daily' ? 'Score' : 'Net worth';
+    rows.replaceChildren();
+    state.hidden = false;
+    state.textContent = 'Loading…';
+    try {
+      const res = await fetch(URLS[board], { headers: { accept: 'application/json' } });
+      if (!res.ok) throw new Error(String(res.status));
+      const data = (await res.json()) as { entries?: Entry[] };
+      if (mine !== token) return;
+      const entries = data.entries ?? [];
+      if (!entries.length) {
+        state.textContent = board === 'daily'
+          ? 'No scores yet today. Play the daily challenge in the game and yours will be the first.'
+          : 'No farms have been checked yet. Sign in from the game and yours will be the first.';
+        return;
+      }
+      state.hidden = true;
+      for (const e of entries) {
+        const tr = document.createElement('tr');
+        const value = board === 'growth' ? `${(e.growth24h ?? 0) >= 0 ? '+' : ''}${fmt.format(e.growth24h ?? 0)}` : fmt.format(e.netWorth);
+        for (const [text, cls] of [[String(e.rank), 'rank'], [e.displayName, ''], [value, 'num']] as const) {
+          const td = document.createElement('td');
+          td.textContent = text;
+          if (cls) td.className = cls;
+          tr.append(td);
+        }
+        rows.append(tr);
+      }
+    } catch {
+      if (mine !== token) return;
+      state.textContent = 'The leaderboard can\'t be reached right now. Your farm is safe; try again in a minute.';
+    }
+  }
+
+  function select(tab: HTMLButtonElement) {
+    for (const t of tabs) {
+      const on = t === tab;
+      t.setAttribute('aria-selected', String(on));
+      t.tabIndex = on ? 0 : -1;
+    }
+    panel.setAttribute('aria-labelledby', tab.id);
+    history.replaceState(null, '', `#${tab.dataset.board}`);
+    void show(tab.dataset.board as Board);
+  }
+  tabs.forEach((t, i) => {
+    t.addEventListener('click', () => select(t));
+    t.addEventListener('keydown', (ev) => {
+      const d = ev.key === 'ArrowRight' ? 1 : ev.key === 'ArrowLeft' ? -1 : 0;
+      if (!d) return;
+      const next = tabs[(i + d + tabs.length) % tabs.length]!;
+      next.focus();
+      select(next);
+    });
+  });
+  select(tabs.find((t) => `#${t.dataset.board}` === location.hash) ?? tabs[0]!);
+</script>
+
+<style>
+  .page { padding-top: clamp(2.5rem, 6vw, 4.5rem); max-width: 52rem; }
+  .lede { font-size: 1.2rem; color: var(--dim); margin: 1rem 0 2rem; }
+  .tabs { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 1.25rem; }
+  .tabs button { background: none; border: 1.5px solid var(--line); color: var(--ink); border-radius: 999px; padding: 0.45rem 1rem; font: 600 0.98rem var(--display); cursor: pointer; }
+  .tabs button[aria-selected='true'] { background: var(--ink); border-color: var(--ink); color: var(--paper); }
+  .about { color: var(--dim); margin: 0 0 1rem; }
+  td.rank, th.rank { width: 4.5rem; }
+  .num { text-align: right; padding-right: 0; }
+  tbody tr:nth-child(-n + 3) td.rank { color: var(--leaf); font-weight: 700; }
+  .state { color: var(--dim); padding: 1.5rem 0; }
+</style>
