@@ -70,6 +70,11 @@ export interface ChallengeInfo {
 
 export const isOpen = (c: ChallengeRow, now: number): boolean => now >= c.opens_at && (c.closes_at === null || now < c.closes_at);
 export const isClosed = (c: ChallengeRow, now: number): boolean => c.closes_at !== null && now >= c.closes_at;
+/**
+ * Closed AND no longer open to the legacy alias. Replays, programs and final histograms wait for this, never just for closing:
+ * while /api/daily/submit still takes yesterday, a public replay could be copied into a submission.
+ */
+export const isSettled = (c: ChallengeRow, now: number): boolean => c.closes_at !== null && now >= c.closes_at + (c.kind === 'daily' ? LEGACY_GRACE_MS : 0);
 
 function newDailyRow(date: string): ChallengeRow {
   const seed = dailySeed(date);
@@ -310,6 +315,11 @@ export async function submitEntry(db: Db, userId: string, c: ChallengeRow, input
   if (now < c.opens_at || (c.closes_at !== null && now >= c.closes_at + (options.graceMs ?? 0))) throw new HttpError(409, 'Challenge is not open');
   const replayed = replayLog(c, actions);
   const hash = logHash(actions);
+  if (!options.repeatOk) {
+    // A repeat is refused before the (expensive) source check; the transaction below re-checks for races.
+    const [dup] = await db.query<{ source_verified: number }>('SELECT source_verified FROM entries WHERE challenge_id = ? AND user_id = ? AND log_hash = ? AND actions_count > 0 LIMIT 1', [c.id, userId, hash]);
+    if (dup && (input.source === null || dup.source_verified === 1)) throw new HttpError(409, 'You already submitted this log');
+  }
   // The program, if sent, is run by the separate verify function and must reproduce this exact log.
   const tokens = input.source !== null ? await checkSource(c, input.source, hash, options.verify) : null;
   const id = newEntryId();
@@ -396,10 +406,42 @@ async function histogramOf(db: Db, sql: string, args: (string | number)[]): Prom
 const COUNT_COLUMN: Record<Medal, string> = { wealth: 'n_wealth', speed: 'n_speed', brevity: 'n_brevity' };
 
 export async function board(db: Db, c: ChallengeRow, q: BoardQuery): Promise<BoardResult> {
-  if (!q.friends && !q.author) {
+  if (!q.friends) {
     const [counted] = await db.query<{ n: number }>(`SELECT ${COUNT_COLUMN[q.medal]} AS n FROM challenges WHERE id = ?`, [c.id]);
-    if ((counted?.n ?? 0) > (q.fullMax ?? FULL_BOARD_MAX)) return bigBoard(db, c, q, counted!.n);
+    if ((counted?.n ?? 0) > (q.fullMax ?? FULL_BOARD_MAX)) return q.author ? filteredBigBoard(db, c, q) : bigBoard(db, c, q, counted!.n);
   }
+  return fullBoard(db, c, q);
+}
+
+/** Top rows kept for a filtered board on a big challenge. */
+const FILTERED_KEEP = 100;
+
+/**
+ * A big board filtered by author kind. The filter cannot use the stored counters or the index prefix trick, so computing it
+ * costs a pass over every entry. Callers choose the limit (and so the cache key) freely, which made that pass available to anyone
+ * on every request. Instead the top FILTERED_KEEP rows, the total and the histogram are computed at most once per
+ * HISTOGRAM_TTL_MS per challenge, medal and author (once ever after the challenge settles), and every request is served from that.
+ * A viewer outside the stored rows gets no `me` row on a filtered big board.
+ */
+async function filteredBigBoard(db: Db, c: ChallengeRow, q: BoardQuery): Promise<BoardResult> {
+  const key = `fboard:${c.id}:${q.medal}:${q.author}`;
+  const now = q.now ?? Date.now();
+  const [stored] = await db.query<{ value: string }>('SELECT value FROM arena_meta WHERE key = ?', [key]);
+  let cached = stored ? (JSON.parse(stored.value) as { at: number; final: boolean; result: BoardResult }) : null;
+  const settled = isSettled(c, now);
+  if (!cached || !(cached.final || (!settled && now >= cached.at && now - cached.at < HISTOGRAM_TTL_MS))) {
+    const result = await fullBoard(db, c, { ...q, limit: FILTERED_KEEP, viewerId: undefined });
+    cached = { at: now, final: settled, result };
+    await db.execute('INSERT INTO arena_meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value', [key, JSON.stringify(cached)]);
+  }
+  const { result } = cached;
+  let me: BoardResult['me'] = null;
+  const mine = q.viewerId ? result.entries.find((r) => r.userId === q.viewerId) : undefined;
+  if (mine) me = { ...mine, percentile: percentileOf(mine.rank, result.total) };
+  return { ...result, entries: result.entries.slice(0, q.limit), me };
+}
+
+async function fullBoard(db: Db, c: ChallengeRow, q: BoardQuery): Promise<BoardResult> {
   const { sql, args } = rankedCte(q.medal, c.id, { friends: q.friends, viewerId: q.viewerId, author: q.author });
   const rows = await db.query<RankedRow>(`${sql} ${RANKED_SELECT} ORDER BY r.rank LIMIT ?`, [...args, q.limit]);
   const { histogram, total } = await histogramOf(db, sql, args);
@@ -440,7 +482,7 @@ async function bigBoard(db: Db, c: ChallengeRow, q: BoardQuery, total: number): 
   const [stored] = await db.query<{ value: string }>('SELECT value FROM arena_meta WHERE key = ?', [key]);
   const cached = stored ? (JSON.parse(stored.value) as { at: number; final: boolean; histogram: Histogram }) : null;
   let histogram: Histogram;
-  const closed = isClosed(c, now);
+  const closed = isSettled(c, now);
   if (cached && (cached.final || (!closed && now >= cached.at && now - cached.at < HISTOGRAM_TTL_MS))) histogram = cached.histogram;
   else {
     const full = rankedCte(q.medal, c.id);
@@ -488,7 +530,7 @@ async function loadEntry(db: Db, id: string): Promise<EntryRow & { login: string
 
 /** Owner always; anyone once the challenge has closed; for duels, anyone who has an entry of their own. */
 async function replayVisible(db: Db, c: ChallengeRow, entry: EntryRow, viewerId: string | undefined, now: number): Promise<boolean> {
-  if (isClosed(c, now)) return true;
+  if (isSettled(c, now)) return true;
   if (!viewerId) return false;
   if (viewerId === entry.user_id) return true;
   if (c.kind !== 'duel') return false;
@@ -541,7 +583,7 @@ export async function entrySource(db: Db, id: string, viewerId: string | undefin
 
 /** GET /challenges/:id/sources: programs authors chose to publish, best net worth first. Closed challenges only. */
 export async function publishedSources(db: Db, c: ChallengeRow, limit: number, now: number) {
-  if (!isClosed(c, now)) throw new HttpError(403, 'Sealed until the challenge closes');
+  if (!isSettled(c, now)) throw new HttpError(403, 'Sealed until the challenge closes');
   const rows = await db.query<{ id: string; net_worth: number; par_tick: number | null; tokens: number | null; mosaic: string | null; author_kind: AuthorKind; model: string | null; login: string; display_name: string; avatar_url: string | null }>(
     `SELECT e.id, e.net_worth, e.par_tick, e.tokens, e.mosaic, e.author_kind, e.model, u.login, u.display_name, u.avatar_url
      FROM entries e JOIN users u ON u.id = e.user_id

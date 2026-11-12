@@ -127,3 +127,20 @@ describe('highlight', () => {
     expect(highlight(daily).map((s) => s.text).join('')).toBe(daily);
   });
 });
+
+describe('verifySource bounds (D2)', () => {
+  it('stops a memory bomb quickly and without holding much heap', () => {
+    const before = process.memoryUsage().heapUsed;
+    const started = Date.now();
+    const v = verifySource(req('big = []\nrepeat forever:\n    append big, range(100000)\n'));
+    expect(v.ok).toBe(true); // the bot stops with an error; whether the log matches is the caller's check
+    expect(Date.now() - started).toBeLessThan(3000);
+    expect(process.memoryUsage().heapUsed - before).toBeLessThan(400e6);
+  });
+  it('still runs ordinary programs under the allocation budget', () => {
+    expect(verifySource(req(daily)).ok).toBe(true);
+  });
+  it('reports absurdly nested source as a compile error, not a crash', () => {
+    expect(verifySource(req(`x = ${'('.repeat(15000)}1${')'.repeat(15000)}`))).toMatchObject({ ok: false, reason: 'compile' });
+  });
+});

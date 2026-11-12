@@ -134,7 +134,7 @@ export const rateScale = (mode: GuardMode): number => (mode === 'tight' || mode 
 const TOP_IDS = `
   SELECT id FROM (SELECT id FROM entries WHERE challenge_id = ?1 ORDER BY net_worth DESC, created_at ASC, id ASC LIMIT ${TOP_KEEP})
   UNION SELECT id FROM (SELECT id FROM entries WHERE challenge_id = ?1 AND par_tick IS NOT NULL ORDER BY par_tick ASC, net_worth DESC, created_at ASC, id ASC LIMIT ${TOP_KEEP})
-  UNION SELECT id FROM (SELECT id FROM entries WHERE challenge_id = ?1 AND tokens IS NOT NULL ORDER BY tokens ASC, net_worth DESC, created_at ASC, id ASC LIMIT ${TOP_KEEP})`;
+  UNION SELECT id FROM (SELECT id FROM entries WHERE challenge_id = ?1 AND tokens IS NOT NULL AND par_tick IS NOT NULL ORDER BY tokens ASC, net_worth DESC, created_at ASC, id ASC LIMIT ${TOP_KEEP})`;
 
 /** Drops the stored log and source (not the score, rank or mosaic) of every entry outside the top of each medal. */
 export async function dropReplaysOutsideTop(db: Db, challengeId: string, onlyEntryId?: string): Promise<number> {
