@@ -26,6 +26,12 @@ export interface EntryResult {
   entryId: string; netWorth: number; parTick: number | null; tokens: number | null; mosaic: string;
   ranks: { wealth: number | null; speed: number | null; brevity: number | null }; percentile: number | null; improved: boolean; total: number;
 }
+export interface DuelPage {
+  id: string; seed: number; ticks: number; par: number | null; rulesVersion: number; createdAt: number;
+  challenger: { login: string; displayName: string; avatarUrl: string | null } | null;
+  entry: { entryId: string; netWorth: number; parTick: number | null; mosaic: string | null } | null;
+  accepted: number; viewer: { isChallenger: boolean; accepted: boolean; entryId: string | null } | null;
+}
 export class ApiError extends Error {
   constructor(readonly status: number, message: string) { super(message); this.name = 'ApiError'; }
 }
@@ -77,6 +83,11 @@ export class FarmApi {
   }
   replay(id: string, fromTick = 0): Promise<ReplayResponse> { return this.request(`/farms/${encodeURIComponent(id)}/replay?fromTick=${fromTick}&limit=1`); }
   challenge(id: string): Promise<ChallengeInfo> { return this.request(`/challenges/${encodeURIComponent(id)}`); }
+  createDuel(body: { seed: number; ticks: number }): Promise<{ challengeId: string }> { return this.request('/duels', 'POST', body); }
+  duel(id: string): Promise<DuelPage> { return this.request(`/duels/${encodeURIComponent(id)}`); }
+  acceptDuel(id: string): Promise<{ accepted: true; changed: boolean; challenger: { login: string; displayName: string } }> {
+    return this.request(`/duels/${encodeURIComponent(id)}/accept`, 'POST', {});
+  }
   submitEntry(id: string, body: { rulesVersion: number; actions: LogEntry[] }): Promise<EntryResult> {
     return this.request(`/challenges/${encodeURIComponent(id)}/entries`, 'POST', body);
   }

@@ -7,9 +7,10 @@ import type { GameLoop } from './game-loop';
 import { startSignIn } from './account';
 import { el, toast } from './palette';
 import { createPendingRuns } from './pending-run';
+import { createDuelPanel } from './duel';
 import { copyText, shareText } from './share';
 
-export const CHALLENGE_ID = /^(?:week|[dsx]-[A-Za-z0-9-]{1,40})$/; // `week` = the current season, resolved by the server
+export const CHALLENGE_ID = /^(?:week|[dsx]-[A-Za-z0-9_-]{1,40})$/; // `week` = the current season, resolved by the server
 
 export const utcToday = (): string => new Date().toISOString().slice(0, 10);
 
@@ -102,6 +103,7 @@ export function mountArena({ loop, api, challenge: c }: { loop: GameLoop; api: F
     const actions = loop.logChunks().flatMap((k) => k.actions).filter((a) => a[0] < c.ticks);
     const local = localResult(c, actions);
     let entry: EntryResult | null = null;
+    const duel = createDuelPanel(api, c, () => actions);
     let note = signedIn ? 'Submitting…' : 'Saved on this device. Sign in to submit this run and see your rank.';
     const render = (): void => {
       const facts = el('p', { id: 'arena-facts' },
@@ -113,7 +115,8 @@ export function mountArena({ loop, api, challenge: c }: { loop: GameLoop; api: F
       copy.addEventListener('click', async () => { const ok = await copyText(text); toast(ok ? 'Result copied' : 'Could not copy', ok ? 'Paste it anywhere.' : text); });
       const actionsRow: HTMLElement[] = [copy];
       if (!signedIn) { const si = el('button', { id: 'btn-arena-signin', text: 'Sign in to submit' }); si.addEventListener('click', () => startSignIn()); actionsRow.push(si); }
-      result.replaceChildren(facts, el('pre', { id: 'arena-mosaic', text: text.split('\n').slice(c.par === null ? 1 : 2, c.par === null ? 9 : 10).join('\n') }), el('p', { id: 'arena-note', class: 'muted', text: note }), el('div', {}, ...actionsRow));
+      result.replaceChildren(facts, el('pre', { id: 'arena-mosaic', text: text.split('\n').slice(c.par === null ? 1 : 2, c.par === null ? 9 : 10).join('\n') }), el('p', { id: 'arena-note', class: 'muted', text: note }), el('div', {}, ...actionsRow), duel.el);
+      duel.update({ signedIn, netWorth: entry?.netWorth ?? local.netWorth ?? snapshot.netWorth, entry });
       result.hidden = false;
     };
     render();
