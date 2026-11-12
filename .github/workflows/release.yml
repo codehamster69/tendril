@@ -64,6 +64,11 @@ jobs:
         run: pnpm assets:copy
       - name: Build client
         run: pnpm build
+      # Releases are tagged from the client version, so a tag that does not match
+      # would ship update files that point at the wrong version.
+      - name: Check the tag matches the client version
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: test "v$(node -p "require('./packages/client/package.json').version")" = "${{ github.ref_name }}"
       - name: Build unsigned installers (no publishing)
         run: pnpm --filter @tendril/client run electron:pack ${{ matrix.args }}
       - name: Store installers as workflow artifacts only
@@ -78,6 +83,9 @@ jobs:
             packages/client/release/*.exe
             packages/client/release/*.AppImage
             packages/client/release/*.deb
+            packages/client/release/latest.yml
+            packages/client/release/latest-linux.yml
+            packages/client/release/*.exe.blockmap
 
   publish:
     name: Publish GitHub Release
@@ -102,4 +110,8 @@ jobs:
           TAG: ${{ github.ref_name }}
         run: |
           ls -l installers
-          gh release create "$TAG" installers/*.dmg installers/*.zip installers/*.exe installers/*.AppImage installers/*.deb --title "Tendril $TAG" --generate-notes
+          # latest.yml (Windows) and latest-linux.yml (AppImage) drive in-app auto-update.
+          # macOS builds are unsigned and cannot self-install, so latest-mac.yml is not published.
+          gh release create "$TAG" installers/*.dmg installers/*.zip installers/*.exe installers/*.AppImage installers/*.deb \
+            installers/latest.yml installers/latest-linux.yml installers/*.exe.blockmap \
+            --title "Tendril $TAG" --generate-notes

@@ -3,15 +3,15 @@ productName: Tendril
 asar: true
 npmRebuild: false
 forceCodeSigning: false
-# Vite bundles all runtime dependencies into dist/, so no node_modules ship.
+# Vite bundles the renderer's libraries into dist/, so they are devDependencies.
+# The only production dependency is electron-updater, which the main process
+# loads at runtime; electron-builder copies it (and only it) into node_modules.
 # dist/ holds index.html, assets/ (chunks, workers) and models/*.glb served via app://tendril/.
 files:
   - dist/**/*
   - electron/*.cjs
   - '!electron/*.test.cjs'
   - '!**/*.map'
-  - '!node_modules/**/*'
-  - '!**/node_modules/**'
   - '!**/.env*'
 extraMetadata:
   main: electron/main.cjs
@@ -21,7 +21,14 @@ directories:
   output: release
   buildResources: build
 artifactName: '${productName}-${version}-${os}-${arch}.${ext}'
-publish: null
+# Builds never publish (electron:pack passes --publish never; the release
+# workflow uploads files). This entry makes electron-builder write the
+# latest*.yml files that electron-updater reads from each GitHub release.
+publish:
+  provider: github
+  owner: codehamster69
+  repo: tendril
+  releaseType: release
 mac:
   category: public.app-category.games
   identity: null

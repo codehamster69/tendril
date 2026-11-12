@@ -4,6 +4,7 @@ const { appendFileSync, statSync } = require('node:fs');
 const { entryURL, hardenContents, isAllowedExternalURL } = require('./navigation.cjs');
 const { apiOrigin } = require('./config.cjs');
 const { registerScheme, serveApp } = require('./app-protocol.cjs');
+const { setupUpdates } = require('./updater.cjs');
 
 const smoke = process.env.TENDRIL_ELECTRON_SMOKE === '1';
 app.enableSandbox();
@@ -29,6 +30,8 @@ function openExternal(url) {
   void shell.openExternal(url);
 }
 
+let mainWindow = null;
+
 async function createWindow() {
   const entry = entryURL({
     devURL: process.env.VITE_DEV_URL,
@@ -50,6 +53,8 @@ async function createWindow() {
       allowRunningInsecureContent: false,
     },
   });
+  mainWindow = win;
+  win.on('closed', () => { if (mainWindow === win) mainWindow = null; });
   hardenContents(win.webContents, entry);
   const origin = apiOrigin();
   const ipcHandler = (event, url) => {
@@ -71,6 +76,7 @@ app.whenReady().then(async () => {
   session.defaultSession.setPermissionRequestHandler((_contents, _permission, callback) => callback(false));
   session.defaultSession.setPermissionCheckHandler(() => false);
   session.defaultSession.on('will-download', (event) => event.preventDefault());
+  setupUpdates({ getWindow: () => mainWindow, smoke });
   await createWindow();
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) void createWindow().catch(failStartup);

@@ -95,7 +95,15 @@ try {
 
   // The preload bridge exposes exactly one function; the main process allow-lists what it opens.
   assert.equal(await page.evaluate(() => typeof window.tendrilDesktop?.openExternal), 'function');
-  assert.deepEqual(await page.evaluate(() => Object.keys(window.tendrilDesktop)), ['openExternal']);
+  assert.deepEqual(await page.evaluate(() => Object.keys(window.tendrilDesktop)), ['openExternal', 'updates']);
+  assert.deepEqual(await page.evaluate(() => Object.keys(window.tendrilDesktop.updates)),
+    ['getState', 'check', 'download', 'install', 'setAuto', 'onState']);
+  // Smoke runs never reach the network for updates, and the app shows its version.
+  const { version } = JSON.parse(await readFile(path.join(clientDir, 'package.json'), 'utf8'));
+  const updateState = await page.evaluate(() => window.tendrilDesktop.updates.getState());
+  assert.equal(updateState.mode, 'off');
+  assert.equal(updateState.version, version);
+  await expect(page.locator('#app-version')).toHaveText(`v${version}`);
   const nonce = 'ab'.repeat(24);
   const allowed = `https://tendril.hokora.xyz/api/auth/github?desktop=${nonce}`;
   await page.evaluate((urls) => { for (const url of urls) window.tendrilDesktop.openExternal(url); }, [

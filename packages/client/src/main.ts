@@ -11,6 +11,7 @@ import { mountConsole } from './console-panel';
 import { mountControls } from './ui';
 import { mountAccount, connectRanked } from './account';
 import { mountNotice } from './notice';
+import { mountUpdates } from './updates';
 import { mountProgression, selectedLesson, today } from './progression';
 import { FarmApi, signedInHint } from './api-client';
 import { mountAutoSync } from './autosync';
@@ -48,6 +49,7 @@ mountReference((code) => editor.setSource(editor.getSource() + '\n' + code + '\n
 mountInspectors(view, () => sim.meta.seed);
 mountProgression({ loop, editor, view, api });
 mountNotice({ live: mode === 'live', verified: sim.ranked });
+mountUpdates();
 mountAccount(api, sim);
 if (sim.ranked) mountAutoSync(api, sim, document.getElementById('mode-note'));
 window.addEventListener('tendril:snapshot', (event) => view.update((event as CustomEvent).detail));
