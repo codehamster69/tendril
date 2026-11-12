@@ -17,10 +17,10 @@ function entryURL({ devURL, packaged, smoke }) {
   return entry.href;
 }
 
-const MODES = ['live', 'sandbox', 'campaign', 'daily'];
-const QUERY_KEYS = ['mode', 'ranked', 'lesson'];
+const MODES = ['live', 'sandbox', 'campaign', 'daily', 'challenge'];
+const QUERY_KEYS = ['mode', 'ranked', 'lesson', 'id'];
 
-/** mode once, from MODES; ranked=0|1 only with mode=live; lesson=<slug> only with mode=campaign. */
+/** mode once, from MODES; ranked=0|1 only with mode=live; lesson=<slug> only with mode=campaign; id=<challenge id> only with mode=challenge. */
 function allowedQuery(params) {
   const single = (key) => {
     const values = params.getAll(key);
@@ -30,10 +30,12 @@ function allowedQuery(params) {
   const mode = single('mode');
   const ranked = single('ranked');
   const lesson = single('lesson');
-  if (mode === false || ranked === false || lesson === false) return false;
+  const id = single('id');
+  if (mode === false || ranked === false || lesson === false || id === false) return false;
   if (mode !== null && !MODES.includes(mode)) return false;
   if (ranked !== null && ((ranked !== '0' && ranked !== '1') || mode !== 'live')) return false;
   if (lesson !== null && (mode !== 'campaign' || !/^[a-z0-9-]{1,40}$/.test(lesson))) return false;
+  if (mode === 'challenge' ? id === null || !/^[dsx]-[A-Za-z0-9-]{1,40}$/.test(id) : id !== null) return false;
   return true;
 }
 

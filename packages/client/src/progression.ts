@@ -1,4 +1,4 @@
-import { DAILY_TICKS, dailySeed, RULES_VERSION, UNLOCKS } from '@tendril/sim/src/index.ts';
+import { UNLOCKS } from '@tendril/sim/src/index.ts';
 import type { LogEntry, Snapshot } from '@tendril/sim/src/index.ts';
 import type { Editor } from './editor';
 import type { GameLoop } from './game-loop';
@@ -27,7 +27,7 @@ const ACHIEVEMENTS: Achievement[] = [
   { id: 'fertilize', title: 'Give back to the soil', detail: 'Apply compost to soil.', test: (_s, log) => log.some((e) => e[2] === 14) },
   { id: 'all-research', title: 'The whole almanac', detail: 'Research every upgrade.', test: (s) => s.unlocks === 511 },
 ];
-export function mountProgression({ loop, editor, api }: { loop: GameLoop; editor: Editor; view?: FarmView; api: FarmApi }): void {
+export function mountProgression({ loop, editor }: { loop: GameLoop; editor: Editor; view?: FarmView; api?: FarmApi }): void {
   const goals = document.getElementById('deck-goals')!, research = document.getElementById('deck-research')!;
   const completed = loadSet('tendril.campaign.v1'), earned = loadSet('tendril.achievements.v1');
   const renderGoals = (): void => {
@@ -63,22 +63,6 @@ export function mountProgression({ loop, editor, api }: { loop: GameLoop; editor
         void loop.pause();
       }
     });
-  }
-  if (loop.mode === 'daily') {
-    const host = document.getElementById('lesson-card')!; host.hidden = false;
-    host.append(el('span', { class: 'eyebrow', text: `Daily field · ${today()}` }), el('h3', { text: 'One seed. 3,000 ticks. Your best program.' }), el('p', { text: 'Every player starts with the same farm. Only action logs are submitted, never your code.' }));
-    window.addEventListener('tendril:scenario-end', async (event) => {
-      const s = (event as CustomEvent<{ snapshot: Snapshot }>).detail.snapshot;
-      const result = el('section', { class: 'daily-result' }, el('b', { text: `${s.netWorth.toLocaleString()} net worth` }));
-      const submit = el('button', { text: 'Submit verified score', class: 'primary' });
-      submit.addEventListener('click', async () => {
-        submit.disabled = true;
-        try { const r = await api.submitDaily({ date: today(), rulesVersion: RULES_VERSION, actions: loop.logChunks().flatMap((c) => c.actions).filter((a) => a[0] < DAILY_TICKS) }); result.append(el('p', { text: `Verified: rank ${r.rank}, best ${r.best}` })); }
-        catch (e) { result.append(el('p', { text: e instanceof Error ? e.message : 'Submission failed. Sign in first.' })); submit.disabled = false; }
-      });
-      result.append(submit); host.append(result);
-    });
-    void api.daily().then((d) => { if (d.seed !== dailySeed(today())) toast('Daily seed changed', 'Reload to get the current UTC challenge.'); }).catch(() => toast('Daily available offline', 'Play locally now. Sign in and reconnect before submitting.'));
   }
   window.addEventListener('tendril:snapshot', (event) => {
     const s = (event as CustomEvent<Snapshot>).detail, log = loop.logChunks().flatMap((c) => c.actions);
