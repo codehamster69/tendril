@@ -26,7 +26,7 @@ let ann: Login, bo: Login, cy: Login;
 let id: string;
 beforeEach(async () => {
   db = createDb({ url: ':memory:' });
-  app = createApp({ db, env: { TENDRIL_DEV_AUTH: '1', PUBLIC_ORIGIN: 'https://tendril.example' }, now: () => Date.UTC(2026, 10, 12, 12) });
+  app = createApp({ db, env: { TENDRIL_DEV_AUTH: '1', PUBLIC_ORIGIN: 'https://tendril.example' }, setupVersion: 0, now: () => Date.UTC(2026, 10, 12, 12) });
   [ann, bo, cy] = [await login('Ann'), await login('Bo'), await login('Cy')];
   id = (await call('/duels', { token: ann.token, body: { seed: 7 } })).json.challengeId as string;
 });

@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { challengeSetup, createWorld, dailyNumber, dailySeed, DAILY_PAR, DAILY_TICKS, replayWithPar, RULES_VERSION, SEASON_TICKS } from '@tendril/sim/src/index.ts';
+import { SETUP_LEGACY, challengeSetup, createWorld, dailyNumber, dailySeed, DAILY_PAR, DAILY_TICKS, replayWithPar, RULES_VERSION, SEASON_TICKS } from '@tendril/sim/src/index.ts';
 import type { LogEntry } from '@tendril/sim/src/index.ts';
 import { createApp, createDb, migrate } from '../src/index.ts';
 import type { Db, Profile } from '../src/index.ts';
@@ -52,7 +52,7 @@ async function duel(token = user.token, body: Json = { seed: 7 }): Promise<strin
 beforeEach(async () => {
   time = BASE;
   db = createDb({ url: ':memory:' });
-  app = createApp({ db, env: { TENDRIL_DEV_AUTH: '1', PUBLIC_ORIGIN: 'https://tendril.example' }, now: () => time });
+  app = createApp({ db, env: { TENDRIL_DEV_AUTH: '1', PUBLIC_ORIGIN: 'https://tendril.example' }, setupVersion: 0, now: () => time });
   user = await login();
 });
 afterEach(() => db.close());
@@ -87,7 +87,7 @@ describe('migration 002 and the legacy move', () => {
       await migrate(old, () => time);
       await old.execute("INSERT INTO users (id, github_id, login, display_name, avatar_url, created_at) VALUES ('u1', NULL, 'u1', 'Old Timer', NULL, 1)");
       await old.execute('INSERT INTO daily_entries (date, user_id, net_worth, achieved_at) VALUES (?, ?, ?, ?)', [TODAY, 'u1', 9, BASE]);
-      const fresh = createApp({ db: old, env: {}, now: () => time });
+      const fresh = createApp({ db: old, env: {}, setupVersion: 0, now: () => time });
       const r = await fresh(new Request('http://localhost:8787/api/challenges/today'));
       expect(await r.json()).toMatchObject({ id: DAILY, players: 1, best: 9 });
     } finally { old.close(); }
@@ -102,7 +102,7 @@ describe('GET /challenges', () => {
     const start = Date.UTC(2026, 10, 12);
     expect(r.json).toEqual({
       id: DAILY, kind: 'daily', number: dailyNumber(TODAY), seed: dailySeed(TODAY), ticks: DAILY_TICKS, par: DAILY_PAR,
-      opensAt: start, closesAt: start + DAY_MS, rulesVersion: RULES_VERSION, players: 0, best: null,
+      opensAt: start, closesAt: start + DAY_MS, rulesVersion: RULES_VERSION, setupVersion: 0, players: 0, best: null,
     });
     expect((await call(`/challenges/${DAILY}`)).json).toEqual(r.json);
     expect(await db.query('SELECT id FROM challenges')).toHaveLength(1);
@@ -362,7 +362,7 @@ describe('entries and sealing', () => {
     expect((await call(path, { token: stranger.token })).status).toBe(403);
     const mine = await call(path, { token: user.token });
     expect(mine.status).toBe(200);
-    expect(mine.json).toEqual({ seed: dailySeed(TODAY), ticks: DAILY_TICKS, rulesVersion: RULES_VERSION, actions: SMALL });
+    expect(mine.json).toEqual({ seed: dailySeed(TODAY), ticks: DAILY_TICKS, rulesVersion: RULES_VERSION, setupVersion: 0, kind: 'daily', actions: SMALL });
     time += DAY_MS;
     expect((await call(path)).status).toBe(403); // closed, but the legacy alias still takes yesterday (D2 F1)
     time += DAY_MS;
@@ -438,7 +438,7 @@ describe('weekly season', () => {
     const ms = performance.now() - started;
     expect(r.status).toBe(200);
     const ch = (await call(`/challenges/${WEEK}`)).json;
-    const ref = replayWithPar(createWorld({ id: WEEK, seed: ch.seed }, challengeSetup('season', ch.seed).setup), run, SEASON_TICKS, DAILY_PAR);
+    const ref = replayWithPar(createWorld({ id: WEEK, seed: ch.seed }, challengeSetup('season', ch.seed, SETUP_LEGACY).setup), run, SEASON_TICKS, DAILY_PAR);
     expect(r.json).toMatchObject({ netWorth: ref.netWorth, parTick: ref.parTick, mosaic: ref.mosaic });
     expect(ms).toBeLessThan(5000); // the Vercel function allows 30 s (vercel.json)
   });

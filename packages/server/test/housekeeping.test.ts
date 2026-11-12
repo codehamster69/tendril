@@ -64,7 +64,7 @@ beforeEach(async () => {
   time = BASE;
   env = { TENDRIL_DEV_AUTH: '1', PUBLIC_ORIGIN: 'https://tendril.example', CRON_SECRET: 'cron-secret' };
   db = createDb({ url: ':memory:' });
-  app = createApp({ db, env, now: () => time });
+  app = createApp({ db, env, setupVersion: 0, now: () => time });
   const r = await call('/dev/login', { body: { displayName: 'Farmer' } });
   token = r.json.token;
 });
