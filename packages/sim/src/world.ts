@@ -16,6 +16,9 @@ export { forecast, weatherAt, rainTicks, frostTicks } from './weather.ts';
 export { tileHash } from './tiles.ts';
 
 const MAX = Number.MAX_SAFE_INTEGER;
+/** Items 1..7 (crops and honey) have a market price; compost is worth nothing. */
+const MAX_PRICED_ITEM = 7;
+const MAX_PRICE = 100_000;
 const DX = [0, 1, 0, -1], DY = [-1, 0, 1, 0];
 
 export function createWorld(farm: Farm, setup?: Setup): World {
@@ -42,9 +45,27 @@ export function createWorld(farm: Farm, setup?: Setup): World {
       if (setup.weatherBias !== -1 && setup.weatherBias !== 0 && setup.weatherBias !== 1) throw new Error('bad setup weatherBias');
       if (setup.weatherBias !== 0) w.weatherBias = setup.weatherBias;
     }
+    if (setup.prices !== undefined) w.prices = checkedPrices(setup.prices);
   }
   addPlot(w, 0, 0);
   return w;
+}
+
+/** Centicoin price of an item in this world (1/100 coin): the day's table when there is one, else the base price. Compost and unknown items: 0. */
+export function price(w: World, i: number): number {
+  if (!Number.isInteger(i) || i < 1 || i > MAX_PRICED_ITEM) return 0;
+  return w.prices ? w.prices[i]! : ITEMS[i]!.price * 100;
+}
+
+function checkedPrices(p: unknown): number[] {
+  if (!Array.isArray(p) || p.length !== ITEM_COUNT) throw new Error('bad setup prices');
+  const out = new Array<number>(ITEM_COUNT).fill(0);
+  for (let i = 1; i <= MAX_PRICED_ITEM; i++) {
+    const v = p[i];
+    if (typeof v !== 'number' || !Number.isSafeInteger(v) || v < 1 || v > MAX_PRICE) throw new Error('bad setup prices');
+    out[i] = v;
+  }
+  return out;
 }
 
 export function plotCost(w: World): number { return plotPrice(w.plots.length); }
@@ -56,7 +77,7 @@ export function capacity(w: World): number { return isUnlocked(w, SATCHEL_BIT) ?
 
 export function netWorth(w: World): number {
   let n = w.coins + w.spent;
-  for (let i = 1; i < ITEM_COUNT; i++) n += w.stock[i]! * ITEMS[i]!.price;
+  for (let i = 1; i <= MAX_PRICED_ITEM; i++) n += Math.floor(w.stock[i]! * price(w, i) / 100);
   return n;
 }
 
@@ -255,7 +276,7 @@ export function applyAction(w: World, e: LogEntry): number {
     case OP.wait: res = 1; break;
     case OP.sell:
       if (barn && w.stock[a]! >= b) {
-        const gain = b * ITEMS[a]!.price;
+        const gain = Math.floor(b * price(w, a) / 100);
         addCoins(w, gain);
         w.stock[a] = w.stock[a]! - b; res = gain;
       }

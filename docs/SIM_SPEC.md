@@ -215,9 +215,9 @@ These add no rules and do not change `RULES_VERSION` (3) or any golden hash: the
 - `describeModifiers(modifiers, kind)` gives the labels shown in the game header, the CLI and on the site (e.g. `30 starting coins`, `wheat researched`, `frosty weather`, `2,400 ticks`).
 - Par: when a challenge with setup version 1 is created, the server asks the verify function to run the bundled reference program (a copy of `packages/lang/examples/daily.sprout`) on that exact world and sets `par = max(PAR_MIN, floor(netWorth * PAR_PERCENT / 100))` with `PAR_PERCENT = 90`, `PAR_MIN = 60`. The reference therefore reaches par every day (a 365-day test checks it; its net worth ranges 238 to 404, so par 214 to 363). If the check cannot be made, par falls back to `DAILY_PAR` (290), and it is never recomputed for an existing challenge. Version 0 challenges keep their stored par.
 
-## Rules version 4 (DRAFT rev 3, proposed by E1a, not implemented): shared daily market
+## Rules version 4 (rev 3, implemented by E1b): shared daily market
 
-Nothing below changes the code until E1b. Version 3 above stays exact. Version 4 is version 3 plus one optional
+Implemented in E1b (`packages/sim/src/arena.ts`, `packages/server/src/market.ts`). Version 3 above stays exact. Version 4 is version 3 plus one optional
 input, `prices`; a world without `prices` plays exactly as version 3 (same actions, results and hashes).
 Decisions (coordinator, Fable's review): band 50..200%, daily move cap 25 points of base price, minimum 10 players,
 scale-free shares against a blended target share, 3:2:1 smoothing over three days, floor rounding, dailies only.
@@ -247,6 +247,16 @@ interface Setup { coins?: number; unlocks?: number; weatherBias?: number; prices
 - **Par** is computed under the day's table: the reference script runs on the v4 world, and `parFromReference` takes
   its net worth, exactly as F1 does for modifiers (same fallback to `DAILY_PAR` if the check fails). The verify
   function therefore receives the table.
+
+**Implementation notes (E1b).**
+- `price(w, i)` and `createWorld(..., { prices })` are in `world.ts`; `prices` is checked (length 8, items 1..7 integers 1..100000) and copied. `deserialize` accepts 3 (no table) and 4 (table required) only.
+- `RULES_VERSION = 4` is the newest version; `BASE_RULES_VERSION = 3` is what endless farms, seasons, duels not made from a market daily and dailies before `MARKET_EPOCH` use. The server compares a submission with the version stored on the row (never with the constant); on a mismatch where the row is newer the answer is 409 "This day uses rules version N. Update Tendril." and nothing is replayed or written.
+- Sprout `price(item)` returns the day's centicoin price on a market world and the base price in whole coins elsewhere (a v3 world keeps its old answer, so old programs verify exactly as before). Compost is a script error.
+- `replayWithPar` now also returns `sold` (length 8); `replayStats` is the thin helper over it. The server writes `entries.sold` (7 integers) on every submit.
+- `challengeSetup(kind, seed, version, market?)` takes `{ p }` and adds `prices`; a season refuses a market. Everything that builds a challenge world (server replay, verify function, client, CLI, replay viewer) passes the stored table.
+- Verify function request: `rulesVersion` + `market` (`{ p, ... }`, validated with `isMarketTable`); v4 without a table and v3 with one are refused with reason `rules`.
+- API: `GET /challenges/:id` and `GET /entries/:id` (challenge) and `/entries/:id/replay` carry `market: { prices, multipliers, shares } | null`. `POST /duels` accepts `from: 'd-YYYY-MM-DD'` (same seed, a daily): the duel copies that daily's version and table.
+- Pure helpers exported from `@tendril/sim`: `MARKET`, `MARKET_EPOCH`, `marketActive`, `dailyRulesVersion`, `daysUntilMarket`, `baseMarket`, `marketPrices`, `observedShares`, `blendedTarget`, `rawTarget`, `nextMultipliers`, `nextMarket`, `isMarketTable`.
 
 ### 4.2 The day's table (pure helpers in `arena.ts`; they add no rules)
 `m` = per-item multipliers in permille of base, items 1..7 (1000 = base price).

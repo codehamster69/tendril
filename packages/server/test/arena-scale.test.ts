@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { RULES_VERSION } from '@tendril/sim/src/index.ts';
+import { BASE_RULES_VERSION } from '@tendril/sim/src/index.ts';
 import { createDb, migrate } from '../src/index.ts';
 import type { Db } from '../src/index.ts';
 import { board, challengeInfo, FULL_BOARD_MAX, HISTOGRAM_TTL_MS, recountPlayers } from '../src/arena.ts';
@@ -21,7 +21,7 @@ function rng(seed: number): () => number {
 beforeEach(async () => {
   db = createDb({ url: ':memory:' });
   await migrate(db);
-  await db.execute('INSERT INTO challenges (id, kind, number, seed, ticks, par, opens_at, closes_at, created_by, rules_version) VALUES (?, ?, 1, 7, 3000, 100, ?, ?, NULL, ?)', ['d-2026-11-12', 'daily', OPEN, OPEN + 86_400_000, RULES_VERSION]);
+  await db.execute('INSERT INTO challenges (id, kind, number, seed, ticks, par, opens_at, closes_at, created_by, rules_version) VALUES (?, ?, 1, 7, 3000, 100, ?, ?, NULL, ?)', ['d-2026-11-12', 'daily', OPEN, OPEN + 86_400_000, BASE_RULES_VERSION]);
   const rand = rng(42);
   await db.transaction(async (tx) => {
     let n = 0;

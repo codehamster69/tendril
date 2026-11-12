@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { formatMessage, run, yesterdayUtc } from './daily-post.mjs';
+import { formatMessage, MARKET_EPOCH, marketNotice, run, yesterdayUtc } from './daily-post.mjs';
 
 const origin = 'https://t.example';
 const entry = (id, name, value, extra = {}) => ({ entries: [{ entryId: id, login: name, displayName: name, value, mosaic: '🟩🟨', authorKind: 'human', model: null, ...extra }] });
@@ -37,4 +37,18 @@ test('run without a webhook prints and does not post', async () => {
     assert.equal(calls.length, 4);
     assert.ok(calls[0].endsWith('/api/challenges/d-2026-12-02'));
   } finally { globalThis.fetch = real; }
+});
+
+test('the market opening is announced once, in the post that goes out on 8 December', () => {
+  assert.equal(MARKET_EPOCH, '2026-12-08');
+  const boards = { wealth: entry('a', 'x', 1), speed: { entries: [] }, brevity: null };
+  const opening = formatMessage({ date: '2026-12-07', origin, challenge: { number: 7, players: 3 }, boards });
+  assert.match(opening, /The market opens today/);
+  assert.match(opening, /price\(item\)/);
+  assert.ok(opening.length < 2000);
+  assert.match(formatMessage({ date: '2026-12-07', origin, challenge: { number: 7, players: 0 }, boards: {} }), /The market opens today/);
+  for (const date of ['2026-12-06', '2026-12-08', '2026-12-09', 'd']) {
+    assert.doesNotMatch(formatMessage({ date, origin, challenge: { number: 7, players: 3 }, boards }), /market opens/);
+    assert.equal(marketNotice(date, origin), null);
+  }
 });

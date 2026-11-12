@@ -14,7 +14,7 @@ const actions: [string, keyof typeof OP, string, string, string][] = [
   ['harvest', 'harvest', '', 'Harvest produce or ready hive honey; returns the units carried.', 'harvest'],
   ['deposit', 'deposit', '', 'Move carried produce into barn stock. Compost stays carried.', 'deposit'],
   ['wait', 'wait', 'ticks', 'Wait at least one tick. Long waits split into 1,000-tick actions.', 'wait 100'],
-  ['sell', 'sell', 'item, units', 'Sell barn stock at its base price; use all for the whole stock of an item.', 'sell carrot, all'],
+  ['sell', 'sell', 'item, units', 'Sell barn stock at today\u2019s price (the base price outside market days); use all for the whole stock of an item.', 'sell carrot, all'],
   ['deliver', 'deliver', 'order', 'At the barn, fulfil a contract using stock; returns its coin reward.', 'deliver orders()[0]'],
   ['build', 'build', 'kind', 'Build a researched hive or composter on empty grass, paying its coin price.', 'build hive'],
   ['clear', 'clear', '', 'Remove a crop, tilled soil or building. No refund or produce is returned.', 'clear'],
@@ -42,7 +42,7 @@ const queries: [string, string, string, string][] = [
   ['coins', '', 'Current coin balance.', 'market'], ['plot_cost', '', 'Price of the next plot.', 'farm'],
   ['bot_cost', '', 'Price of the next bot.', 'crew'], ['bots', '', 'Number of bots on your farm.', 'crew'],
   ['unlocked', 'name', 'Whether the named research is unlocked.', 'farm'], ['unlock_cost', 'name', 'Price of named research.', 'farm'],
-  ['price', 'item', 'Base selling price of an item.', 'market'],
+  ['price', 'item', 'Selling price of an item. On a market day it is today\u2019s price in hundredths of a coin (200 means 2 coins); otherwise the base price in whole coins.', 'market'],
 ];
 for (const [name, args, doc, feature] of queries) API.push({ name, kind: 'query', signature: `${name}(${args})`, doc, ticks: 0, example: name === 'scan_at' ? 'say scan_at(1, 1)' : name === 'forecast' ? 'say forecast(500)' : ['unlocked', 'unlock_cost', 'price'].includes(name) ? `say ${name}(carrot)` : name === 'owns' ? 'say owns(1, 1)' : `say ${name}()`, feature });
 const utilities: [string, string, string, string][] = [

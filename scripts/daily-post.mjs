@@ -9,16 +9,28 @@ const MEDALS = [
   { key: 'brevity', icon: '✂️', label: 'Brevity', fmt: (v) => `${Math.round(v).toLocaleString('en-US')} tokens` },
 ];
 
+/** The day the shared market opens (sim MARKET_EPOCH; a sim test checks that the two agree). */
+export const MARKET_EPOCH = '2026-12-08';
+const nextDay = (date) => { const ms = Date.parse(`${date}T00:00:00Z`); return Number.isNaN(ms) ? '' : new Date(ms + 86_400_000).toISOString().slice(0, 10); };
+
+/** Announced once, in the post that goes out on the opening day (the post reports `date`, the day before). */
+export function marketNotice(date, origin) {
+  if (nextDay(date) !== MARKET_EPOCH) return null;
+  return `📈 **The market opens today.** From today's daily, crop prices move between 50% and 200% of base with what the community sells: scarce crops pay more, crowded ones pay less. Read today's prices with \`price(item)\` (in hundredths of a coin). ${origin}/play/`;
+}
+
 export const yesterdayUtc = (now = new Date()) => new Date(now.getTime() - 86_400_000).toISOString().slice(0, 10);
 
 /** @param {{ date: string, challenge: any|null, boards: Record<string, any|null>, origin: string }} d */
 export function formatMessage({ date, challenge, boards, origin }) {
   const title = challenge?.number > 0 ? `Tendril Daily #${challenge.number} (${date})` : `Tendril Daily ${date}`;
   const players = challenge?.players ?? 0;
+  const notice = marketNotice(date, origin);
   if (!challenge || players === 0) {
-    return `🌱 **${title}**\nNo farms were submitted yesterday. Today's daily is open: ${origin}/play/`;
+    return [`🌱 **${title}**\nNo farms were submitted yesterday. Today's daily is open: ${origin}/play/`, notice].filter(Boolean).join('\n\n');
   }
   const lines = [`🌱 **${title}** · ${players} ${players === 1 ? 'farm' : 'farms'}`];
+  if (notice) lines.push(notice);
   for (const m of MEDALS) {
     const top = boards[m.key]?.entries?.[0];
     if (!top) { lines.push(`${m.icon} **${m.label}**: no winner`); continue; }

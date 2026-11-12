@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { RULES_VERSION } from '@tendril/sim/src/index.ts';
+import { BASE_RULES_VERSION } from '@tendril/sim/src/index.ts';
 import type { LogEntry } from '@tendril/sim/src/index.ts';
 import { createApp, createDb } from '../src/index.ts';
 import type { Db, Profile } from '../src/index.ts';
@@ -20,7 +20,7 @@ async function call(path: string, o: { method?: string; token?: string; body?: u
   return { status: response.status, json: (text ? JSON.parse(text) : null) as Json };
 }
 const login = async (name: string): Promise<Login> => (await call('/dev/login', { body: { displayName: name } })).json as Login;
-const enter = (id: string, token: string, actions: unknown = SMALL) => call(`/challenges/${id}/entries`, { token, body: { rulesVersion: RULES_VERSION, actions } });
+const enter = (id: string, token: string, actions: unknown = SMALL) => call(`/challenges/${id}/entries`, { token, body: { rulesVersion: BASE_RULES_VERSION, actions } });
 
 let ann: Login, bo: Login, cy: Login;
 let id: string;

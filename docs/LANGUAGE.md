@@ -128,7 +128,7 @@ building, not barn); `scan_at` of unowned land returns `none`. `position()` -> `
 `owns(x, y)`, `plots()` -> list of `{px, py}`, `tiles()` -> list of `{x, y}` for every owned tile in
 plot purchase order then row-major, `forecast(n)` -> list of `{kind, start, end}`, `weather()`,
 `orders()` -> list of `{id, crop, qty, reward, deadline}`, `stock()` -> record, `coins()`, `plot_cost()`,
-`bot_cost()`, `bots()`, `unlocked(name)`, `unlock_cost(name)`, `price(item)`.
+`bot_cost()`, `bots()`, `unlocked(name)`, `unlock_cost(name)`, `price(item)` (on a market day: today's price in hundredths of a coin, so 200 is 2 coins; on other days the base price in whole coins).
 
 **Utilities** (free): `say ...` / `print ...` (output line, values joined by spaces), `len`, `abs`,
 `min`, `max` (args or one list), `range(n)` / `range(a, b)` (b exclusive), `append(list, v)`,

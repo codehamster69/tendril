@@ -1,5 +1,6 @@
 import { createHash, randomBytes } from 'node:crypto';
-import { challengeSetup, createWorld, dailyNumber, dailySeed, DAILY_PAR, DAILY_TICKS, IllegalAction, parFromReference, replayWithPar, RULES_VERSION, SEASON_TICKS, SETUP_LEGACY, SETUP_VERSION } from '@tendril/sim/src/index.ts';
+import { BASE_RULES_VERSION, challengeSetup, createWorld, dailyNumber, dailyRulesVersion, dailySeed, DAILY_PAR, DAILY_TICKS, IllegalAction, parFromReference, replayWithPar, RULES_VERSION, SEASON_TICKS, SETUP_LEGACY, SETUP_VERSION, SUPPORTED_RULES_VERSIONS } from '@tendril/sim/src/index.ts';
+import type { MarketTable } from '@tendril/sim/src/index.ts';
 import type { ChallengeKind, LogEntry } from '@tendril/sim/src/index.ts';
 import type { Db, Queryable } from './db.ts';
 import { DAY_MS, isValidDate, utcDate } from './game.ts';
@@ -8,6 +9,7 @@ import { HttpError } from './validation.ts';
 import type { EntryInput } from './validation.ts';
 import type { SourceVerifier } from './verify-client.ts';
 import { REFERENCE_SOURCE } from './reference.ts';
+import { computeDailyMarket, marketView, parseMarket, soldColumn } from './market.ts';
 
 // ---- limits ----
 
@@ -62,12 +64,15 @@ export interface ChallengeRow {
   id: string; kind: ChallengeKind; number: number | null; seed: number; ticks: number; par: number | null;
   opens_at: number; closes_at: number | null; created_by: string | null; rules_version: number;
   /** How the starting conditions derive from the seed: 0 plain farm (old challenges), 1 seed-drawn modifiers. */ setup_v: number;
+  /** Rules v4: the day's market table as JSON (SIM_SPEC 4.3). Null on rules v3 rows. */ market?: string | null;
   /** Players with an entry for each medal, kept by submitEntry so a board total never needs a scan. */
   n_wealth?: number; n_speed?: number; n_brevity?: number;
 }
 export interface ChallengeInfo {
   id: string; kind: ChallengeKind; number: number | null; seed: number; ticks: number; par: number | null;
   opensAt: number; closesAt: number | null; rulesVersion: number; setupVersion: number; players: number; best: number | null;
+  /** The day's prices (centicoins, index = item id), multipliers in permille of base and yesterday's observed shares. Null without a market. */
+  market: { prices: number[]; multipliers: number[]; shares: number[] | null } | null;
 }
 
 export const isOpen = (c: ChallengeRow, now: number): boolean => now >= c.opens_at && (c.closes_at === null || now < c.closes_at);
@@ -81,13 +86,13 @@ export const isSettled = (c: ChallengeRow, now: number): boolean => c.closes_at 
 function newDailyRow(date: string, setupV: number): ChallengeRow {
   const seed = dailySeed(date);
   const start = Date.parse(`${date}T00:00:00Z`);
-  return { id: dailyId(date), kind: 'daily', number: dailyNumber(date), seed, ticks: challengeSetup('daily', seed, setupV).ticks, par: DAILY_PAR, opens_at: start, closes_at: start + DAY_MS, created_by: null, rules_version: RULES_VERSION, setup_v: setupV };
+  return { id: dailyId(date), kind: 'daily', number: dailyNumber(date), seed, ticks: challengeSetup('daily', seed, setupV).ticks, par: DAILY_PAR, opens_at: start, closes_at: start + DAY_MS, created_by: null, rules_version: dailyRulesVersion(date), setup_v: setupV };
 }
 function newSeasonRow(ms: number, setupV: number): ChallengeRow {
   const id = seasonId(ms);
   const seed = seasonSeed(id);
   const start = mondayOf(ms);
-  return { id, kind: 'season', number: 1 + Math.round((start - SEASON_EPOCH_MONDAY) / WEEK_MS), seed, ticks: challengeSetup('season', seed, setupV).ticks, par: DAILY_PAR, opens_at: start, closes_at: start + WEEK_MS, created_by: null, rules_version: RULES_VERSION, setup_v: setupV };
+  return { id, kind: 'season', number: 1 + Math.round((start - SEASON_EPOCH_MONDAY) / WEEK_MS), seed, ticks: challengeSetup('season', seed, setupV).ticks, par: DAILY_PAR, opens_at: start, closes_at: start + WEEK_MS, created_by: null, rules_version: BASE_RULES_VERSION, setup_v: setupV };
 }
 
 /** Rows that may be created on first request: today's and yesterday's daily, this and last week's season. */
@@ -104,8 +109,8 @@ function creatable(id: string, now: number, setupV: number): ChallengeRow | null
 
 async function insertChallenge(q: Queryable, c: ChallengeRow): Promise<void> {
   await q.execute(
-    'INSERT OR IGNORE INTO challenges (id, kind, number, seed, ticks, par, opens_at, closes_at, created_by, rules_version, setup_v) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-    [c.id, c.kind, c.number, c.seed, c.ticks, c.par, c.opens_at, c.closes_at, c.created_by, c.rules_version, c.setup_v],
+    'INSERT OR IGNORE INTO challenges (id, kind, number, seed, ticks, par, opens_at, closes_at, created_by, rules_version, setup_v, market) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    [c.id, c.kind, c.number, c.seed, c.ticks, c.par, c.opens_at, c.closes_at, c.created_by, c.rules_version, c.setup_v, c.market ?? null],
   );
 }
 
@@ -120,13 +125,36 @@ export function resolveChallengeId(ref: string, now: number): string {
 export async function loadChallenge(db: Db, ref: string, now: number, verify?: SourceVerifier, setupV: number = SETUP_VERSION): Promise<ChallengeRow> {
   const id = resolveChallengeId(ref, now);
   const [found] = await db.query<ChallengeRow>('SELECT * FROM challenges WHERE id = ?', [id]);
-  if (found) return found;
+  if (found) return found.rules_version === RULES_VERSION && found.market == null ? ensureMarket(db, found) : found;
   const fresh = creatable(id, now, setupV);
   if (!fresh) throw new HttpError(404, 'Challenge not found');
+  // A market day gets its table at the first request, in the same insert as the row, so the table and the par that
+  // was measured under it are always stored together. The loser of a race re-reads the winner's row below.
+  if (fresh.rules_version === RULES_VERSION) fresh.market = JSON.stringify(await computeDailyMarket(db, id.slice(2)));
   fresh.par = await referencePar(fresh, verify) ?? fresh.par;
   await insertChallenge(db, fresh);
   const [row] = await db.query<ChallengeRow>('SELECT * FROM challenges WHERE id = ?', [id]);
   return row!;
+}
+
+/**
+ * A market-day row that somehow has no table (it should not exist: rows are inserted with theirs) gets one now. The write only
+ * lands if the column is still empty, so a race leaves exactly one table, and everyone then reads that one.
+ */
+export async function ensureMarket(db: Db, c: ChallengeRow): Promise<ChallengeRow> {
+  if (c.kind !== 'daily') throw new HttpError(500, 'A market challenge must be a daily');
+  const market = JSON.stringify(await computeDailyMarket(db, c.id.slice(2)));
+  await db.execute('UPDATE challenges SET market = ? WHERE id = ? AND market IS NULL', [market, c.id]);
+  const [row] = await db.query<ChallengeRow>('SELECT * FROM challenges WHERE id = ?', [c.id]);
+  return row!;
+}
+
+/** The table a challenge row plays under, or null for base prices. A market row without a valid table is a server fault, never a free pass. */
+export function marketOf(c: Pick<ChallengeRow, 'id' | 'rules_version' | 'market'>): MarketTable | null {
+  if (c.rules_version === BASE_RULES_VERSION) return null;
+  const t = parseMarket(c.market ?? null);
+  if (!SUPPORTED_RULES_VERSIONS.includes(c.rules_version) || !t) throw new HttpError(500, 'Challenge has no valid price table');
+  return t;
 }
 
 export async function challengeInfo(db: Db, c: ChallengeRow): Promise<ChallengeInfo> {
@@ -136,6 +164,7 @@ export async function challengeInfo(db: Db, c: ChallengeRow): Promise<ChallengeI
   return {
     id: c.id, kind: c.kind, number: c.number, seed: c.seed, ticks: c.ticks, par: c.par, opensAt: c.opens_at,
     closesAt: c.closes_at, rulesVersion: c.rules_version, setupVersion: c.setup_v, players: stats!.players ?? 0, best: stats!.best,
+    market: marketView(marketOf(c)),
   };
 }
 
@@ -147,21 +176,31 @@ export async function challengeInfo(db: Db, c: ChallengeRow): Promise<ChallengeI
 export async function referencePar(c: ChallengeRow, verify: SourceVerifier | undefined): Promise<number | null> {
   if (!verify || c.setup_v < 1) return null; // version 0 challenges keep the constant par
   try {
-    const v = await verify({ source: REFERENCE_SOURCE, challengeId: c.id, kind: c.kind, seed: c.seed, ticks: c.ticks, rulesVersion: c.rules_version, setupVersion: c.setup_v });
+    const v = await verify({ source: REFERENCE_SOURCE, challengeId: c.id, kind: c.kind, seed: c.seed, ticks: c.ticks, rulesVersion: c.rules_version, setupVersion: c.setup_v, market: marketOf(c) });
     return v.ok && typeof v.netWorth === 'number' && Number.isSafeInteger(v.netWorth) ? parFromReference(v.netWorth) : null;
   } catch { return null; }
 }
 
 // ---- duels ----
 
-export interface DuelInput { seed: number | null; ticks: number | null }
+/** `from`: the id of a market daily whose rules and table the duel copies (so a duel played from that day's run replays the same). */
+export interface DuelInput { seed: number | null; ticks: number | null; from?: string | null }
 
 export async function createDuel(db: Db, userId: string, input: DuelInput, now: number, verify?: SourceVerifier, setupV: number = SETUP_VERSION): Promise<{ challengeId: string }> {
   const seed = input.seed ?? ((randomBytes(4).readUInt32LE() >>> 0) || 1);
-  const { ticks: defaultTicks } = challengeSetup('duel', seed, setupV);
+  let source: ChallengeRow | null = null;
+  if (input.from) {
+    if (!input.from.startsWith('d-')) throw new HttpError(422, 'A duel can copy a daily only');
+    const [daily] = await db.query<ChallengeRow>('SELECT * FROM challenges WHERE id = ?', [input.from]);
+    if (!daily || daily.kind !== 'daily') throw new HttpError(404, 'Challenge not found');
+    if (daily.seed !== seed) throw new HttpError(422, 'The duel seed must be the daily\'s seed');
+    source = daily;
+  }
+  const { ticks: defaultTicks } = challengeSetup('duel', seed, source?.setup_v ?? setupV);
   const ticks = input.ticks ?? defaultTicks;
   // Only the standard length has a calibrated par, so other lengths have no Speed medal.
-  const row: ChallengeRow = { id: `x-${randomBytes(6).toString('base64url')}`, kind: 'duel', number: null, seed, ticks, par: ticks === DAILY_TICKS ? DAILY_PAR : null, opens_at: now, closes_at: null, created_by: userId, rules_version: RULES_VERSION, setup_v: setupV };
+  const row: ChallengeRow = { id: `x-${randomBytes(6).toString('base64url')}`, kind: 'duel', number: null, seed, ticks, par: ticks === DAILY_TICKS ? DAILY_PAR : null, opens_at: now, closes_at: null, created_by: userId, rules_version: source?.rules_version ?? BASE_RULES_VERSION, setup_v: source?.setup_v ?? setupV, market: source?.market ?? null };
+  if (source && source.rules_version === RULES_VERSION) marketOf(source); // refuses a market day whose table is missing or invalid
   row.par = await referencePar(row, verify) ?? row.par;
   await insertChallenge(db, row);
   return { challengeId: row.id };
@@ -180,11 +219,11 @@ export interface SubmitResult {
   ranks: Ranks; percentile: number | null; improved: boolean; total: number;
 }
 
-interface Replayed { netWorth: number; parTick: number | null; mosaic: string }
+interface Replayed { netWorth: number; parTick: number | null; mosaic: string; sold: number[] }
 
 /** Replays the log from the challenge's start. Throws 422 for an illegal log, never leaves partial state. */
 function replayLog(c: ChallengeRow, actions: LogEntry[]): Replayed {
-  const { setup } = challengeSetup(c.kind, c.seed, c.setup_v);
+  const { setup } = challengeSetup(c.kind, c.seed, c.setup_v, marketOf(c));
   const world = createWorld({ id: c.id, seed: c.seed }, setup);
   try {
     const result = replayWithPar(world, actions, c.ticks, c.par ?? Number.MAX_SAFE_INTEGER);
@@ -316,7 +355,7 @@ export const SOURCE_MISMATCH = 'Source does not produce this run';
 async function checkSource(c: ChallengeRow, source: string, hash: string, verify: SourceVerifier | undefined): Promise<number> {
   if (!verify) throw new HttpError(503, SOURCE_UNAVAILABLE);
   let verdict;
-  try { verdict = await verify({ source, challengeId: c.id, kind: c.kind, seed: c.seed, ticks: c.ticks, rulesVersion: c.rules_version, setupVersion: c.setup_v }); }
+  try { verdict = await verify({ source, challengeId: c.id, kind: c.kind, seed: c.seed, ticks: c.ticks, rulesVersion: c.rules_version, setupVersion: c.setup_v, market: marketOf(c) }); }
   catch { throw new HttpError(503, SOURCE_UNAVAILABLE); }
   if (!verdict.ok) {
     if (verdict.reason === 'rules') throw new HttpError(409, 'Rules version mismatch');
@@ -328,7 +367,10 @@ async function checkSource(c: ChallengeRow, source: string, hash: string, verify
 }
 
 export async function submitEntry(db: Db, userId: string, c: ChallengeRow, input: EntryInput, actions: LogEntry[], now: number, options: SubmitOptions = {}): Promise<SubmitResult> {
-  if (input.rulesVersion !== c.rules_version || input.rulesVersion !== RULES_VERSION) throw new HttpError(409, 'Rules version mismatch');
+  if (input.rulesVersion !== c.rules_version || !SUPPORTED_RULES_VERSIONS.includes(c.rules_version)) {
+    // Desktop 0.1.x sends 3 on a market day: refuse before replaying, so nothing is ever written for it.
+    throw new HttpError(409, c.rules_version > input.rulesVersion ? `This day uses rules version ${c.rules_version}. Update Tendril.` : 'Rules version mismatch');
+  }
   if (now < c.opens_at || (c.closes_at !== null && now >= c.closes_at + (options.graceMs ?? 0))) throw new HttpError(409, 'Challenge is not open');
   const replayed = replayLog(c, actions);
   const hash = logHash(actions);
@@ -356,9 +398,9 @@ export async function submitEntry(db: Db, userId: string, c: ChallengeRow, input
         await tx.execute('UPDATE entries SET tokens = ?, source = ?, source_public = ?, source_verified = 1, author_kind = ?, model = ? WHERE id = ?', [tokens, input.source, input.sourcePublic ? 1 : 0, input.authorKind, input.model, entryId]);
       } else {
         await tx.execute(
-          `INSERT INTO entries (id, challenge_id, user_id, net_worth, par_tick, tokens, actions, actions_count, log_hash, mosaic, source, source_public, source_verified, author_kind, model, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          [id, c.id, userId, replayed.netWorth, replayed.parTick, tokens, JSON.stringify(actions), actions.length, hash, replayed.mosaic, tokens === null ? null : input.source, tokens === null ? 0 : input.sourcePublic ? 1 : 0, tokens === null ? 0 : 1, input.authorKind, input.model, now],
+          `INSERT INTO entries (id, challenge_id, user_id, net_worth, par_tick, tokens, actions, actions_count, log_hash, mosaic, source, source_public, source_verified, author_kind, model, created_at, sold)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [id, c.id, userId, replayed.netWorth, replayed.parTick, tokens, JSON.stringify(actions), actions.length, hash, replayed.mosaic, tokens === null ? null : input.source, tokens === null ? 0 : input.sourcePublic ? 1 : 0, tokens === null ? 0 : 1, input.authorKind, input.model, now, soldColumn(replayed.sold)],
         );
       }
       const mine = await tx.query<EntryRow>('SELECT * FROM entries WHERE challenge_id = ? AND user_id = ?', [c.id, userId]);
@@ -564,7 +606,7 @@ export async function entrySummary(db: Db, id: string, viewerId: string | undefi
     netWorth: e.net_worth, parTick: e.par_tick, tokens: e.tokens, mosaic: e.mosaic,
     authorKind: e.author_kind, model: e.model, sourceVerified: e.source_verified === 1, sourcePublic: e.source_public === 1,
     createdAt: e.created_at, sealed: !(await replayVisible(db, c!, e, viewerId, now)),
-    challenge: { id: c!.id, kind: c!.kind, number: c!.number, seed: c!.seed, ticks: c!.ticks, par: c!.par, opensAt: c!.opens_at, closesAt: c!.closes_at, rulesVersion: c!.rules_version, setupVersion: c!.setup_v },
+    challenge: { id: c!.id, kind: c!.kind, number: c!.number, seed: c!.seed, ticks: c!.ticks, par: c!.par, opensAt: c!.opens_at, closesAt: c!.closes_at, rulesVersion: c!.rules_version, setupVersion: c!.setup_v, market: marketView(marketOf(c!)) },
   };
 }
 
@@ -573,7 +615,7 @@ export async function entryReplay(db: Db, id: string, viewerId: string | undefin
   const [c] = await db.query<ChallengeRow>('SELECT * FROM challenges WHERE id = ?', [e.challenge_id]);
   if (!(await replayVisible(db, c!, e, viewerId, now))) throw new HttpError(403, 'Sealed until the challenge closes');
   if (e.actions === null) throw new HttpError(404, 'No replay stored for this entry');
-  return { seed: c!.seed, ticks: c!.ticks, rulesVersion: c!.rules_version, setupVersion: c!.setup_v, kind: c!.kind, actions: JSON.parse(e.actions) as LogEntry[] };
+  return { seed: c!.seed, ticks: c!.ticks, rulesVersion: c!.rules_version, setupVersion: c!.setup_v, kind: c!.kind, market: marketView(marketOf(c!)), actions: JSON.parse(e.actions) as LogEntry[] };
 }
 
 /**
@@ -617,10 +659,10 @@ export async function publishedSources(db: Db, c: ChallengeRow, limit: number, n
 
 // ---- old /api/daily* routes ----
 
-export async function legacySubmit(db: Db, userId: string, date: string, actions: LogEntry[], now: number, setupV: number = SETUP_VERSION) {
+export async function legacySubmit(db: Db, userId: string, date: string, actions: LogEntry[], now: number, setupV: number = SETUP_VERSION, rulesVersion: number = BASE_RULES_VERSION) {
   if (date !== utcDate(now) && date !== utcDate(now - DAY_MS)) throw new HttpError(422, 'Only today or yesterday (UTC) can be submitted');
   const c = await loadChallenge(db, dailyId(date), now, undefined, setupV);
-  const input: EntryInput = { rulesVersion: RULES_VERSION, actions, source: null, sourcePublic: false, authorKind: 'human', model: null };
+  const input: EntryInput = { rulesVersion, actions, source: null, sourcePublic: false, authorKind: 'human', model: null };
   const result = await submitEntry(db, userId, c, input, actions, now, { graceMs: LEGACY_GRACE_MS, repeatOk: true });
   const [best] = await db.query<{ best: number }>('SELECT MAX(net_worth) AS best FROM entries WHERE challenge_id = ? AND user_id = ?', [c.id, userId]);
   return { netWorth: result.netWorth, rank: result.ranks.wealth!, best: best!.best };

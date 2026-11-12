@@ -1,5 +1,5 @@
 import { randomBytes, randomUUID } from 'node:crypto';
-import { createWorld, dailySeed, DAILY_TICKS, deserialize, hashWorld, IllegalAction, netWorth, replayChunk, RULES_VERSION, serialize } from '@tendril/sim/src/index.ts';
+import { createWorld, dailyRulesVersion, dailySeed, DAILY_TICKS, deserialize, hashWorld, IllegalAction, netWorth, replayChunk, BASE_RULES_VERSION, serialize } from '@tendril/sim/src/index.ts';
 import type { LogEntry, World } from '@tendril/sim/src/index.ts';
 import type { Db, Queryable } from './db.ts';
 import { HttpError } from './validation.ts';
@@ -82,14 +82,14 @@ export async function createFarm(db: Db, userId: string, now: () => number): Pro
   const worth = netWorth(world);
   const row: FarmRow = {
     id, user_id: userId, seed, started_at: startedAt, tick: world.tick, checkpoint: serialize(world),
-    checkpoint_hash: hashWorld(world), rules_version: RULES_VERSION, coins: world.coins, net_worth: worth, verified_at: null,
+    checkpoint_hash: hashWorld(world), rules_version: BASE_RULES_VERSION, coins: world.coins, net_worth: worth, verified_at: null,
     pending_from: null, pending_actions: null, pending_at: null, slow_at: 0, sampled_at: startedAt, rank: null, growth: 0, att_start: 0, att_n: 0,
   };
   // user_id is UNIQUE: a concurrent creation loses the insert and returns the winner's farm.
   const inserted = await db.transaction(async (tx) => {
     const result = await tx.execute(
       'INSERT OR IGNORE INTO farms (id, user_id, seed, started_at, tick, checkpoint, checkpoint_hash, rules_version, coins, net_worth, verified_at, sampled_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?)',
-      [id, userId, seed, startedAt, row.tick, row.checkpoint, row.checkpoint_hash, RULES_VERSION, world.coins, worth, startedAt],
+      [id, userId, seed, startedAt, row.tick, row.checkpoint, row.checkpoint_hash, BASE_RULES_VERSION, world.coins, worth, startedAt],
     );
     if (result.rowsAffected === 0) return false;
     await tx.execute('INSERT INTO worth_history (farm_id, net_worth, at_ms) VALUES (?, ?, ?)', [id, worth, startedAt]);
@@ -190,7 +190,7 @@ export async function verifyChunk(db: Db, userId: string, farmId: string, input:
 }
 
 async function accept(db: Db, farm: FarmRow, input: ChunkInput, t: number, limit: number, syncScale: number): Promise<ChunkResult> {
-  if (input.rulesVersion !== RULES_VERSION || input.rulesVersion !== farm.rules_version) throw new HttpError(409, 'Rules version mismatch');
+  if (input.rulesVersion !== farm.rules_version) throw new HttpError(409, 'Rules version mismatch');
   if (input.fromTick !== farm.tick || input.checkpointHash !== farm.checkpoint_hash) throw new HttpError(409, 'Stale checkpoint');
   if (input.toTick <= input.fromTick) throw new HttpError(422, 'Invalid tick range');
   if (input.toTick > Math.floor((t - farm.started_at) / 100)) throw new HttpError(422, 'Tick is ahead of server clock');
@@ -282,5 +282,5 @@ export function isValidDate(value: unknown): value is string {
 
 export function dailyInfo(now: number) {
   const date = utcDate(now);
-  return { date, seed: dailySeed(date), ticks: DAILY_TICKS, rulesVersion: RULES_VERSION };
+  return { date, seed: dailySeed(date), ticks: DAILY_TICKS, rulesVersion: dailyRulesVersion(date) };
 }

@@ -1,6 +1,6 @@
 import { inflateSync } from 'node:zlib';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { RULES_VERSION } from '@tendril/sim/src/index.ts';
+import { BASE_RULES_VERSION } from '@tendril/sim/src/index.ts';
 import { createApp, createDb } from '../src/index.ts';
 import type { Db } from '../src/index.ts';
 
@@ -16,7 +16,7 @@ const get = (path: string, method = 'GET') => app(new Request(`http://localhost:
 async function submit(name: string): Promise<string> {
   const l = await (await app(new Request('http://localhost:8787/api/dev/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ displayName: name }) }))).json() as Json;
   const r = await app(new Request('http://localhost:8787/api/challenges/today/entries', { method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${l.token}` }, body: JSON.stringify({ rulesVersion: RULES_VERSION, actions: SMALL }) }));
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${l.token}` }, body: JSON.stringify({ rulesVersion: BASE_RULES_VERSION, actions: SMALL }) }));
   expect(r.status).toBe(200);
   return ((await r.json()) as Json).entryId as string;
 }
