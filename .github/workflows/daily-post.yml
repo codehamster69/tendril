@@ -1,0 +1,34 @@
+name: Daily winner post
+
+on:
+  schedule:
+    - cron: '10 0 * * *' # 00:10 UTC, after the daily closes
+  workflow_dispatch:
+    inputs:
+      date:
+        description: 'Daily to post, YYYY-MM-DD (default: yesterday UTC)'
+        required: false
+
+permissions: {}
+
+concurrency:
+  group: daily-post
+  cancel-in-progress: false
+
+jobs:
+  post:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: scripts/daily-post.mjs
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Post winners (prints only when DISCORD_WEBHOOK_URL is unset)
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          DATE: ${{ inputs.date }}
+        run: node scripts/daily-post.mjs $DATE
