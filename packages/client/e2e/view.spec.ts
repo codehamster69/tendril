@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { readFileSync } from 'node:fs';
 import { build } from 'vite';
 import { fileURLToPath } from 'node:url';
 import { readFile } from 'node:fs/promises';
@@ -203,7 +204,7 @@ test('GLBs replace placeholders with combined palette-aware instancing and sixte
   expect(inspection.stages.every(([, count]) => count === 1)).toBe(true);
 });
 
-test('expansion and same-count negative relocation do not pan; explicit focus and tile scan work', async ({ page }) => {
+test('expansion re-frames automatically; same-count relocation does not pan; explicit focus and tile scan work', async ({ page }) => {
   await page.route('**/__view/models/manifest.json', (route) => route.fulfill({ status: 204 }));
   await harness(page);
   const canvas = page.locator('#farm-canvas');
@@ -213,8 +214,10 @@ test('expansion and same-count negative relocation do not pan; explicit focus an
     window.__snapshot.tiles.push(...extra); window.__snapshot.plots.push({ px: -1, py: 0 });
     window.__view.update(window.__snapshot);
   });
-  expect(await canvas.getAttribute('data-camera-target')).toBe(initialTarget);
   await expect(canvas).toHaveAttribute('data-rendered-tiles', '128');
+  // Buying land with an untouched camera eases the view over to the new centre (about 600 ms).
+  await expect.poll(async () => (JSON.parse((await canvas.getAttribute('data-camera-target'))!) as number[])[0], { timeout: 3000 }).toBeCloseTo(-0.5, 5);
+  expect(await canvas.getAttribute('data-camera-target')).not.toBe(initialTarget);
   await page.evaluate(() => window.__view.focusFarm());
   const farmTarget = JSON.parse((await canvas.getAttribute('data-camera-target'))!) as number[];
   [-0.5, 0, 3.5].forEach((value, index) => expect(farmTarget[index]).toBeCloseTo(value, 8));
@@ -370,4 +373,74 @@ test('rules v3 content renders: perennials, buildings, honey and carried items, 
     'carry:item_carrot': 1, 'carry:item_honey': 1, 'carry:item_compost': 1 });
   await page.waitForTimeout(300);
   expect(errors).toEqual([]);
+});
+
+// App-level camera framing. These use the real app (sandbox, expander at 64x), not the renderer harness.
+const expander = readFileSync(new URL('../../lang/examples/expander.sprout', import.meta.url), 'utf8');
+
+async function runExpander(page: Page): Promise<void> {
+  await page.evaluate((source) => window.tendril!.editor.setSource(source), expander);
+  await page.selectOption('#speed', '64');
+  await page.click('#btn-run');
+}
+const plotCount = (page: Page) => page.evaluate(() => window.tendril!.loop.snapshot()?.plots.length ?? 0);
+
+test('camera re-frames every owned plot after land is bought', async ({ page }) => {
+  test.setTimeout(120_000);
+  await page.setViewportSize({ width: 1400, height: 900 });
+  await page.goto('/?mode=sandbox');
+  await expect(page.locator('#status')).toHaveAttribute('data-state', 'paused');
+  await runExpander(page);
+  await expect.poll(() => plotCount(page), { timeout: 90_000, intervals: [250] }).toBeGreaterThanOrEqual(2);
+  const canvas = page.locator('#farm-canvas');
+  // Project each plot corner with the published camera pose (look-at + perspective, fov 42 degrees).
+  const outside = async () => page.evaluate(() => {
+    const canvas = document.getElementById('farm-canvas')!;
+    const pos = JSON.parse(canvas.dataset.cameraPosition!) as number[], tgt = JSON.parse(canvas.dataset.cameraTarget!) as number[];
+    const sub = (a: number[], b: number[]) => a.map((v, i) => v - b[i]!);
+    const dot = (a: number[], b: number[]) => a.reduce((n, v, i) => n + v * b[i]!, 0);
+    const cross = (a: number[], b: number[]) => [a[1]! * b[2]! - a[2]! * b[1]!, a[2]! * b[0]! - a[0]! * b[2]!, a[0]! * b[1]! - a[1]! * b[0]!];
+    const norm = (a: number[]) => a.map((v) => v / Math.hypot(...a));
+    const f = norm(sub(tgt, pos)), r = norm(cross(f, [0, 1, 0])), u = cross(r, f);
+    const tanHalf = Math.tan(42 * Math.PI / 360), aspect = canvas.clientWidth / canvas.clientHeight;
+    const bad: string[] = [];
+    for (const { px, py } of window.tendril!.loop.snapshot()!.plots) {
+      for (const [x, z] of [[8 * px - 0.5, 8 * py - 0.5], [8 * px + 7.5, 8 * py - 0.5], [8 * px - 0.5, 8 * py + 7.5], [8 * px + 7.5, 8 * py + 7.5]]) {
+        const d = sub([x!, 0, z!], pos), depth = dot(d, f);
+        const nx = dot(d, r) / (depth * tanHalf * aspect), ny = dot(d, u) / (depth * tanHalf);
+        if (depth <= 0 || Math.abs(nx) > 1 || Math.abs(ny) > 1) bad.push(`${px},${py} ${x},${z}: ${nx.toFixed(2)},${ny.toFixed(2)}`);
+      }
+    }
+    return bad;
+  });
+  await expect.poll(outside, { timeout: 5000 }).toEqual([]);
+  await expect(canvas).toHaveAttribute('data-scene-ready', 'true');
+});
+
+test('camera stays put after a manual drag when more land is bought', async ({ page }) => {
+  test.setTimeout(120_000);
+  await page.setViewportSize({ width: 1400, height: 900 });
+  await page.goto('/?mode=sandbox');
+  await expect(page.locator('#status')).toHaveAttribute('data-state', 'paused');
+  const canvas = page.locator('#farm-canvas');
+  await expect(canvas).toHaveAttribute('data-scene-ready', 'true');
+  const box = (await canvas.boundingBox())!;
+  const cx = box.x + box.width / 2, cy = box.y + box.height / 2;
+  const before = await canvas.getAttribute('data-camera-position');
+  await page.mouse.move(cx, cy); await page.mouse.down(); await page.mouse.move(cx + 120, cy + 40, { steps: 8 }); await page.mouse.up();
+  // Orbit damping keeps easing for a while after release; wait until the pose stops changing.
+  let dragged = await canvas.getAttribute('data-camera-position');
+  for (let i = 0; i < 40; i++) {
+    await page.waitForTimeout(500);
+    const now = await canvas.getAttribute('data-camera-position');
+    if (now === dragged) break;
+    dragged = now;
+  }
+  expect(dragged).not.toBe(before);
+  await runExpander(page);
+  await expect.poll(() => plotCount(page), { timeout: 90_000, intervals: [250] }).toBeGreaterThanOrEqual(2);
+  await page.waitForTimeout(1500); // longer than the 600 ms ease
+  // Damping may still creep by a hair; an automatic re-frame would move the camera by several tiles.
+  const a = JSON.parse(dragged!) as number[], b = JSON.parse((await canvas.getAttribute('data-camera-position'))!) as number[];
+  expect(Math.hypot(...a.map((v, i) => v - b[i]!))).toBeLessThan(0.1);
 });

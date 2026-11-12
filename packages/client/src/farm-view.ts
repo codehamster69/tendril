@@ -40,6 +40,11 @@ export class FarmView {
   private meadow = new THREE.Mesh(new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2), matte(0x759464));
   private sky = new THREE.Color(SKY.clear);
   private framed = false;
+  /** Plot count at the last update, to notice when land is bought. */
+  private plotCount = 0;
+  /** Camera pose right after the last automatic framing; any difference later means the user moved the camera. */
+  private autoPose: { position: THREE.Vector3; target: THREE.Vector3 } | null = null;
+  private reframe: { from: { position: THREE.Vector3; target: THREE.Vector3 }; to: { position: THREE.Vector3; target: THREE.Vector3 }; start: number } | null = null;
   private disposed = false;
   private raf = 0;
   private previousTime = 0;
@@ -79,6 +84,7 @@ export class FarmView {
     this.controls.maxPolarAngle = Math.PI / 2 - 0.15;
     this.controls.target.set(3.5, 0, 3.5);
     this.controls.addEventListener('change', this.cameraStatus);
+    this.controls.addEventListener('start', this.cancelReframe);
     this.ro = new ResizeObserver(this.resize);
     this.ro.observe(canvas.parentElement ?? canvas);
     window.addEventListener('resize', this.resize);
@@ -227,6 +233,57 @@ export class FarmView {
     this.canvas.dataset.tileColors = JSON.stringify(colors);
     this.canvas.dataset.modelInstances = JSON.stringify(Object.fromEntries([...this.batches].map(([name, batch]) => [name, batch.count])));
     if (!this.framed && snapshot.tiles.length) { this.focusFarm(); this.framed = true; }
+    else if (snapshot.plots.length > this.plotCount && this.autoFramingArmed()) this.startReframe();
+    this.plotCount = snapshot.plots.length;
+  }
+
+  /** True while the camera is where automatic framing last left it (or is still easing there). */
+  private autoFramingArmed(): boolean {
+    if (this.reframe) return true;
+    const pose = this.autoPose;
+    return !!pose && this.camera.position.distanceTo(pose.position) < 0.05 && this.controls.target.distanceTo(pose.target) < 0.05;
+  }
+
+  /** Camera pose that shows every owned tile, looking along `direction` (from the target towards the camera). */
+  private framingPose(direction: THREE.Vector3): { position: THREE.Vector3; target: THREE.Vector3 } | null {
+    const bounds = this.latest ? this.bounds(this.latest) : null;
+    if (!bounds) return null;
+    const { x0, x1, z0, z1 } = bounds;
+    const radius = Math.hypot(x1 - x0, z1 - z0) / 2 + 0.8;
+    const fov = THREE.MathUtils.degToRad(this.camera.fov) / 2;
+    const angle = Math.min(fov, Math.atan(Math.tan(fov) * this.camera.aspect));
+    const distance = radius / Math.sin(angle) * 1.08;
+    const target = new THREE.Vector3((x0 + x1) / 2, 0, (z0 + z1) / 2);
+    return { target, position: target.clone().add(direction.clone().normalize().multiplyScalar(distance)) };
+  }
+
+  private startReframe(): void {
+    const to = this.framingPose(this.camera.position.clone().sub(this.controls.target));
+    if (!to) return;
+    if (this.reducedMotion.matches) { this.applyPose(to); return; }
+    this.clearCameraDamping();
+    this.reframe = { from: { position: this.camera.position.clone(), target: this.controls.target.clone() }, to, start: performance.now() };
+  }
+
+  private cancelReframe = (): void => { this.reframe = null; };
+
+  private applyPose(pose: { position: THREE.Vector3; target: THREE.Vector3 }): void {
+    this.clearCameraDamping();
+    this.controls.target.copy(pose.target);
+    this.camera.position.copy(pose.position);
+    this.controls.update();
+    this.autoPose = { position: this.camera.position.clone(), target: this.controls.target.clone() };
+    this.cameraStatus();
+  }
+
+  private stepReframe(time: number): void {
+    const move = this.reframe;
+    if (!move) return;
+    const t = Math.min(1, (time - move.start) / 600);
+    const e = t * t * (3 - 2 * t);
+    if (t >= 1) { this.reframe = null; this.applyPose(move.to); return; }
+    this.controls.target.lerpVectors(move.from.target, move.to.target, e);
+    this.camera.position.lerpVectors(move.from.position, move.to.position, e);
   }
 
   private bounds(snapshot: Snapshot): Bounds | null { return tileBounds(snapshot.tiles); }
@@ -268,20 +325,12 @@ export class FarmView {
     this.canvas.dataset.overlayColors = JSON.stringify(this.overlayLayer.update(this.latest.tiles, this.overlay));
   }
 
+  /** Re-frame the whole farm at the default angle and re-arm automatic framing. */
   focusFarm(): void {
     if (this.disposed || !this.latest) return;
-    const bounds = this.bounds(this.latest);
-    if (!bounds) return;
-    const { x0, x1, z0, z1 } = bounds;
-    const radius = Math.hypot(x1 - x0, z1 - z0) / 2 + 0.8;
-    const fov = THREE.MathUtils.degToRad(this.camera.fov) / 2;
-    const angle = Math.min(fov, Math.atan(Math.tan(fov) * this.camera.aspect));
-    const distance = radius / Math.sin(angle) * 1.08;
-    this.clearCameraDamping();
-    this.controls.target.set((x0 + x1) / 2, 0, (z0 + z1) / 2);
-    this.camera.position.copy(this.controls.target).add(new THREE.Vector3(0.35, 1.2, 1).normalize().multiplyScalar(distance));
-    this.controls.update();
-    this.cameraStatus();
+    this.reframe = null;
+    const pose = this.framingPose(new THREE.Vector3(0.35, 1.2, 1));
+    if (pose) this.applyPose(pose);
   }
 
   selectBot(id: number): void {
@@ -336,6 +385,7 @@ export class FarmView {
 
   private cameraStatus = (): void => {
     this.canvas.dataset.cameraTarget = JSON.stringify(this.controls.target.toArray());
+    this.canvas.dataset.cameraPosition = JSON.stringify(this.camera.position.toArray());
   };
   private resize = (): void => {
     if (this.disposed) return;
@@ -390,6 +440,7 @@ export class FarmView {
     const delta = this.previousTime ? Math.min((time - this.previousTime) / 1000, 0.1) : 0;
     this.previousTime = time;
     this.updateBots(delta, time);
+    this.stepReframe(time);
     this.controls.update();
     this.renderer.render(this.scene, this.camera);
     this.canvas.dataset.sceneReady = String(!!this.latest?.tiles.length);
@@ -406,6 +457,7 @@ export class FarmView {
     this.canvas.removeEventListener('pointerup', this.pointerUp);
     this.canvas.removeEventListener('pointercancel', this.pointerCancel);
     this.controls.removeEventListener('change', this.cameraStatus);
+    this.controls.removeEventListener('start', this.cancelReframe);
     this.controls.dispose();
     for (const batch of this.batches.values()) for (const mesh of batch.meshes) { this.scene.remove(mesh); mesh.dispose(); }
     this.batches.clear();

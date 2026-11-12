@@ -1,17 +1,30 @@
 # Start with carrots. Questions are free; actions cost ticks.
+# Carrots tire the soil, so clover (bought once) takes turns to heal it.
+define pick_crop(s):
+    if unlocked(clover) and (s.nitrogen < 25 or s.fatigue > 40):
+        return clover
+    return carrot
+
 repeat forever:
     for each tile in tiles():
         go_to tile
         if scan().ripe:
             harvest
         if scan().empty:
+            s = scan()
+            if s.moisture < 25:
+                water
             till
-            plant carrot
+            plant pick_crop(s)
         if carried() >= capacity():
             go_to barn
             deposit
             sell carrot, all
+            sell clover, all
     go_to barn
     deposit
     sell carrot, all
+    sell clover, all
+    if not unlocked(clover) and coins() >= unlock_cost(clover):
+        unlock clover
     wait 100
