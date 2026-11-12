@@ -78,3 +78,28 @@ jobs:
             packages/client/release/*.exe
             packages/client/release/*.AppImage
             packages/client/release/*.deb
+
+  publish:
+    name: Publish GitHub Release
+    # Only a pushed v* tag publishes. A manual run (workflow_dispatch) stops at workflow artifacts.
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    needs: installers
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - name: Download every installer artifact
+        uses: actions/download-artifact@v4 # UNPINNED: coordinator to pin to a full SHA
+        with:
+          pattern: Tendril-unsigned-*
+          merge-multiple: true
+          path: installers
+      - name: Create the release for this tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          ls -l installers
+          gh release create "$TAG" installers/*.dmg installers/*.zip installers/*.exe installers/*.AppImage installers/*.deb --title "Tendril $TAG" --generate-notes
