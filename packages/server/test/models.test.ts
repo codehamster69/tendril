@@ -1,7 +1,7 @@
 // D1: the humans vs models board. A model entry must carry a program the server ran and must publish it.
 import { readFileSync } from 'node:fs';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { challengeSetup, createWorld, dailySeed, RULES_VERSION } from '@tendril/sim/src/index.ts';
+import { SETUP_LEGACY, challengeSetup, createWorld, dailySeed, RULES_VERSION } from '@tendril/sim/src/index.ts';
 import type { LogEntry } from '@tendril/sim/src/index.ts';
 import { createRun } from '../../lang/src/index.ts';
 import { verifySource } from '../../lang/src/verify.ts';
@@ -19,7 +19,7 @@ const wordy = `x = 1\n${daily}`;
 
 function logOf(source: string): LogEntry[] {
   const seed = dailySeed('2026-11-12');
-  const run = createRun(createWorld({ id: DAILY, seed }, challengeSetup('daily', seed).setup), source);
+  const run = createRun(createWorld({ id: DAILY, seed }, challengeSetup('daily', seed, SETUP_LEGACY).setup), source);
   run.step(3000);
   return run.pending.filter((a) => a[0] < 3000);
 }
@@ -46,7 +46,7 @@ beforeEach(async () => {
   verifyCalls = 0; up = true;
   db = createDb({ url: ':memory:' });
   app = createApp({
-    db, env: { TENDRIL_DEV_AUTH: '1', PUBLIC_ORIGIN: 'https://tendril.example' }, now: () => BASE,
+    db, env: { TENDRIL_DEV_AUTH: '1', PUBLIC_ORIGIN: 'https://tendril.example' }, setupVersion: 0, now: () => BASE,
     verifySource: async (r) => { verifyCalls++; if (!up) throw new Error('down'); return verifySource(r); },
   });
   ann = await login('Ann'); bo = await login('Bo'); robot = await login('Robot');

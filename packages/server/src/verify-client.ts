@@ -3,9 +3,9 @@
 import { createHash } from 'node:crypto';
 import type { ChallengeKind } from '@tendril/sim/src/index.ts';
 
-export interface VerifyRequest { source: string; challengeId: string; kind: ChallengeKind; seed: number; ticks: number; rulesVersion: number }
+export interface VerifyRequest { source: string; challengeId: string; kind: ChallengeKind; seed: number; ticks: number; rulesVersion: number; setupVersion?: number }
 export type VerifyResult =
-  | { ok: true; tokens: number; logHash: string; actions: number }
+  | { ok: true; tokens: number; logHash: string; actions: number; netWorth?: number }
   | { ok: false; reason: 'compile' | 'timeout' | 'rules' | 'bad'; message: string };
 /** Resolves with the verdict, or rejects when the check could not be made at all (the caller answers 503). */
 export type SourceVerifier = (request: VerifyRequest) => Promise<VerifyResult>;

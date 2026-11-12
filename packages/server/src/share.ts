@@ -184,7 +184,15 @@ export function sharePage(info: ShareInfo | null, origin: string, id: string): s
 <body style="font:16px system-ui,sans-serif;background:#12201a;color:#f4f1e6;padding:2rem"><p><a style="color:#7bc96f" href="${esc(dest)}">${esc(info ? 'Open the replay' : 'Open Tendril')}</a></p></body></html>`;
 }
 
-export interface ShareCtx { db: Db; now: number; origin: string; host: string }
+export interface ShareCtx { db: Db; now: number; origin: string; host: string; /** The request's query string. Share URLs take none: it only ever varies the CDN cache key. */ search?: string; /** False when the budget guard is not in normal mode: pages still serve, hits are not written. */ count?: boolean }
+
+const genericCards = new Map<string, Buffer>();
+/** The card for an unknown or missing entry never changes, so it is drawn once per host instead of once per request. */
+export function genericCardPng(host: string): Buffer {
+  let png = genericCards.get(host);
+  if (!png) { png = renderCard({ ...GENERIC, host }); if (genericCards.size < 16) genericCards.set(host, png); }
+  return png;
+}
 
 /** Handles /r/<id> and /api/og/<id>.png (also reached as /og/...). Returns null for any other path. */
 export async function handleShare(path: string, method: string, c: ShareCtx): Promise<Response | null> {
@@ -193,15 +201,16 @@ export async function handleShare(path: string, method: string, c: ShareCtx): Pr
   if (!page && !card) return null;
   if (method !== 'GET' && method !== 'HEAD') return new Response('Method not allowed', { status: 405, headers: { Allow: 'GET, HEAD' } });
   const id = (page ?? card)![1]!;
+  if (c.search) return new Response(null, { status: 308, headers: { Location: path, 'Cache-Control': 'public, max-age=3600, s-maxage=86400', 'X-Content-Type-Options': 'nosniff' } });
   const info = await loadShare(c.db, id, c.host);
-  if (info) await countHit(c.db, id, page ? 'page' : 'card', c.now);
+  if (info && c.count !== false) await countHit(c.db, id, page ? 'page' : 'card', c.now);
   const base = { 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer' };
   if (page) {
     return new Response(method === 'HEAD' ? null : sharePage(info, c.origin, id), { status: 200, headers: {
       ...base, 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': info ? 'public, max-age=60, s-maxage=300' : 'public, max-age=60, s-maxage=60',
       'Content-Security-Policy': "default-src 'none'; style-src 'unsafe-inline'; img-src 'none'; frame-ancestors 'none'" } });
   }
-  const png = renderCard(info ?? { ...GENERIC, host: c.host });
+  const png = info ? renderCard(info) : genericCardPng(c.host);
   return new Response(method === 'HEAD' ? null : new Uint8Array(png), { status: 200, headers: {
     ...base, 'Content-Type': 'image/png', 'Content-Length': String(png.length),
     'Cache-Control': info ? 'public, max-age=3600, s-maxage=86400' : 'public, max-age=300, s-maxage=3600' } });

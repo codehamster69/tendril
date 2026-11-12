@@ -41,7 +41,7 @@ function githubStub(profile: Record<string, unknown> = { id: 4242, login: 'octo-
 }
 
 // Small chunk budget for the rate-limit tests; the production default is tested in attack.test.ts.
-function makeApp(): void { app = createApp({ db, env, fetch: github.fetch, now: () => time, chunkAttemptsPerHour: 10 }); }
+function makeApp(): void { app = createApp({ db, env, fetch: github.fetch, setupVersion: 0, now: () => time, chunkAttemptsPerHour: 10 }); }
 
 async function request(path: string, options: Opts = {}) {
   const headers = new Headers(options.headers);
@@ -109,25 +109,25 @@ afterEach(() => { db.close(); });
 
 describe('migrations', () => {
   it('are idempotent, recorded in schema_version, and applied lazily on the first request', async () => {
-    expect(await db.query('SELECT version FROM schema_version')).toEqual([{ version: 1 }, { version: 2 }, { version: 3 }, { version: 4 }]);
+    expect(await db.query('SELECT version FROM schema_version')).toEqual([{ version: 1 }, { version: 2 }, { version: 3 }, { version: 4 }, { version: 5 }, { version: 6 }]);
     expect(await migrate(db)).toEqual([]);
     const fresh = createDb({ url: ':memory:' });
     try {
-      const lazy = createApp({ db: fresh, env, fetch: github.fetch, now: () => time });
+      const lazy = createApp({ db: fresh, env, fetch: github.fetch, setupVersion: 0, now: () => time });
       expect((await lazy(new Request('http://localhost:8787/api/stats'))).status).toBe(200);
-      expect(await fresh.query('SELECT version FROM schema_version')).toEqual([{ version: 1 }, { version: 2 }, { version: 3 }, { version: 4 }]);
+      expect(await fresh.query('SELECT version FROM schema_version')).toEqual([{ version: 1 }, { version: 2 }, { version: 3 }, { version: 4 }, { version: 5 }, { version: 6 }]);
     } finally { fresh.close(); }
   });
   it('persist in a file database across reopen', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'tendril-db-'));
     try {
       const first = createDb({ url: `file:${join(dir, 't.db')}` });
-      const one = createApp({ db: first, env, fetch: github.fetch, now: () => time });
+      const one = createApp({ db: first, env, fetch: github.fetch, setupVersion: 0, now: () => time });
       const created = await one(new Request('http://localhost:8787/api/dev/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ displayName: 'Persisted' }) }));
       const { token } = await created.json() as Login;
       first.close();
       const second = createDb({ url: `file:${join(dir, 't.db')}` });
-      const two = createApp({ db: second, env, fetch: github.fetch, now: () => time });
+      const two = createApp({ db: second, env, fetch: github.fetch, setupVersion: 0, now: () => time });
       const me = await two(new Request('http://localhost:8787/api/me', { headers: { Authorization: `Bearer ${token}` } }));
       expect(me.status).toBe(200);
       second.close();
@@ -150,8 +150,8 @@ describe('dev login and farms', () => {
     expect(await db.query('SELECT * FROM users')).toHaveLength(1);
   });
   it('stores SQL-shaped display names as plain text', async () => {
-    const name = "Robert'); DROP TABLE users;--";
-    const evil = await login(name);
+    const name = "Robert');-DROP-TABLE-users;--";
+    const evil = await login("Robert'); DROP TABLE users;--");
     expect(evil.profile.displayName).toBe(name);
     const me = await (await request('/me', { token: evil.token })).json() as { profile: Profile };
     expect(me.profile.displayName).toBe(name);
@@ -251,7 +251,7 @@ describe('GitHub OAuth', () => {
     const sessionCookie = session.split(';')[0]!;
     const token = sessionCookie.split('=')[1]!;
     const me = await (await request('/me', { cookie: sessionCookie })).json() as { profile: Profile };
-    expect(me.profile).toEqual({ id: expect.any(String), login: 'octo-cat', displayName: 'Octo Cat', avatarUrl: 'https://avatars.githubusercontent.com/u/4242' });
+    expect(me.profile).toEqual({ id: expect.any(String), login: 'octo-cat', displayName: 'octo-cat', avatarUrl: 'https://avatars.githubusercontent.com/u/4242' });
     expect(JSON.stringify(await db.query('SELECT * FROM sessions'))).not.toContain(token);
     expect(JSON.stringify(await db.query('SELECT * FROM users'))).not.toContain('gho_stub_token');
     // Signing in again reuses the same user.

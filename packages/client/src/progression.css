@@ -31,3 +31,5 @@
 .coach-steps { margin: 8px 0 8px 18px; padding: 0; color: var(--mist-2); }
 .coach-steps li.done { color: #a7d59a; text-decoration: line-through; }
 .coach-steps code { margin-left: 4px; }
+
+#arena-mods { margin: 0.25rem 0 0.5rem; font-size: 0.85rem; opacity: 0.8; }

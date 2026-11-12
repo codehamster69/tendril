@@ -79,7 +79,16 @@ class Run implements ScriptRun {
   private bots: BotState[] = []; private shared: RecordValue = Object.create(null) as RecordValue;
   private breakpoints = new Set<number>(); private heat = new Map<number, number>(); private cursor = 0;
   private closed = false; private paused: { bot: number; line: number } | null = null;
-  constructor(readonly world: World, private program: Program) { this.ensureBots(); }
+  /** Elements and characters this run has allocated so far; see `allocationBudget`. */
+  private allocated = 0;
+  constructor(readonly world: World, private program: Program, private allocationBudget = Infinity) { this.ensureBots(); }
+  /** The source check bounds memory by bounding total allocation: a program that keeps allocating big lists would otherwise exhaust the verify function. */
+  private charge<T extends Value>(value: T, size: number): T {
+    this.allocated += size + 1;
+    if (this.allocated > this.allocationBudget) throw new SproutError('The program used too much memory.');
+    return value;
+  }
+  private sizeOf(v: Value): number { return typeof v === 'string' ? v.length : Array.isArray(v) ? v.length : 0; }
   private ensureBots(): void {
     while (this.bots.length < this.world.bots.length) {
       const bot = this.bots.length;
@@ -107,12 +116,12 @@ class Run implements ScriptRun {
       case 'int': case 'str': case 'bool': return e.v;
       case 'none': return null;
       case 'name': return this.lookup(b, e.name);
-      case 'interp': { let s = ''; for (const x of e.parts) s += typeof x === 'string' ? x : text(yield* this.expr(b, x)); if (s.length > MAX_COLLECTION) throw new SproutError('String is too long.'); return s; }
-      case 'list': { const items: Value[] = []; for (const x of e.items) items.push(yield* this.expr(b, x)); return items; }
-      case 'record': { const o = Object.create(null) as RecordValue; for (const x of e.entries) o[x.key] = yield* this.expr(b, x.value); return o; }
+      case 'interp': { let s = ''; for (const x of e.parts) s += typeof x === 'string' ? x : text(yield* this.expr(b, x)); if (s.length > MAX_COLLECTION) throw new SproutError('String is too long.'); return this.charge(s, s.length); }
+      case 'list': { const items: Value[] = []; for (const x of e.items) items.push(yield* this.expr(b, x)); return this.charge(items, items.length); }
+      case 'record': { const o = Object.create(null) as RecordValue; for (const x of e.entries) o[x.key] = yield* this.expr(b, x.value); return this.charge(o, e.entries.length); }
       case 'unary': { const x = yield* this.expr(b, e.e); return e.op === 'not' ? !truth(x) : bounded(-numeric(x)); }
       case 'logic': { const l = truth(yield* this.expr(b, e.l)); return e.op === 'and' ? l && truth(yield* this.expr(b, e.r)) : l || truth(yield* this.expr(b, e.r)); }
-      case 'binary': return binary(e.op, yield* this.expr(b, e.l), yield* this.expr(b, e.r));
+      case 'binary': { const r = binary(e.op, yield* this.expr(b, e.l), yield* this.expr(b, e.r)); return this.charge(r, this.sizeOf(r)); }
       case 'field': { const o = record(yield* this.expr(b, e.obj)); return o[e.name] ?? null; }
       case 'index': {
         const o = yield* this.expr(b, e.obj), i = yield* this.expr(b, e.idx);
@@ -150,7 +159,7 @@ class Run implements ScriptRun {
       b.line = s.pos.line; b.frames.at(-1)!.line = s.pos.line;
       yield { k: 'line', line: s.pos.line };
       switch (s.k) {
-        case 'assign': { const value = yield* this.expr(b, s.value); yield* this.assign(b, s.target, s.op === '=' ? value : binary(s.op[0]!, yield* this.expr(b, s.target), value)); break; }
+        case 'assign': { const value = yield* this.expr(b, s.value); const ytarget = s.op === '=' ? null : yield* this.expr(b, s.target); yield* this.assign(b, s.target, s.op === '=' ? value : (() => { const r = binary(s.op[0]!, ytarget, value); return this.charge(r, this.sizeOf(r)); })()); break; }
         case 'expr': yield* this.expr(b, s.e); break;
         case 'pass': break;
         case 'stop': throw new StopFlow();
@@ -168,12 +177,13 @@ class Run implements ScriptRun {
         }
         case 'times': case 'foreach': case 'forrange': {
           let values: Value[];
-          if (s.k === 'times') { const n = numeric(yield* this.expr(b, s.count)); values = []; if (n > MAX_COLLECTION) throw new SproutError('Repeat at most 100,000 times in one block; use while for longer loops.'); for (let i = 0; i < n; i++) values.push(i); }
-          else if (s.k === 'foreach') { const v = yield* this.expr(b, s.iter); values = Array.isArray(v) ? v.slice() : typeof v === 'string' ? [...v] : Object.keys(record(v)); }
+          if (s.k === 'times') { const n = numeric(yield* this.expr(b, s.count)); values = []; if (n > MAX_COLLECTION) throw new SproutError('Repeat at most 100,000 times in one block; use while for longer loops.'); this.charge(0, Math.max(0, n)); for (let i = 0; i < n; i++) values.push(i); }
+          else if (s.k === 'foreach') { const v = yield* this.expr(b, s.iter); values = Array.isArray(v) ? v.slice() : typeof v === 'string' ? [...v] : Object.keys(record(v)); this.charge(0, values.length); }
           else {
             const start = numeric(yield* this.expr(b, s.from)), end = numeric(yield* this.expr(b, s.to)); const delta = s.step ? numeric(yield* this.expr(b, s.step)) : start <= end ? 1 : -1;
             if (!delta) throw new SproutError('Loop step cannot be zero.'); values = [];
             for (let i = start; delta > 0 ? i <= end : i >= end; i = bounded(i + delta)) { if (values.length >= MAX_COLLECTION) throw new SproutError('Loop range is too large.'); values.push(i); }
+            this.charge(0, values.length);
           }
           for (const value of values) {
             yield { k: 'work', line: s.pos.line }; if (s.k !== 'times') this.setName(b, s.name, value);
@@ -222,7 +232,7 @@ class Run implements ScriptRun {
       case 'my_id': return b.bot; case 'tick': return w.tick; case 'coins': return w.coins; case 'bots': return w.bots.length;
       case 'load': return cargo(bot.load); case 'stock': return cargo(w.stock); case 'carried': return [...bot.load].reduce((n, x) => n + x, 0); case 'capacity': return capacity(w);
       case 'owns': return scanAt(w, integer(0), integer(1)) !== null; case 'plots': return w.plots.map((p) => ({ px: p.px, py: p.py }));
-      case 'tiles': { const out: Value[] = []; if (w.plots.length * 64 > MAX_COLLECTION) throw new SproutError('tiles() exceeds 100,000 tiles; iterate plots instead.'); for (const p of w.plots) for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) out.push({ x: p.px * 8 + x, y: p.py * 8 + y }); return out; }
+      case 'tiles': { const out: Value[] = []; if (w.plots.length * 64 > MAX_COLLECTION) throw new SproutError('tiles() exceeds 100,000 tiles; iterate plots instead.'); for (const p of w.plots) for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) out.push({ x: p.px * 8 + x, y: p.py * 8 + y }); return this.charge(out, out.length * 2); }
       case 'forecast': { const horizon = integer(0); if (horizon < 0 || horizon > 100_000) throw new SproutError('Forecast between 0 and 100,000 ticks.'); return forecast(w, horizon).map((s) => ({ ...s })); }
       case 'weather': return weatherAt(w, w.tick); case 'orders': return openOrders(w).map((o) => ({ ...o, crop: CROPS[o.crop]!.name }));
       case 'plot_cost': return plotCost(w); case 'bot_cost': return botCost(w); case 'unlocked': return isUnlocked(w, unlock(0)); case 'unlock_cost': return UNLOCKS[unlock(0)]!.price; case 'price': return ITEMS[item(0)]!.price;
@@ -230,7 +240,7 @@ class Run implements ScriptRun {
       case 'len': { const v = arg(0); return typeof v === 'string' || Array.isArray(v) ? v.length : Object.keys(record(v)).length; }
       case 'str': return text(arg(0)); case 'int': { const v = arg(0); const n = typeof v === 'string' && /^-?\d+$/.test(v) ? Number(v) : typeof v === 'number' ? v : NaN; return Number.isSafeInteger(n) ? n : null; }
       case 'abs': return Math.abs(integer(0)); case 'min': case 'max': { const values = a.length === 1 && Array.isArray(a[0]) ? a[0] : a; if (!values.length) throw new SproutError('Supply at least one integer.'); return values.map(numeric).reduce((x, y) => name === 'min' ? Math.min(x, y) : Math.max(x, y)); }
-      case 'range': { const start = a.length === 1 ? 0 : integer(0), end = a.length === 1 ? integer(0) : integer(1); if (end - start > MAX_COLLECTION) throw new SproutError('Range is too large.'); const out: Value[] = []; for (let i = start; i < end; i++) out.push(i); return out; }
+      case 'range': { const start = a.length === 1 ? 0 : integer(0), end = a.length === 1 ? integer(0) : integer(1); if (end - start > MAX_COLLECTION) throw new SproutError('Range is too large.'); const out: Value[] = []; for (let i = start; i < end; i++) out.push(i); return this.charge(out, out.length); }
       case 'append': case 'insert': { const xs = list(arg(0)); if (xs.length >= MAX_COLLECTION) throw new SproutError('List is too long.'); if (name === 'append') xs.push(arg(1)); else xs.splice(index(arg(1), xs.length, true), 0, arg(2)); return null; }
       case 'pop': { const xs = list(arg(0)); if (!xs.length) throw new SproutError('Cannot pop an empty list.'); return xs.pop()!; }
       case 'remove': { const xs = list(arg(0)); return xs.splice(index(arg(1), xs.length), 1)[0]!; }
@@ -282,7 +292,11 @@ class Run implements ScriptRun {
   takeLog(): LogEntry[] { return this.pending.splice(0); }
   close(): void { this.closed = true; this.bots = []; }
 }
-export function createRun(world: World, source: string, opts?: CompileOptions): ScriptRun {
+export interface RunOptions extends CompileOptions {
+  /** Total elements and characters the program may allocate over the whole run. Absent: unlimited (the player's own machine). The source check sets it. */
+  allocationBudget?: number;
+}
+export function createRun(world: World, source: string, opts?: RunOptions): ScriptRun {
   const result = compile(source, opts); if (!result.program) throw new CompileError(result.diagnostics);
-  return new Run(world, result.program);
+  return new Run(world, result.program, opts?.allocationBudget);
 }

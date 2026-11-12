@@ -1,5 +1,6 @@
 // Challenge play: daily (`?mode=daily`) and any challenge (`?mode=challenge&id=`). The sim mode is always 'daily'.
-import { challengeSetup, createWorld, dailyNumber, dailySeed, DAILY_PAR, DAILY_TICKS, replayWithPar, RULES_VERSION } from '@tendril/sim/src/index.ts';
+import { setupOf, challengeScenario } from './challenge-setup';
+import { challengeSetup, createWorld, dailyNumber, dailySeed, DAILY_PAR, describeModifiers, replayWithPar, RULES_VERSION, SETUP_VERSION } from '@tendril/sim/src/index.ts';
 import type { LogEntry, Snapshot } from '@tendril/sim/src/index.ts';
 import { ApiError, signedInHint } from './api-client';
 import type { ChallengeInfo, EntryResult, FarmApi } from './api-client';
@@ -27,14 +28,13 @@ export async function loadChallenge(api: FarmApi, query: URLSearchParams): Promi
     }
     const date = utcToday();
     return {
-      id: `d-${date}`, kind: 'daily', number: dailyNumber(date), seed: dailySeed(date), ticks: DAILY_TICKS, par: DAILY_PAR,
-      opensAt: null, closesAt: null, rulesVersion: RULES_VERSION, players: 0, best: null,
+      id: `d-${date}`, kind: 'daily', number: dailyNumber(date), seed: dailySeed(date), ticks: challengeSetup('daily', dailySeed(date)).ticks, par: DAILY_PAR,
+      opensAt: null, closesAt: null, rulesVersion: RULES_VERSION, setupVersion: SETUP_VERSION, players: 0, best: null,
     };
   }
 }
 
-/** Scenario fields for the sim worker; the server builds the same world from the same function. */
-export const challengeScenario = (c: ChallengeInfo) => ({ tickLimit: c.ticks, farmId: c.id, setup: challengeSetup(c.kind, c.seed).setup });
+export { challengeScenario, setupOf };
 
 const clock = (ms: number): string => {
   const s = Math.max(0, Math.floor(ms / 1000));
@@ -43,7 +43,7 @@ const clock = (ms: number): string => {
 
 /** The score the player just earned, replayed locally exactly as the server will replay it. */
 export function localResult(c: ChallengeInfo, actions: LogEntry[]): { netWorth: number; parTick: number | null; mosaic: string } {
-  const world = createWorld({ id: c.id, seed: c.seed }, challengeSetup(c.kind, c.seed).setup);
+  const world = createWorld({ id: c.id, seed: c.seed }, setupOf(c).setup);
   return replayWithPar(world, actions, c.ticks, c.par ?? Number.MAX_SAFE_INTEGER);
 }
 
@@ -94,9 +94,11 @@ export function mountArena({ loop, api, challenge: c }: { loop: GameLoop; api: F
   const runEnd = el('button', { id: 'btn-run-end', class: 'primary', text: 'Run to end' });
   runEnd.addEventListener('click', () => { void loop.runToEnd(); });
   const head = el('header', { id: 'arena-head' }, el('span', { class: 'eyebrow', text: title }), runEnd);
+  const mods = describeModifiers(setupOf(c).modifiers, c.kind);
+  const modLine = mods.length ? el('p', { id: 'arena-mods', title: "Today's modifiers", text: `Today: ${mods.join(' · ')}` }) : null;
   const stats = el('p', { id: 'arena-stats' }, 'Time left ', left, ' · Score to beat ', beat);
   const result = el('section', { id: 'arena-result', class: 'daily-result', hidden: '' });
-  host.append(head, publishBox(), modelBox(), el('h3', { text: `One seed. ${c.ticks.toLocaleString('en-US')} ticks. Your best program.` }), stats, result);
+  host.append(head, publishBox(), modelBox(), el('h3', { text: `One seed. ${c.ticks.toLocaleString('en-US')} ticks. Your best program.` }), ...(modLine ? [modLine] : []), stats, result);
 
   const draw = (): void => {
     left.textContent = c.closesAt === null ? 'open' : c.closesAt <= Date.now() ? 'closed' : clock(c.closesAt - Date.now());

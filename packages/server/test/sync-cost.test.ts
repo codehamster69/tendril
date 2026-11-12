@@ -48,7 +48,7 @@ async function addRivals(count: number, worth: (i: number) => number): Promise<v
 beforeEach(async () => {
   time = BASE;
   db = createDb({ url: ':memory:' });
-  app = createApp({ db, env: { TENDRIL_DEV_AUTH: '1', PUBLIC_ORIGIN: 'https://tendril.example' }, now: () => time });
+  app = createApp({ db, env: { TENDRIL_DEV_AUTH: '1', PUBLIC_ORIGIN: 'https://tendril.example' }, setupVersion: 0, now: () => time });
   token = (await call('/dev/login', { body: { displayName: 'Farmer' } })).json.token;
   farm = (await call('/farms', { token, body: {} })).json;
 });

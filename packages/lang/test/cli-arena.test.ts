@@ -52,7 +52,7 @@ it('plays the daily example, submits it, and the server agrees with the local sc
   expect(played.split('\n').filter((l) => Array.from(l).filter((c) => /\p{Extended_Pictographic}/u.test(c)).length === 8)).toHaveLength(8);
 
   await expect(tendril('submit')).rejects.toThrow(/Not signed in/);
-  const login = await fetch(`${origin}/api/dev/login`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ displayName: 'Cli Tester' }) });
+  const login = await fetch(`${origin}/api/dev/login`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ displayName: 'Cli-Tester' }) });
   const { token } = (await login.json()) as { token: string };
   // The stored token is what `tendril login` writes: owner-only.
   const { saveToken } = await import('../src/arena-cli.ts');
@@ -71,18 +71,18 @@ it('plays the daily example, submits it, and the server agrees with the local sc
   expect(tokens).toBe(countTokens(readFileSync(daily, 'utf8')));
   expect(submitted).toMatch(/brevity 1 /);
   const board = (await (await fetch(`${origin}/api/challenges/today/board?medal=brevity`)).json()) as { entries: { value: number; displayName: string; authorKind: string }[] };
-  expect(board.entries.map((e) => [e.displayName, e.value, e.authorKind])).toEqual([['Cli Tester', tokens, 'human']]);
+  expect(board.entries.map((e) => [e.displayName, e.value, e.authorKind])).toEqual([['Cli-Tester', tokens, 'human']]);
 }, 120_000);
 
 it('--publish publishes the program, and --model files a declared model entry on the model board', async () => {
   const tendrilPublish = await tendrilAs(await devLogin('Pub Tester'), 'submit', '--publish');
   expect(tendrilPublish.stdout).toMatch(/program published when the challenge closes/);
-  const modelToken = await devLogin('Agent Tester');
+  const modelToken = await devLogin('Agent-Tester');
   const m = (await tendrilAs(modelToken, 'submit', '--model', 'harness-model-1')).stdout;
   expect(m).toMatch(/as model harness-model-1/);
   expect(m).toMatch(/brevity \d+ /);
   const models = (await (await fetch(`${origin}/api/challenges/today/board?medal=brevity&author=model`)).json()) as { entries: { displayName: string; model: string }[] };
-  expect(models.entries.map((e) => [e.displayName, e.model])).toEqual([['Agent Tester', 'harness-model-1']]);
+  expect(models.entries.map((e) => [e.displayName, e.model])).toEqual([['Agent-Tester', 'harness-model-1']]);
   const humans = (await (await fetch(`${origin}/api/challenges/today/board?medal=brevity&author=human`)).json()) as { total: number };
   expect(humans.total).toBe(2);
   const sources = (await (await fetch(`${origin}/api/challenges/today/board?medal=wealth`)).json()) as { entries: { entryId: string }[] };

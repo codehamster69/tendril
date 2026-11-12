@@ -69,6 +69,7 @@ import Base from '../layouts/Base.astro';
       <figure class="program" data-program hidden>
         <figcaption data-program-caption></figcaption>
         <pre class="sprout" tabindex="0" aria-label="Sprout program"><code data-program-code></code></pre>
+        <p class="report"><button type="button" data-report>Report this program</button> <span data-report-state role="status"></span></p>
       </figure>
     </section>
   </section>
@@ -302,7 +303,26 @@ import Base from '../layouts/Base.astro';
   const pFigure = document.querySelector<HTMLElement>('[data-program]')!;
   const pCaption = pFigure.querySelector<HTMLElement>('[data-program-caption]')!;
   const pCode = pFigure.querySelector<HTMLElement>('[data-program-code]')!;
+  const reportBtn = pFigure.querySelector<HTMLButtonElement>('[data-report]')!;
+  const reportState = pFigure.querySelector<HTMLElement>('[data-report-state]')!;
+  let openEntry = '';
   let pToken = 0;
+  reportBtn.addEventListener('click', async () => {
+    if (!openEntry) return;
+    reportBtn.disabled = true;
+    reportState.textContent = 'Sending…';
+    try {
+      const res = await fetch(`/api/entries/${encodeURIComponent(openEntry)}/report`, {
+        method: 'POST', headers: { 'content-type': 'application/json', 'x-tendril-client': '1' }, body: '{}',
+      });
+      reportState.textContent = res.ok ? 'Thanks, your report is in.'
+        : res.status === 401 ? 'Sign in to report a program.'
+        : res.status === 429 ? 'You have reported a lot today. Try again tomorrow.'
+        : res.status === 422 ? 'You can\'t report your own program.'
+        : 'The report did not go through. Try again later.';
+      if (!res.ok) reportBtn.disabled = false;
+    } catch { reportState.textContent = 'The report did not go through. Try again later.'; reportBtn.disabled = false; }
+  });
 
   async function showPrograms(kind: 'daily' | 'season') {
     const mine = ++pToken;
@@ -339,6 +359,9 @@ import Base from '../layouts/Base.astro';
   async function readProgram(e: Published, who: string, btn: HTMLElement) {
     for (const b of pList.querySelectorAll('button')) b.removeAttribute('aria-current');
     btn.setAttribute('aria-current', 'true');
+    openEntry = e.entryId;
+    reportBtn.disabled = false;
+    reportState.textContent = '';
     pFigure.hidden = false;
     pCaption.textContent = `${who}'s program`;
     pCode.textContent = 'Loading…';

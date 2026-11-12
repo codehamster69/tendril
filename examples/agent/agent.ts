@@ -2,7 +2,7 @@
 // program back, run it, and submit it through the CLI. Nothing here is special to Tendril's server: a model entry
 // is an ordinary entry with a declared model name, a program the server re-ran, and that program published.
 import { readFileSync } from 'node:fs';
-import { challengeSetup, DAILY_PAR, DAILY_TICKS, dailySeed, RULES_VERSION } from '../../packages/sim/src/index.ts';
+import { challengeSetup, dailySeed, RULES_VERSION, SETUP_VERSION } from '../../packages/sim/src/index.ts';
 import { getChallenge, playLocal } from '../../packages/lang/src/arena-cli.ts';
 import type { Challenge, LastRun } from '../../packages/lang/src/arena-cli.ts';
 import { countTokens } from '../../packages/lang/src/tokens.ts';
@@ -16,8 +16,8 @@ const LANGUAGE_DOC = new URL('../../docs/LANGUAGE.md', import.meta.url);
 /** Today's daily built locally from the shared rules, so a dry run needs no network at all. */
 export function offlineChallenge(date = new Date().toISOString().slice(0, 10)): Challenge {
   const seed = dailySeed(date);
-  challengeSetup('daily', seed); // fails loudly if the rules ever drop the daily kind
-  return { id: `d-${date}`, kind: 'daily', number: null, seed, ticks: DAILY_TICKS, par: DAILY_PAR, rulesVersion: RULES_VERSION };
+  // The par of a live challenge is measured by the server, so an offline stand-in has none.
+  return { id: `d-${date}`, kind: 'daily', number: null, seed, ticks: challengeSetup('daily', seed, SETUP_VERSION).ticks, par: null, rulesVersion: RULES_VERSION, setupVersion: SETUP_VERSION };
 }
 
 export const systemPrompt = (): string => [

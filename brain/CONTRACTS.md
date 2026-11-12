@@ -150,11 +150,11 @@ POST /duels {seed?, ticks?} -> 201 {challengeId}   (session; seed 1..2^32-1; tic
 GET  /seasons?limit=20     -> {seasons:[{id, number, opensAt, closesAt, players, winners:{wealth,speed,brevity}}]}   (Hall of Fame, C2)
                                     closed seasons with at least one entry, newest first; each winner is a board row or null; limit 1..100
 ```
-Not in A2: `/entries/:id/source` (C3), `/players`, `/follows`, `/badge` (B5), `/og`, `/r/` (B4).
+Not in A2: `/players`, `/follows`, `/badge` (B5), `/og`, `/r/` (B4).
 `ranks.*` is 1-based among players with that medal, null if the player has none. `percentile` = floor(100 * (total - rank +
-1) / total) on the wealth board ("at or above this share of players"; 100 for first). Brevity is empty until C3 sets tokens.
+1) / total) on the wealth board ("at or above this share of players"; 100 for first). Brevity: see Source check (C3) below.
 On a non-improving submit, `entryId` is the player's current best-wealth entry, `improved` false, and the other fields
-describe the submitted run. `source`, `sourcePublic` are validated (source <= 32 KB) but not stored until C3.
+describe the submitted run. `source`, `sourcePublic`: see Source check (C3) below.
 
 **Status codes.** 401 no session; 403 sealed; 404 unknown challenge/entry; 409 rules mismatch, challenge not open, or a repeat of
 your own log (you already submitted this exact log; empty logs exempt, and the old /daily/submit returns the existing entry instead); 413 body over 2 MB or more actions than the kind's cap; 422
@@ -197,3 +197,25 @@ GET  /stats/duels        -> {created, accepted}
 ```
 `duel_accepts(challenge_id, user_id, created_at)` is created lazily (no migration). Duel ids are `x-` + 8 base64url chars, so `_` is legal: ids in client and Electron regexes must allow `[A-Za-z0-9_-]`.
 Client: "Challenge a friend" = `POST /duels` with the played seed/ticks, then submit the run as the challenger's entry, copy `<origin>/duel/?id=`. Race = `replay.html?e=<challenger entry>&vs=<my entry>&embed=1`.
+
+## Source check (C3 owns this section; PR #26)
+Server runs Sprout only in the separate function `api/verify.mjs` (built from `packages/lang/src/vercel-verify.ts`); the main bundle must never contain the interpreter (build fails if it does). See D-C3 and `brain/notes/c3-source-check.md`.
+- `POST /challenges/:id/entries` may carry `source` (<= 32 KB) and `sourcePublic`. The verify function runs the program on the challenge's kind and seed and its log hash must equal the submitted log's, else **422** `Source does not produce this run`. Other refusals: 422 `Source took too long to check` (8 s deadline), 422 `Source cannot be checked: Line N: ...`; **503** when the check cannot be made (nothing stored; resend without `source`). `tokens` is never accepted from a client (unknown field, 422); the server counts.
+- Same log sent again with a source attaches the verified source to your existing entry (no 409). A log that already has a verified source is a plain 409 repeat. `source` is stored only when verified.
+- **Brevity = fewest tokens among entries that reached par** (`tokens IS NOT NULL AND par_tick IS NOT NULL`); no par, no Brevity.
+- Tokens (`countTokens` in lang): words, numbers, symbols, strings; free: comments, blank lines, indentation. A string costs `ceil(chars/16)`, min 1.
+```
+GET /entries/:id/source        -> {entryId, source, tokens, netWorth, parTick, sourcePublic, player, authorKind, model, challenge}
+                                  404 no stored program; 403 sealed; 403 not published. Author always reads their own; others need
+                                  source_public and the replay sealing rule (closed, or duel participant).
+GET /challenges/:id/sources?limit= -> {challenge, entries:[{entryId, login, displayName, avatarUrl, netWorth, parTick, tokens, mosaic, authorKind, model}]}
+                                  only source_public entries, best net worth first; 403 until the challenge closes.
+POST /api/verify (verify function only) header X-Tendril-Verify = sha256("tendril-verify:" + (VERIFY_SECRET ?? TURSO_AUTH_TOKEN))
+       {source, challengeId, kind, seed, ticks, rulesVersion, setupVersion?} -> {ok:true, tokens, logHash, actions, netWorth} | {ok:false, reason, message}; no secret: 404.
+       setupVersion absent = 0 (plain farm). netWorth is the end net worth of the verified run.
+```
+**setupVersion (F1/D1).** `challenges.setup_v` (0 plain farm, 1 seed-drawn modifiers) is returned as `setupVersion` on `GET /challenges/*`, on the challenge object inside `/entries/:id`, on `GET /duels/:id` and on `GET /entries/:id/replay`. Every world build passes it: `challengeSetup(kind, seed, setupVersion)` (server replay, verify function, CLI `playLocal`, client).
+
+**Humans vs models (D1).** `authorKind: 'model'` needs `model` (F3 pattern) and a verified, published program: no `source`, or `sourcePublic` not `true`, is **422** `Model entries must include a program and publish it`; a source mismatch is 422 and an unavailable check is 503, and nothing is stored. Resending an earlier plain entry's log with a published program converts that entry to the model entry. Boards filter with `author=human|model` (unset = both); the leaderboard page defaults to Humans. CLI: `tendril submit [--publish] [--model <name>]` always sends the program. Declaration is honour-system (`docs/models.mdx`).
+
+Client: `submitRun(api, c, actions, source?)`; a refused program is resent without it so a score is never lost. Tick box key `tendril.publishSource`.

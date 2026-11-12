@@ -23,7 +23,7 @@ async function submit(name: string): Promise<string> {
 
 beforeEach(() => {
   db = createDb({ url: ':memory:' });
-  app = createApp({ db, env: { TENDRIL_DEV_AUTH: '1', PUBLIC_ORIGIN: ORIGIN }, now: () => BASE });
+  app = createApp({ db, env: { TENDRIL_DEV_AUTH: '1', PUBLIC_ORIGIN: ORIGIN }, setupVersion: 0, now: () => BASE });
 });
 afterEach(() => db.close());
 
@@ -42,7 +42,7 @@ describe('share page', () => {
     const html = await res.text();
     expect(html).toContain(`<meta property="og:image" content="${ORIGIN}/api/og/${id}.png">`);
     expect(html).toContain('<meta name="twitter:card" content="summary_large_image">');
-    expect(html).toMatch(/<meta property="og:title" content="Ada &#60;script&#62; scored \d+ on Tendril/);
+    expect(html).toMatch(/<meta property="og:title" content="Ada-&#60;script&#62; scored \d+ on Tendril/);
     expect(html).not.toContain('<script>');
     expect(html).toContain(`url=${ORIGIN}/play/replay.html?e=${id}`);
     expect((await get(`/api/r/${id}`)).status).toBe(200);

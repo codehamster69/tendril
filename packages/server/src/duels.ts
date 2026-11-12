@@ -17,6 +17,9 @@ async function ensureTable(db: Db): Promise<void> {
   await ready.get(db);
 }
 
+/** How many accepters of one duel the challenger follows back automatically. */
+export const MAX_FORCED_FOLLOWS = 10;
+
 interface PlayerRow { id: string; login: string; display_name: string; avatar_url: string | null }
 
 /** What /duel/?id= shows: who challenged, their best run on this duel, and what the viewer has done so far. */
@@ -36,7 +39,7 @@ export async function duelPage(db: Db, c: ChallengeRow, viewerId: string | undef
     viewer = { isChallenger: viewerId === c.created_by, accepted: !!done, entryId: mine?.id ?? null };
   }
   return {
-    id: c.id, seed: c.seed, ticks: c.ticks, par: c.par, rulesVersion: c.rules_version, createdAt: c.opens_at,
+    id: c.id, seed: c.seed, ticks: c.ticks, par: c.par, rulesVersion: c.rules_version, setupVersion: c.setup_v, createdAt: c.opens_at,
     challenger: challenger ? { login: challenger.login, displayName: challenger.display_name, avatarUrl: challenger.avatar_url } : null,
     entry: best ? { entryId: best.id, netWorth: best.net_worth, parTick: best.par_tick, mosaic: best.mosaic } : null,
     accepted: accepted!.n, viewer,
@@ -58,11 +61,16 @@ export async function acceptDuel(db: Db, c: ChallengeRow, userId: string, now: n
   if (!challenger) throw new HttpError(404, 'Duel not found');
   const changed = await db.transaction(async (tx) => {
     const r = await tx.execute('INSERT OR IGNORE INTO duel_accepts (challenge_id, user_id, created_at) VALUES (?, ?, ?)', [c.id, userId, Math.trunc(now)]);
-    for (const [from, to] of [[userId, challenger.id], [challenger.id, userId]] as const) {
+    if (r.rowsAffected === 0) return false; // a repeat changes nothing, so it cannot re-add a follow the other player removed
+    const [accepts] = await tx.query<{ n: number }>('SELECT COUNT(*) AS n FROM duel_accepts WHERE challenge_id = ?', [c.id]);
+    // The accepter follows on their own act. The challenger is followed back only for the first few accepters of a link,
+    // so a widely shared link cannot fill a challenger's follow list.
+    const edges = accepts!.n <= MAX_FORCED_FOLLOWS ? [[userId, challenger.id], [challenger.id, userId]] as const : [[userId, challenger.id]] as const;
+    for (const [from, to] of edges) {
       const [n] = await tx.query<{ n: number }>('SELECT COUNT(*) AS n FROM follows WHERE follower_id = ?', [from]);
       if (n!.n < MAX_FOLLOWING) await tx.execute('INSERT OR IGNORE INTO follows (follower_id, followee_id, created_at) VALUES (?, ?, ?)', [from, to, Math.trunc(now)]);
     }
-    return r.rowsAffected > 0;
+    return true;
   });
   return { accepted: true, changed, challenger: { login: challenger.login, displayName: challenger.display_name } };
 }

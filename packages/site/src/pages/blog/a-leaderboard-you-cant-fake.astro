@@ -1,0 +1,103 @@
+---
+import Base from '../../layouts/Base.astro';
+---
+<Base title="A leaderboard you can't fake" description="How Tendril checks every score: the server replays your moves on its own copy of the rules, seals replays until a challenge closes, refuses repeats and runs your program to check it.">
+  <article class="wrap post">
+    <p class="kicker">Notes from the build</p>
+    <h1>A leaderboard you can't fake</h1>
+    <p class="lede">Tendril is a farming game you play by writing a program. A leaderboard for that is only worth reading if
+      nobody can type in a score. So the server never takes your word for one. This post walks through what it does instead,
+      and says plainly what it can and can't prove.</p>
+
+    <h2>The server plays your game again</h2>
+    <p>Your program runs on your own computer. The game writes down every move it makes as a short row:
+      <code>[tick, bot, action, …]</code>. When you submit, that list of moves is all you send. There is no score field in
+      the request, and a request with any field the server doesn't know about is turned away.</p>
+    <p>The server builds the challenge farm itself, from the seed it stored when the challenge was created, and replays your
+      moves on it using the same rules code the game uses. The score you see is whatever that replay produces. Every move is
+      checked as it goes: its tick has to be in range and in order, and the action has to be legal at that moment. A bot that
+      is still busy, a tile you don't own or coins you don't have make the replay throw, and the whole submission is
+      rejected. Nothing is partly accepted.</p>
+    <p>This works because the rules are deterministic. They use whole-number maths only, draw randomness from seeded streams,
+      and never read a clock or touch the network. Given the same seed and the same moves, any machine gets the same farm,
+      tick for tick. The submission also carries a rules version, and a mismatch is refused rather than guessed at.</p>
+
+    <figure class="diagram">
+      <svg viewBox="0 0 760 330" role="img" aria-labelledby="d-title d-desc">
+        <title id="d-title">How a submission is checked</title>
+        <desc id="d-desc">Your computer sends moves and optionally a program. The server replays the moves on a farm built from its own seed and rejects illegal logs. If a program was sent, a separate function runs it and its log must hash to the same value as the submitted log. Passing entries go on the board; the replay stays sealed until the challenge closes.</desc>
+        <defs><marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="var(--dim)" /></marker></defs>
+        <g class="box"><rect x="10" y="20" width="170" height="86" rx="8" /><text x="95" y="52" class="t">Your computer</text><text x="95" y="74" class="s">runs your program,</text><text x="95" y="91" class="s">records the moves</text></g>
+        <g class="box accent"><rect x="260" y="20" width="240" height="86" rx="8" /><text x="380" y="52" class="t">Server replay</text><text x="380" y="74" class="s">its own seed, same rules,</text><text x="380" y="91" class="s">every move checked</text></g>
+        <g class="box"><rect x="580" y="20" width="170" height="86" rx="8" /><text x="665" y="52" class="t">Board</text><text x="665" y="74" class="s">score comes from</text><text x="665" y="91" class="s">the replay</text></g>
+        <path d="M180 63 H258" class="arrow" /><path d="M500 63 H578" class="arrow" />
+        <text x="219" y="54" class="s" text-anchor="middle">moves</text><text x="539" y="54" class="s" text-anchor="middle">legal</text>
+        <path d="M380 106 V150" class="arrow" /><text x="388" y="132" class="s">illegal: whole log rejected</text>
+        <g class="box warn"><rect x="290" y="150" width="180" height="40" rx="8" /><text x="380" y="175" class="t">422 rejected</text></g>
+        <path d="M95 106 V235 H258" class="arrow dash" /><text x="105" y="190" class="s">program (optional)</text>
+        <g class="box accent"><rect x="260" y="212" width="240" height="86" rx="8" /><text x="380" y="242" class="t">Source check</text><text x="380" y="264" class="s">separate function runs the program;</text><text x="380" y="281" class="s">its log must hash to the same value</text></g>
+        <path d="M500 255 H665 V110" class="arrow" /><text x="585" y="272" class="s">match: tokens counted</text>
+      </svg>
+      <figcaption>A submission is moves, plus optionally the program. The replay decides the score; the source check decides whether a program is attached to it.</figcaption>
+    </figure>
+
+    <h2>Sealed replays</h2>
+    <p>Every accepted entry stores its moves, and anyone can watch the replay of a finished run. But not while the challenge
+      is open. Until a daily or weekly challenge closes, its replays are sealed: asking for one returns a 403, whoever is
+      asking, unless it is your own. That stops the obvious shortcut of reading the leader's moves and submitting them as
+      yours. Duels are the one exception: once you have posted your own run on a duel, you can watch the other player's, so
+      you can race their ghost.</p>
+
+    <h2>Repeats are refused</h2>
+    <p>Each entry has a fingerprint, the SHA-256 of its list of moves. Send the exact same log twice and the second is
+      refused with a 409. You keep at most three entries per challenge, your best for each of the three medals (Wealth, Speed
+      and Brevity), and there is a daily cap on how many submissions one account can make.</p>
+    <p>A log that exactly matches somebody else's is not refused, but it also can't beat theirs. Identical runs share a rank,
+      and the player who submitted first is listed first. Copying a run can at most tie it, and with replays sealed you can't
+      see one to copy.</p>
+
+    <h2>The source check</h2>
+    <p>A legal log shows a farm was played by the rules. It doesn't show how the moves were produced. To get a Brevity medal,
+      which ranks programs by how few tokens they use, you attach your Sprout program, and the server checks it.</p>
+    <p>The server sends the program, the challenge's seed and its length to a separate function that does nothing else. That
+      function runs the program on the challenge farm under a fixed budget and answers with a token count and the hash of the
+      log the program produced. The main server compares that hash with the hash of the log you submitted. They must match
+      exactly. If they don't, the entry is rejected and nothing is stored. The token count is made by the server, never by
+      your game, and a request that includes its own token count is refused.</p>
+    <p>The program is kept private unless you tick "publish" and the challenge has closed. Published programs then appear on
+      the leaderboard, where anyone can read how a medal was won.</p>
+
+    <h2>What this does not prove</h2>
+    <p>The server proves two things. A run is legal under the rules, so the score is real. And, if a program is attached, that
+      the program really produced that run. It does not prove a person wrote the program. Anyone can have an assistant or a
+      model write one, and the server has no way to tell. The "human" or "model" tag on an entry is a label the player sets
+      themselves, and model-written entries get their own board filter rather than a pretence of being caught.</p>
+    <p>One smaller caveat: a Wealth or Speed entry does not need a program, so on those medals the server vouches for the
+      log, not for how it was made.</p>
+
+    <h2>Try to break it</h2>
+    <p>The rules, the replay code and the checker are all in the open repository. If you find a way to post a score the rules
+      wouldn't give, we want to know. Season 1 starts on 1 December, and the <a href="/season-1/">rules are here</a>.</p>
+  </article>
+</Base>
+
+<style>
+  .post { max-width: 46rem; padding-block: 3rem 5rem; }
+  .kicker { font-family: var(--mono); font-size: .85rem; color: var(--leaf); text-transform: uppercase; letter-spacing: .06em; margin: 0 0 .5rem; }
+  h1 { font-family: var(--display); font-size: clamp(2rem, 5vw, 3rem); line-height: 1.1; margin: 0 0 1rem; }
+  h2 { font-family: var(--display); font-size: 1.5rem; margin: 2.5rem 0 .75rem; }
+  .lede { font-size: 1.15rem; color: var(--dim); }
+  .post p { line-height: 1.65; }
+  code { font-family: var(--mono); background: var(--code-bg); padding: .1em .35em; border-radius: 4px; font-size: .9em; }
+  .diagram { margin: 2rem 0; }
+  .diagram svg { width: 100%; height: auto; }
+  .diagram figcaption { color: var(--dim); font-size: .9rem; margin-top: .5rem; }
+  .box rect { fill: var(--panel); stroke: var(--line); stroke-width: 1.5; }
+  .box.accent rect { stroke: var(--leaf); }
+  .box.warn rect { stroke: var(--apple); }
+  .t { font-family: var(--body); font-weight: 700; font-size: 16px; fill: var(--ink); text-anchor: middle; }
+  .s { font-family: var(--body); font-size: 13px; fill: var(--dim); text-anchor: middle; }
+  text.s[x="388"], text.s[x="105"] { text-anchor: start; }
+  .arrow { fill: none; stroke: var(--dim); stroke-width: 1.8; marker-end: url(#arr); }
+  .arrow.dash { stroke-dasharray: 5 4; }
+</style>

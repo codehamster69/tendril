@@ -78,7 +78,7 @@ describe('native HTTP adapter', () => {
     const response = await post(JSON.stringify({ displayName: 'Native Farmer' }), true);
     expect(response.status).toBe(201);
     expect(String(response.headers['set-cookie'])).toContain('tendril_session=');
-    expect((response.body as { profile: { displayName: string } }).profile.displayName).toBe('Native Farmer');
+    expect((response.body as { profile: { displayName: string } }).profile.displayName).toBe('Native-Farmer');
   });
   it('rejects hostile Host headers', async () => {
     const response = await post('{}', true, undefined, 'evil.example');

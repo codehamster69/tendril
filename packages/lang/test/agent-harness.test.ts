@@ -46,7 +46,7 @@ afterAll(() => { server.close(); db.close(); rmSync(dir, { recursive: true, forc
 it('dry run: stubbed model reply, no API key, no network, nothing submitted', async () => {
   const out = (await node('--dry-run')).stdout;
   expect(out).toMatch(/1 attempt\(s\) by dry-run-stub/);
-  expect(out).toMatch(/net worth \d+, par \d+, \d+ tokens/);
+  expect(out).toMatch(/net worth \d+, par (\d+|not reached), \d+ tokens/);
   expect(out).toMatch(/Dry run: nothing submitted/);
   expect(out).toMatch(/tendril submit --model "dry-run-stub"/);
   await expect(node('--model', 'x')).rejects.toThrow(/ANTHROPIC_API_KEY/); // a live run without a key says so plainly
