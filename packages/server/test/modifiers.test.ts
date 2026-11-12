@@ -97,7 +97,7 @@ describe('a daily that creates itself', () => {
 });
 
 describe('old challenges', () => {
-  it('rows created before migration 005 report setupVersion 0 and still replay on the plain farm', async () => {
+  it('rows created before migration 006 report setupVersion 0 and still replay on the plain farm', async () => {
     const seed = dailySeed('2026-11-12');
     await call('/stats'); // applies the migrations
     // A row exactly as the previous schema stored it (no setup_v given, so the column default applies).

@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { challengeSetup, createWorld, dailySeed, RULES_VERSION } from '@tendril/sim/src/index.ts';
+import { SETUP_LEGACY, challengeSetup, createWorld, dailySeed, RULES_VERSION } from '@tendril/sim/src/index.ts';
 import type { LogEntry } from '@tendril/sim/src/index.ts';
 import { createRun } from '../../lang/src/index.ts';
 import { verifySource } from '../../lang/src/verify.ts';
@@ -20,7 +20,7 @@ const SMALL: LogEntry[] = [[0, 0, 0, 1], [2, 0, 1], [5, 0, 2, 1], [7, 0, 3], [9,
 
 function logOf(source: string): LogEntry[] {
   const seed = dailySeed('2026-11-12');
-  const run = createRun(createWorld({ id: DAILY, seed }, challengeSetup('daily', seed).setup), source);
+  const run = createRun(createWorld({ id: DAILY, seed }, challengeSetup('daily', seed, SETUP_LEGACY).setup), source);
   run.step(3000);
   return run.pending.filter((a) => a[0] < 3000);
 }
@@ -54,7 +54,7 @@ let entryId: string;
 beforeEach(async () => {
   time = BASE;
   db = createDb({ url: ':memory:' });
-  app = createApp({ db, env: { TENDRIL_DEV_AUTH: '1', PUBLIC_ORIGIN: 'https://tendril.example' }, now: () => time, verifySource: async (r) => verifySource(r) });
+  app = createApp({ db, env: { TENDRIL_DEV_AUTH: '1', PUBLIC_ORIGIN: 'https://tendril.example' }, setupVersion: 0, now: () => time, verifySource: async (r) => verifySource(r) });
   author = await login('Author');
   const r = await enter(author.token, { actions: logOf(daily), source: daily, sourcePublic: true });
   expect(r.status).toBe(200);
