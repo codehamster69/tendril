@@ -10,6 +10,7 @@ import Base from '../layouts/Base.astro';
         <div>
           <h1 data-name></h1>
           <p class="lede" data-login></p>
+          <p data-follow-row hidden><button class="btn" type="button" data-follow></button> <span class="dim" data-follow-msg role="status"></span></p>
         </div>
       </header>
       <dl class="stats">
@@ -32,7 +33,7 @@ import Base from '../layouts/Base.astro';
   interface Recent { entryId: string; challengeId: string; kind: 'daily' | 'season' | 'duel'; number: number | null; netWorth: number; parTick: number | null; tokens: number | null; mosaic: string | null; createdAt: string | number }
   interface Profile {
     login: string; displayName?: string; avatarUrl?: string; streak?: { current: number; best: number; lastDay: string | null };
-    medals?: Partial<Record<'wealth' | 'speed' | 'brevity', number>>; topPercent?: number | null; followers?: number; following?: number; recent?: Recent[];
+    medals?: Partial<Record<'wealth' | 'speed' | 'brevity', number>>; topPercent?: number | null; viewer?: { isSelf: boolean; following: boolean } | null; followers?: number; following?: number; recent?: Recent[];
   }
 
   const $ = <T extends HTMLElement>(s: string) => document.querySelector<T>(s)!;
@@ -46,6 +47,7 @@ import Base from '../layouts/Base.astro';
     if (!/^[A-Za-z0-9-]{1,39}$/.test(login)) { state.textContent = 'No player chosen. Open a name from the leaderboard.'; return; }
     const p = await api<Profile>(`/players/${encodeURIComponent(login)}`);
     if (!p) { state.textContent = `Profiles for ${login} aren't available yet. Check back soon.`; return; }
+    setupFollow(p);
     document.title = `${p.displayName || p.login} | Tendril`;
     state.hidden = true;
     $('[data-profile]').hidden = false;
@@ -75,6 +77,31 @@ import Base from '../layouts/Base.astro';
       list.append(li);
     }
   }
+  function setupFollow(p: Profile) {
+    const row = $('[data-follow-row]'), btn = $<HTMLButtonElement>('[data-follow]'), msg = $('[data-follow-msg]');
+    if (p.viewer?.isSelf) return;
+    row.hidden = false;
+    if (!p.viewer) {
+      btn.replaceWith(Object.assign(el('a', 'btn', 'Sign in to follow'), { href: `/api/auth/github?return=${encodeURIComponent(`/u/?login=${p.login}`)}` }));
+      return;
+    }
+    let following = p.viewer.following;
+    const paint = () => { btn.textContent = following ? 'Following' : 'Follow'; btn.setAttribute('aria-pressed', String(following)); };
+    paint();
+    btn.addEventListener('click', async () => {
+      btn.disabled = true; msg.textContent = '';
+      try {
+        const res = await fetch(`/api/players/${encodeURIComponent(p.login)}/${following ? 'unfollow' : 'follow'}`, {
+          method: 'POST', headers: { 'content-type': 'application/json', 'x-tendril-client': '1' }, body: '{}',
+        });
+        if (!res.ok) throw new Error(String(res.status));
+        following = !following;
+        paint();
+      } catch {
+        msg.textContent = "Couldn't update that. Try again in a moment.";
+      } finally { btn.disabled = false; }
+    });
+  }
   void main();
 </script>
 
@@ -84,6 +111,7 @@ import Base from '../layouts/Base.astro';
   .dim { color: var(--dim); }
   .who { display: flex; align-items: center; gap: 1rem; margin-bottom: 2rem; }
   .who img { border-radius: 50%; }
+  .who img[hidden] { display: none; }
   .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr)); gap: 1rem; margin: 0 0 2.5rem; }
   .stats div { border: 1.5px solid var(--line); border-radius: 10px; padding: 0.8rem 1rem; }
   .stats dt { color: var(--dim); font-size: 0.88rem; }
