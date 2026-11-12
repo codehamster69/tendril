@@ -1,5 +1,9 @@
 // Constants and cost formulas (SIM_SPEC.md, rules version 3). Integers only.
-export const RULES_VERSION = 3;
+/** Newest rules. Version 4 = version 3 plus the optional daily market table (`Setup.prices`); a world without prices plays exactly as version 3. */
+export const RULES_VERSION = 4;
+/** Rules of everything that has no market: endless farms, seasons, duels not copied from a market daily, dailies before MARKET_EPOCH. */
+export const BASE_RULES_VERSION = 3;
+export const SUPPORTED_RULES_VERSIONS: readonly number[] = [3, 4];
 export const PLOT_SIZE = 8;
 export const TILE_INTS = 10;
 export const ITEM_COUNT = 8;

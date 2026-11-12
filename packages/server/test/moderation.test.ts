@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { SETUP_LEGACY, challengeSetup, createWorld, dailySeed, RULES_VERSION } from '@tendril/sim/src/index.ts';
+import { SETUP_LEGACY, challengeSetup, createWorld, dailySeed, BASE_RULES_VERSION } from '@tendril/sim/src/index.ts';
 import type { LogEntry } from '@tendril/sim/src/index.ts';
 import { createRun } from '../../lang/src/index.ts';
 import { verifySource } from '../../lang/src/verify.ts';
@@ -38,7 +38,7 @@ async function call(path: string, o: { token?: string; body?: unknown } = {}) {
   return { status: res.status, text, json: (text ? JSON.parse(text) : null) as Json };
 }
 const login = async (name: string): Promise<Login> => (await call('/dev/login', { body: { displayName: name } })).json as Login;
-const enter = (token: string, body: Json, id = DAILY) => call(`/challenges/${id}/entries`, { token, body: { rulesVersion: RULES_VERSION, ...body } });
+const enter = (token: string, body: Json, id = DAILY) => call(`/challenges/${id}/entries`, { token, body: { rulesVersion: BASE_RULES_VERSION, ...body } });
 const report = (token: string | undefined, entryId: string) => call(`/entries/${entryId}/report`, { token, body: {} });
 
 /** A player whose account is `ageDays` old, optionally with a verified entry of their own. */
@@ -196,7 +196,8 @@ describe('names shown to others', () => {
     expect((await enter((await login('Robot')).token, { actions: SMALL, authorKind: 'human', model: 'gpt-4o' })).status).toBe(422);
     for (const model of ['claude-sonnet-5-5', 'gpt-4o', 'llama3.1:8b', 'org/model_v2+x', 'a'.repeat(40)]) {
       const robot = await login('Robot');
-      const r = await enter(robot.token, { actions: SMALL, authorKind: 'model', model });
+      // A model entry must carry a published program the server can run; the idle program makes an empty log.
+      const r = await enter(robot.token, { actions: [], authorKind: 'model', model, source: 'x = 1\n', sourcePublic: true });
       expect(r.status, model).toBe(200);
       expect((await call(`/entries/${r.json.entryId}`)).json.model).toBe(model);
     }

@@ -1,0 +1,71 @@
+---
+layout: ../../layouts/Docs.astro
+title: The daily market
+description: From 8 December, daily farms sell at prices that move with what players sold the day before.
+---
+
+## What it is
+
+From **Tuesday 8 December 2026** the daily challenge has a market. Every item sells at a price set for that day,
+the same for every player. Until then the game and the site show "Market opens in N days", and dailies keep using
+the base prices.
+
+The price of an item moves between **50% and 200%** of its base price, and by at most **25 points of base price
+per day**. The game shows today's prices and, next to them, the share of units each item made up in yesterday's
+best runs.
+
+## How prices move
+
+Prices are set from what players sold the day before, so the market answers to the crowd:
+
+- An item that **too many players sold** gets cheaper the next day.
+- An item that **few players sold** gets dearer.
+- Each player counts once, with their best run of the day, whatever the volume. One account cannot move a price by
+  selling a lot.
+- The change is smoothed over three days (newest counts most) and stepped from yesterday's price, so a price never
+  jumps.
+- If fewer than 10 players sold anything the day before, prices stay at base.
+
+The target is a blend: half a fixed split, half what the crowd has really been selling over the last two weeks.
+
+## Herding is punished the next day
+
+If everyone piles into the crop that paid best today, it is cheap tomorrow. Following the crowd works until the
+crowd arrives. That swing is intended: the winning program is the one that spreads or anticipates, not the one that
+copies yesterday's best.
+
+## Orders stay at base price
+
+Prices on the market only change what you earn by **selling** from the barn. **Orders do not change.** An order
+still pays twice the item's base price plus 10 coins on any day. That makes orders your hedge: a predictable
+payout while the market moves.
+
+Net worth uses the day's prices too, for both the coins you have and the stock in your barn.
+
+## Reading prices in Sprout
+
+`price(item)` is a free query. It costs no ticks and does nothing to the farm. Its unit depends on the day:
+
+| Day | `price(carrot)` returns |
+| --- | --- |
+| Before 8 December (rules version 3) | **Whole coins**, the base price, `2` |
+| From 8 December (rules version 4) | **Centicoins**, hundredths of a coin: `200` is 2 coins, `300` is 3 coins |
+
+We kept the old answer on old days so that programs written before the market still behave the same when
+replayed. If you write a program that has to work on both kinds of day, don't compare the number with a constant
+for the same item. Compare it with itself, for example against `price(wheat)`.
+
+```sprout
+if price(carrot) >= price(wheat):
+    sell carrot, all
+else:
+    sell wheat, all
+```
+
+Compost has no price, and asking for it is an error. A sale can pay 0 coins at very low prices. It is legal and the
+stock is still removed.
+
+## Older versions of the app
+
+A market day needs Tendril 0.2 or newer. Older versions refuse to play it and show "This day needs a newer Tendril.
+Update the app." Endless farms, seasons and days before 8 December work as before.

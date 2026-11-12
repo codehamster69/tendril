@@ -2,13 +2,13 @@
 // and challenges created before modifiers keep replaying exactly as they did.
 import { readFileSync } from 'node:fs';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { DAILY_PAR, PAR_MIN, RULES_VERSION, SETUP_LEGACY, SETUP_VERSION, challengeSetup, createWorld, dailySeed, hashWorld, parFromReference, replayWithPar } from '@tendril/sim/src/index.ts';
+import { DAILY_PAR, PAR_MIN, BASE_RULES_VERSION, SETUP_LEGACY, SETUP_VERSION, challengeSetup, createWorld, dailySeed, hashWorld, parFromReference, replayWithPar } from '@tendril/sim/src/index.ts';
 import type { LogEntry } from '@tendril/sim/src/index.ts';
 import { createRun } from '../../lang/src/index.ts';
 import { verifySource } from '../../lang/src/verify.ts';
 import { createApp, createDb } from '../src/index.ts';
 import type { Db } from '../src/index.ts';
-import { challengeInfo, loadChallenge } from '../src/arena.ts';
+import { challengeInfo, loadChallenge, marketOf } from '../src/arena.ts';
 import { challengeScenario } from '../../client/src/challenge-setup.ts';
 import { REFERENCE_SOURCE } from '../src/reference.ts';
 import type { SourceVerifier } from '../src/verify-client.ts';
@@ -53,8 +53,8 @@ describe('a daily that creates itself', () => {
     const c = (await call('/challenges/today')).json;
     const seed = dailySeed(TODAY);
     const cs = challengeSetup('daily', seed);
-    expect(c).toMatchObject({ id: `d-${TODAY}`, seed, ticks: cs.ticks, setupVersion: SETUP_VERSION, rulesVersion: RULES_VERSION });
-    const ref = verifySource({ source: REFERENCE_SOURCE, challengeId: c.id, kind: 'daily', seed, ticks: c.ticks, rulesVersion: RULES_VERSION, setupVersion: SETUP_VERSION });
+    expect(c).toMatchObject({ id: `d-${TODAY}`, seed, ticks: cs.ticks, setupVersion: SETUP_VERSION, rulesVersion: BASE_RULES_VERSION });
+    const ref = verifySource({ source: REFERENCE_SOURCE, challengeId: c.id, kind: 'daily', seed, ticks: c.ticks, rulesVersion: BASE_RULES_VERSION, setupVersion: SETUP_VERSION });
     expect(ref.ok && c.par).toBe(ref.ok ? parFromReference(ref.netWorth!) : -1);
     expect(verifyCalls).toBe(1);
     // The same row is served from the database afterwards: no second reference run, par never moves.
@@ -66,7 +66,7 @@ describe('a daily that creates itself', () => {
     const c = (await call('/challenges/today')).json;
     const actions = logOf(REFERENCE_SOURCE, c.seed, c.setupVersion, c.ticks);
     const user = (await call('/dev/login', { displayName: 'Ref' })).json;
-    const r = await call(`/challenges/${c.id}/entries`, { rulesVersion: RULES_VERSION, actions }, user.token);
+    const r = await call(`/challenges/${c.id}/entries`, { rulesVersion: BASE_RULES_VERSION, actions }, user.token);
     expect(r.status).toBe(200);
     expect(r.json.parTick).not.toBeNull();
     expect(r.json.netWorth).toBeGreaterThanOrEqual(c.par);
@@ -102,13 +102,13 @@ describe('old challenges', () => {
     await call('/stats'); // applies the migrations
     // A row exactly as the previous schema stored it (no setup_v given, so the column default applies).
     await db.execute('INSERT INTO challenges (id, kind, number, seed, ticks, par, opens_at, closes_at, created_by, rules_version) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-      ['d-2026-12-05', 'daily', 5, seed, 3000, DAILY_PAR, Date.UTC(2026, 11, 5), Date.UTC(2026, 11, 6), null, RULES_VERSION]);
+      ['d-2026-12-05', 'daily', 5, seed, 3000, DAILY_PAR, Date.UTC(2026, 11, 5), Date.UTC(2026, 11, 6), null, BASE_RULES_VERSION]);
     const c = (await call('/challenges/d-2026-12-05')).json;
     expect(c).toMatchObject({ setupVersion: 0, ticks: 3000, par: DAILY_PAR });
     expect(verifyCalls).toBe(0);
     const actions = logOf(REFERENCE_SOURCE, seed, SETUP_LEGACY, 3000);
     const user = (await call('/dev/login', { displayName: 'Old' })).json;
-    const r = await call(`/challenges/${c.id}/entries`, { rulesVersion: RULES_VERSION, actions }, user.token);
+    const r = await call(`/challenges/${c.id}/entries`, { rulesVersion: BASE_RULES_VERSION, actions }, user.token);
     expect(r.status).toBe(200);
     const plain = replayWithPar(createWorld({ id: c.id, seed }, challengeSetup('daily', seed, SETUP_LEGACY).setup), actions, 3000, DAILY_PAR);
     expect(r.json.netWorth).toBe(plain.netWorth);
@@ -127,7 +127,7 @@ describe('client and server agree on the starting world', () => {
       const row = await loadChallenge(db, 'today', now);
       seen.add(row.id);
       const info = await challengeInfo(db, row);
-      const server = createWorld({ id: row.id, seed: row.seed }, challengeSetup(row.kind, row.seed, row.setup_v).setup);
+      const server = createWorld({ id: row.id, seed: row.seed }, challengeSetup(row.kind, row.seed, row.setup_v, marketOf(row)).setup);
       const scenario = challengeScenario(info);
       const client = createWorld({ id: scenario.farmId, seed: info.seed }, scenario.setup);
       expect(hashWorld(client)).toBe(hashWorld(server));

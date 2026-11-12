@@ -1,6 +1,6 @@
 // Challenge play: daily (`?mode=daily`) and any challenge (`?mode=challenge&id=`). The sim mode is always 'daily'.
 import { setupOf, challengeScenario } from './challenge-setup';
-import { challengeSetup, createWorld, dailyNumber, dailySeed, DAILY_PAR, describeModifiers, replayWithPar, RULES_VERSION, SETUP_VERSION } from '@tendril/sim/src/index.ts';
+import { challengeSetup, createWorld, dailyNumber, dailySeed, DAILY_PAR, describeModifiers, describeMarket, replayWithPar, BASE_RULES_VERSION, SETUP_VERSION, SUPPORTED_RULES_VERSIONS } from '@tendril/sim/src/index.ts';
 import type { LogEntry, Snapshot } from '@tendril/sim/src/index.ts';
 import { ApiError, signedInHint } from './api-client';
 import type { ChallengeInfo, EntryResult, FarmApi } from './api-client';
@@ -10,7 +10,7 @@ import { el, toast } from './palette';
 import { createPendingRuns } from './pending-run';
 import { createDuelPanel } from './duel';
 import { copyText, shareText } from './share';
-import { publishBox, submitWithProgram } from './publish';
+import { declaredModel, modelBox, publishBox, submitWithProgram } from './publish';
 import type { ProgramStatus } from './publish';
 
 export const CHALLENGE_ID = /^(?:week|[dsx]-[A-Za-z0-9_-]{1,40})$/; // `week` = the current season, resolved by the server
@@ -21,7 +21,8 @@ export const utcToday = (): string => new Date().toISOString().slice(0, 10);
 export async function loadChallenge(api: FarmApi, query: URLSearchParams): Promise<ChallengeInfo> {
   const requested = query.get('mode') === 'challenge' ? query.get('id') ?? '' : `d-${utcToday()}`;
   if (!CHALLENGE_ID.test(requested)) { location.replace('?mode=daily'); throw new Error('Unknown challenge'); }
-  try { return await api.challenge(requested); } catch (e) {
+  try { return requireKnownRules(await api.challenge(requested)); } catch (e) {
+    if (e instanceof RulesTooNew) throw e;
     if (query.get('mode') === 'challenge') {
       if (e instanceof ApiError && e.status !== 0) { toast('Challenge not found', 'Opening today\'s farm instead.'); location.replace('?mode=daily'); }
       throw e;
@@ -29,12 +30,44 @@ export async function loadChallenge(api: FarmApi, query: URLSearchParams): Promi
     const date = utcToday();
     return {
       id: `d-${date}`, kind: 'daily', number: dailyNumber(date), seed: dailySeed(date), ticks: challengeSetup('daily', dailySeed(date)).ticks, par: DAILY_PAR,
-      opensAt: null, closesAt: null, rulesVersion: RULES_VERSION, setupVersion: SETUP_VERSION, players: 0, best: null,
+      opensAt: null, closesAt: null, rulesVersion: BASE_RULES_VERSION, setupVersion: SETUP_VERSION, players: 0, best: null,
+      market: null, // offline: base prices, practice only (a market day's table comes from the server)
     };
   }
 }
 
+export const UPDATE_NEEDED = 'This day needs a newer Tendril. Update the app.';
+export class RulesTooNew extends Error { constructor() { super(UPDATE_NEEDED); this.name = 'RulesTooNew'; } }
+
+/**
+ * A client plays only rules versions it knows (SIM_SPEC 4.6). Anything newer, or a market day without its table, is refused
+ * before the game starts, with a visible message instead of a run that could never be accepted.
+ */
+export function requireKnownRules(c: ChallengeInfo): ChallengeInfo {
+  const known = SUPPORTED_RULES_VERSIONS.includes(c.rulesVersion) && (c.rulesVersion === BASE_RULES_VERSION) === !c.market;
+  if (known) return c;
+  const banner = el('div', { id: 'update-needed', class: 'update-needed', role: 'alert' }, UPDATE_NEEDED);
+  banner.style.cssText = 'position:fixed;inset:0 0 auto 0;z-index:1000;padding:14px 16px;background:#b3261e;color:#fff;font:600 15px system-ui,sans-serif;text-align:center';
+  document.body.prepend(banner);
+  throw new RulesTooNew();
+}
+
 export { challengeScenario, setupOf };
+
+/** The market block: "Market opens in N days" before the epoch, the day's prices and yesterday's shares from then on. */
+export function marketPanel(c: ChallengeInfo): HTMLElement | null {
+  if (c.kind !== 'daily' || !/^d-\d{4}-\d{2}-\d{2}$/.test(c.id)) return null;
+  const view = describeMarket(c.id.slice(2), c.market);
+  if (!view) return null;
+  if (view.kind === 'soon') return view.days > 0 ? el('p', { id: 'arena-market', class: 'market-soon', text: view.text }) : null;
+  const head = el('tr', {}, ...['Item', 'Price', 'vs base', 'Sold yesterday'].map((t) => el('th', { scope: 'col', text: t })));
+  const body = view.rows.map((r) => el('tr', { class: `m-${r.trend}` },
+    el('th', { scope: 'row', text: r.name }), el('td', { text: r.price }), el('td', { text: r.change }), el('td', { text: r.share ?? '—' })));
+  return el('details', { id: 'arena-market', class: 'market', open: '' },
+    el('summary', { text: "Today's market" }),
+    el('p', { class: 'muted', text: `${view.text}. Orders always pay the base price.` }),
+    el('table', {}, el('thead', {}, head), el('tbody', {}, ...body)));
+}
 
 const clock = (ms: number): string => {
   const s = Math.max(0, Math.floor(ms / 1000));
@@ -76,8 +109,9 @@ async function submitPlain(api: FarmApi, c: ChallengeInfo, actions: LogEntry[]):
 export async function submitRun(api: FarmApi, c: ChallengeInfo, actions: LogEntry[], source: string | null = null): Promise<EntryResult & { program: ProgramStatus }> {
   if (source !== null && source.trim() !== '') {
     try { return await submitWithProgram(api, c, actions, source); }
-    catch (e) { if (!(e instanceof ApiError && (e.status === 0 || e.status === 429 || e.status >= 500))) throw e; }
+    catch (e) { if (declaredModel() !== null || !(e instanceof ApiError && (e.status === 0 || e.status === 429 || e.status >= 500))) throw e; }
   }
+  if (declaredModel() !== null) throw new ApiError(422, 'A model entry needs a program. Write one in the editor first.');
   return { ...(await submitPlain(api, c, actions)), program: 'none' as const };
 }
 
@@ -97,7 +131,8 @@ export function mountArena({ loop, api, challenge: c }: { loop: GameLoop; api: F
   const modLine = mods.length ? el('p', { id: 'arena-mods', title: "Today's modifiers", text: `Today: ${mods.join(' · ')}` }) : null;
   const stats = el('p', { id: 'arena-stats' }, 'Time left ', left, ' · Score to beat ', beat);
   const result = el('section', { id: 'arena-result', class: 'daily-result', hidden: '' });
-  host.append(head, publishBox(), el('h3', { text: `One seed. ${c.ticks.toLocaleString('en-US')} ticks. Your best program.` }), ...(modLine ? [modLine] : []), stats, result);
+  const marketEl = marketPanel(c);
+  host.append(head, publishBox(), modelBox(), el('h3', { text: `One seed. ${c.ticks.toLocaleString('en-US')} ticks. Your best program.` }), ...(modLine ? [modLine] : []), ...(marketEl ? [marketEl] : []), stats, result);
 
   const draw = (): void => {
     left.textContent = c.closesAt === null ? 'open' : c.closesAt <= Date.now() ? 'closed' : clock(c.closesAt - Date.now());

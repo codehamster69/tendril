@@ -1,10 +1,10 @@
 import { test, expect, type BrowserContext, type Page } from '@playwright/test';
-import { dailyNumber, dailySeed, DAILY_PAR, RULES_VERSION } from '@tendril/sim/src/index.ts';
+import { dailyNumber, dailySeed, DAILY_PAR, BASE_RULES_VERSION } from '@tendril/sim/src/index.ts';
 
 const date = new Date().toISOString().slice(0, 10);
 const daily = {
   id: `d-${date}`, kind: 'daily', number: dailyNumber(date), seed: dailySeed(date), ticks: 3000, par: DAILY_PAR,
-  opensAt: Date.now() - 3_600_000, closesAt: Date.now() + 3_600_000, rulesVersion: RULES_VERSION, players: 3, best: 400,
+  opensAt: Date.now() - 3_600_000, closesAt: Date.now() + 3_600_000, rulesVersion: BASE_RULES_VERSION, players: 3, best: 400,
 };
 const DUEL = 'x-aB_dE9xQ'; // an id with an underscore: the server's base64url ids can have one
 const duelInfo = { ...daily, id: DUEL, kind: 'duel', number: null, opensAt: Date.now(), closesAt: null };
@@ -35,7 +35,7 @@ function makeServer() {
       }
       if (path === `/duels/${DUEL}` && req.method() === 'GET') {
         const ann = s.entries.find((e) => e.who === 'ann' && e.challenge === DUEL);
-        return json(200, { id: DUEL, seed: daily.seed, ticks: 3000, par: DAILY_PAR, rulesVersion: RULES_VERSION, createdAt: 1, challenger: people.ann, entry: ann ? { entryId: 'entry-ann-12', netWorth: 321, parTick: 1200, mosaic: null } : null, accepted: s.accepted.length, viewer: who ? { isChallenger: who === 'ann', accepted: false, entryId: null } : null });
+        return json(200, { id: DUEL, seed: daily.seed, ticks: 3000, par: DAILY_PAR, rulesVersion: BASE_RULES_VERSION, createdAt: 1, challenger: people.ann, entry: ann ? { entryId: 'entry-ann-12', netWorth: 321, parTick: 1200, mosaic: null } : null, accepted: s.accepted.length, viewer: who ? { isChallenger: who === 'ann', accepted: false, entryId: null } : null });
       }
       if (path === `/duels/${DUEL}/accept` && req.method() === 'POST') { s.accepted.push(who ?? '?'); return json(200, { accepted: true, changed: true, challenger: people.ann }); }
       return json(404, { error: 'not mocked' });
@@ -45,6 +45,7 @@ function makeServer() {
 }
 
 async function runToEnd(page: Page): Promise<void> {
+  await expect(page.locator('#status')).toHaveAttribute('data-state', 'paused'); // The farm must be loaded before it can run.
   await page.click('#btn-run-end');
   await expect(page.locator('#arena-result')).toBeVisible({ timeout: 15_000 });
 }

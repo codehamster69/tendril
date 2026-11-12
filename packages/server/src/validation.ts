@@ -103,6 +103,7 @@ export interface EntryInput {
   authorKind: 'human' | 'model'; model: string | null;
 }
 
+export const MODEL_NEEDS_SOURCE = 'Model entries must include a program and publish it';
 const ENTRY_KEYS = ['rulesVersion', 'actions', 'source', 'sourcePublic', 'authorKind', 'model'];
 
 /**
@@ -123,18 +124,22 @@ export function entryInput(value: unknown, maxSourceBytes: number): EntryInput {
   if (authorKind !== 'human' && authorKind !== 'model') throw new HttpError(422, 'Invalid authorKind');
   const model = body.model ?? null;
   if (authorKind === 'human' ? model !== null : (typeof model !== 'string' || !MODEL_PATTERN.test(model))) throw new HttpError(422, 'Invalid model');
+  // A declared model entry must show its work: a program the server can run, and published once the challenge closes.
+  if (authorKind === 'model' && (source === null || sourcePublic !== true)) throw new HttpError(422, MODEL_NEEDS_SOURCE);
   return { rulesVersion: body.rulesVersion, actions: body.actions, source: source as string | null, sourcePublic, authorKind, model: model as string | null };
 }
 
 /** POST /duels body: both fields optional. */
-export function duelInput(value: unknown, maxTicks: number): { seed: number | null; ticks: number | null } {
+export function duelInput(value: unknown, maxTicks: number): { seed: number | null; ticks: number | null; from: string | null } {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new HttpError(422, 'Invalid request');
   const body = value as Record<string, unknown>;
-  if (Object.keys(body).some((key) => key !== 'seed' && key !== 'ticks')) throw new HttpError(422, 'Invalid request fields');
+  if (Object.keys(body).some((key) => key !== 'seed' && key !== 'ticks' && key !== 'from')) throw new HttpError(422, 'Invalid request fields');
   const seed = body.seed ?? null, ticks = body.ticks ?? null;
   if (seed !== null && !isInteger(seed, 1, 0xFFFFFFFF)) throw new HttpError(422, 'Invalid seed');
   if (ticks !== null && !isInteger(ticks, 100, maxTicks)) throw new HttpError(422, 'Invalid ticks');
-  return { seed, ticks };
+  const from = body.from ?? null;
+  if (from !== null && (typeof from !== 'string' || !/^d-\d{4}-\d{2}-\d{2}$/.test(from))) throw new HttpError(422, 'Invalid from');
+  return { seed, ticks, from };
 }
 
 export function entryIdParam(value: string): string {

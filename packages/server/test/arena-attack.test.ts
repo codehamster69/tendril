@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { RULES_VERSION } from '@tendril/sim/src/index.ts';
+import { BASE_RULES_VERSION } from '@tendril/sim/src/index.ts';
 import type { LogEntry } from '@tendril/sim/src/index.ts';
 import { createApp, createDb, migrate } from '../src/index.ts';
 import type { Db, Queryable } from '../src/index.ts';
@@ -33,7 +33,7 @@ async function call(path: string, o: { method?: string; token?: string; body?: u
   return { status: response.status, json, headers: response.headers };
 }
 const login = async (name: string): Promise<Login> => { const r = (await call('/dev/login', { body: { displayName: name } })).json; return { token: r.token as string, login: r.profile.login as string }; };
-const enter = (id: string, token: string, actions: unknown = SMALL, extra: Json = {}) => call(`/challenges/${id}/entries`, { token, body: { rulesVersion: RULES_VERSION, actions, ...extra } });
+const enter = (id: string, token: string, actions: unknown = SMALL, extra: Json = {}) => call(`/challenges/${id}/entries`, { token, body: { rulesVersion: BASE_RULES_VERSION, actions, ...extra } });
 const make = () => createApp({ db, env: { TENDRIL_DEV_AUTH: '1', PUBLIC_ORIGIN: 'https://tendril.example' }, now: () => time, verifySource: verify });
 
 beforeEach(() => { db = createDb({ url: ':memory:' }); time = DAY + 12 * 3600_000; verify = undefined; app = make(); });
@@ -46,7 +46,7 @@ describe('F1 legacy grace must not reopen a challenge whose replays are public',
     expect(annEntry.status).toBe(200);
     time = DAY + DAY_MS + 3600_000; // 01:00 the next day: closed, inside the legacy grace
     const peek = await call(`/entries/${annEntry.json.entryId}/replay`, { token: bo.token });
-    const copy = await call('/daily/submit', { token: bo.token, body: { date: '2026-11-12', rulesVersion: RULES_VERSION, actions: SMALL } });
+    const copy = await call('/daily/submit', { token: bo.token, body: { date: '2026-11-12', rulesVersion: BASE_RULES_VERSION, actions: SMALL } });
     // Either answer closes the hole; both together is the bug.
     expect(peek.status === 200 && copy.status === 200).toBe(false);
   });
@@ -93,7 +93,7 @@ describe('F3 the prune keeps the real top 100 of each medal', () => {
   it('entries with a program but no par cannot push a genuine Brevity entry out of retention', async () => {
     await migrate(db);
     const closes = DAY + DAY_MS;
-    await db.execute('INSERT INTO challenges (id, kind, number, seed, ticks, par, opens_at, closes_at, created_by, rules_version) VALUES (?, ?, 1, 7, 3000, 100, ?, ?, NULL, ?)', ['d-2026-11-12', 'daily', DAY, closes, RULES_VERSION]);
+    await db.execute('INSERT INTO challenges (id, kind, number, seed, ticks, par, opens_at, closes_at, created_by, rules_version) VALUES (?, ?, 1, 7, 3000, 100, ?, ?, NULL, ?)', ['d-2026-11-12', 'daily', DAY, closes, BASE_RULES_VERSION]);
     await db.transaction(async (tx: Queryable) => {
       for (let u = 0; u < 150; u++) {
         await tx.execute('INSERT INTO users (id, github_id, login, display_name, avatar_url, created_at) VALUES (?, NULL, ?, ?, NULL, 1)', [`u${u}`, `u${u}`, `P${u}`]);
@@ -113,7 +113,7 @@ describe('F3 the prune keeps the real top 100 of each medal', () => {
   it('never touches an open daily, an open season, or a young duel', async () => {
     await migrate(db);
     for (const [id, kind, closesAt, opensAt] of [['d-2026-11-12', 'daily', DAY + DAY_MS, DAY], ['x-abcdefgh', 'duel', null, DAY - 30 * DAY_MS]] as const) {
-      await db.execute('INSERT INTO challenges (id, kind, number, seed, ticks, par, opens_at, closes_at, created_by, rules_version) VALUES (?, ?, 1, 7, 3000, 100, ?, ?, NULL, ?)', [id, kind, opensAt, closesAt, RULES_VERSION]);
+      await db.execute('INSERT INTO challenges (id, kind, number, seed, ticks, par, opens_at, closes_at, created_by, rules_version) VALUES (?, ?, 1, 7, 3000, 100, ?, ?, NULL, ?)', [id, kind, opensAt, closesAt, BASE_RULES_VERSION]);
       for (let u = 0; u < 130; u++) {
         await db.execute('INSERT OR IGNORE INTO users (id, github_id, login, display_name, avatar_url, created_at) VALUES (?, NULL, ?, ?, NULL, 1)', [`u${u}`, `u${u}`, `P${u}`]);
         await db.execute(`INSERT INTO entries (id, challenge_id, user_id, net_worth, par_tick, tokens, actions, actions_count, log_hash, mosaic, source, created_at) VALUES (?, ?, ?, ?, NULL, NULL, '[[0,0,0,1]]', 1, ?, 'x', NULL, 1)`, [`${id}${u}`.slice(-12).padStart(12, '_'), id, `u${u}`, u, `${id}${u}`]);
@@ -190,7 +190,7 @@ describe('measure: database work per submission', () => {
     const spy = (q: Queryable): Queryable => ({ query: (s, a) => { count(s); return q.query(s, a); }, execute: (s, a) => { count(s); return q.execute(s, a); } });
     const wrapped: Db = { ...spy(db), transaction: (fn) => db.transaction((tx) => fn(spy(tx))), script: (s) => db.script(s), close: () => db.close() } as Db;
     const counted = createApp({ db: wrapped, env: { TENDRIL_DEV_AUTH: '1' }, now: () => time });
-    const send = (actions: unknown) => counted(new Request('http://localhost:8787/api/challenges/d-2026-11-12/entries', { method: 'POST', headers: { Authorization: `Bearer ${ann.token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ rulesVersion: RULES_VERSION, actions }) }));
+    const send = (actions: unknown) => counted(new Request('http://localhost:8787/api/challenges/d-2026-11-12/entries', { method: 'POST', headers: { Authorization: `Bearer ${ann.token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ rulesVersion: BASE_RULES_VERSION, actions }) }));
     await send([]); // warms migration and the challenge row
     reads = writes = 0;
     const r = await send(SMALL);
@@ -219,7 +219,7 @@ describe('reviewed and holding: cross-site requests and budget-guard modes', () 
     const id = (await call('/duels', { token: ann.token, body: { seed: 7 } })).json.challengeId as string;
     await db.execute("INSERT INTO arena_meta (key, value) VALUES ('guard_mode', 'readonly'), ('guard_state', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value", [JSON.stringify({ bytes: 0, projectedWrites: 0, checkedAt: time })]);
     app = make();
-    const writes: [string, Json][] = [['/duels', {}], [`/duels/${id}/accept`, {}], ['/challenges/d-2026-11-12/entries', { rulesVersion: RULES_VERSION, actions: [] }], [`/players/${bo.login}/follow`, {}], ['/daily/submit', {}], ['/farms', {}]];
+    const writes: [string, Json][] = [['/duels', {}], [`/duels/${id}/accept`, {}], ['/challenges/d-2026-11-12/entries', { rulesVersion: BASE_RULES_VERSION, actions: [] }], [`/players/${bo.login}/follow`, {}], ['/daily/submit', {}], ['/farms', {}]];
     for (const [path, body] of writes) expect((await call(path, { token: ann.token, body })).status, path).toBe(503);
     expect((await call(`/duels/${id}`)).status).toBe(200);
     expect((await call('/leaderboard')).status).toBe(200);
@@ -237,7 +237,7 @@ describe('reviewed and holding: cross-site requests and budget-guard modes', () 
 describe('F9 an author-filtered board on a big challenge is not a full scan per request', () => {
   async function seed(): Promise<void> {
     await migrate(db);
-    await db.execute('INSERT INTO challenges (id, kind, number, seed, ticks, par, opens_at, closes_at, created_by, rules_version) VALUES (?, ?, 1, 7, 3000, 100, ?, ?, NULL, ?)', ['d-2026-11-12', 'daily', DAY, DAY + DAY_MS, RULES_VERSION]);
+    await db.execute('INSERT INTO challenges (id, kind, number, seed, ticks, par, opens_at, closes_at, created_by, rules_version) VALUES (?, ?, 1, 7, 3000, 100, ?, ?, NULL, ?)', ['d-2026-11-12', 'daily', DAY, DAY + DAY_MS, BASE_RULES_VERSION]);
     await db.transaction(async (tx: Queryable) => {
       for (let u = 0; u < 60; u++) {
         await tx.execute('INSERT INTO users (id, github_id, login, display_name, avatar_url, created_at) VALUES (?, NULL, ?, ?, NULL, 1)', [`u${u}`, `u${u}`, `P${u}`]);

@@ -1,5 +1,5 @@
 // Pure log-chunk planning for server submission; no worker, no storage.
-import { deserialize, hashWorld, netWorth, replayChunk, RULES_VERSION, serialize } from '@tendril/sim/src/index.ts';
+import { deserialize, hashWorld, netWorth, replayChunk, SUPPORTED_RULES_VERSIONS, serialize } from '@tendril/sim/src/index.ts';
 import type { LogEntry } from '@tendril/sim/src/index.ts';
 import type { FarmResponse } from './api-client';
 
@@ -53,7 +53,7 @@ export function planSubmission(farm: FarmResponse, logs: LogChunk[], endTick: nu
 }
 
 export function validateFarm(farm: FarmResponse): void {
-  if (farm.rulesVersion !== RULES_VERSION || !Number.isSafeInteger(farm.startedAtMs) || farm.startedAtMs < 0 || !Number.isSafeInteger(farm.seed)) throw new Error('Server farm rules or clock are incompatible. Nothing was replaced.');
+  if (!SUPPORTED_RULES_VERSIONS.includes(farm.rulesVersion) || !Number.isSafeInteger(farm.startedAtMs) || farm.startedAtMs < 0 || !Number.isSafeInteger(farm.seed)) throw new Error('Server farm rules or clock are incompatible. Nothing was replaced.');
   const world = deserialize(farm.checkpoint);
   if (world.id !== farm.id || world.seed !== farm.seed || world.tick !== farm.tick || hashWorld(world) !== farm.checkpointHash || netWorth(world) !== farm.netWorth || world.coins !== farm.coins) throw new Error('Server checkpoint does not match its identity, tick, hash or score.');
 }

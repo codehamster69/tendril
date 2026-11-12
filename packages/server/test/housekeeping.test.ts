@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { RULES_VERSION } from '@tendril/sim/src/index.ts';
+import { BASE_RULES_VERSION } from '@tendril/sim/src/index.ts';
 import type { LogEntry } from '@tendril/sim/src/index.ts';
 import { createApp, createDb } from '../src/index.ts';
 import type { Db } from '../src/index.ts';
@@ -29,7 +29,7 @@ async function call(path: string, o: { method?: string; token?: string; body?: u
   const text = await response.text();
   return { status: response.status, headers: response.headers, json: (text ? JSON.parse(text) : null) as Json };
 }
-const enter = (actions: unknown) => call(`/challenges/${DAILY}/entries`, { token, body: { rulesVersion: RULES_VERSION, actions } });
+const enter = (actions: unknown) => call(`/challenges/${DAILY}/entries`, { token, body: { rulesVersion: BASE_RULES_VERSION, actions } });
 
 async function addUsers(n: number, prefix = 'u'): Promise<string[]> {
   const ids: string[] = [];
@@ -41,7 +41,7 @@ async function addUsers(n: number, prefix = 'u'): Promise<string[]> {
   return ids;
 }
 async function addChallenge(id: string, kind: 'daily' | 'duel', opensAt: number, closesAt: number | null): Promise<void> {
-  await db.execute('INSERT INTO challenges (id, kind, number, seed, ticks, par, opens_at, closes_at, created_by, rules_version) VALUES (?, ?, 1, 7, 3000, 100, ?, ?, NULL, ?)', [id, kind, opensAt, closesAt, RULES_VERSION]);
+  await db.execute('INSERT INTO challenges (id, kind, number, seed, ticks, par, opens_at, closes_at, created_by, rules_version) VALUES (?, ?, 1, 7, 3000, 100, ?, ?, NULL, ?)', [id, kind, opensAt, closesAt, BASE_RULES_VERSION]);
 }
 async function addEntry(id: string, challenge: string, user: string, worth: number, extra: { par?: number | null; tokens?: number | null; at?: number } = {}): Promise<void> {
   await db.execute(
@@ -98,7 +98,7 @@ describe('guard modes', () => {
     // lean: a new, different poor entry from another player is stored without its log; the top 100 keep theirs
     expect(await setRatio(0.55)).toBe('lean');
     const second = await call('/dev/login', { body: { displayName: 'Second' } });
-    const lean = await call(`/challenges/${DAILY}/entries`, { token: second.json.token, body: { rulesVersion: RULES_VERSION, actions: SMALL } });
+    const lean = await call(`/challenges/${DAILY}/entries`, { token: second.json.token, body: { rulesVersion: BASE_RULES_VERSION, actions: SMALL } });
     expect(lean.status).toBe(200);
     expect(await db.query('SELECT id FROM entries WHERE id = ? AND actions IS NULL', [lean.json.entryId])).toHaveLength(1);
     expect(await withLog(DAILY)).toContain('top0');
@@ -110,7 +110,7 @@ describe('guard modes', () => {
     const third = (await call('/dev/login', { body: { displayName: 'Third' } })).json.token as string;
     let refused = 0;
     for (let i = 0; i < limit + 2; i++) {
-      const r = await call(`/challenges/${DAILY}/entries`, { token: third, body: { rulesVersion: RULES_VERSION, actions: 'nope' } });
+      const r = await call(`/challenges/${DAILY}/entries`, { token: third, body: { rulesVersion: BASE_RULES_VERSION, actions: 'nope' } });
       if (r.status === 429) refused++;
     }
     expect(refused).toBe(2);
@@ -126,7 +126,7 @@ describe('guard modes', () => {
     // release, step by step as the database shrinks relative to the budget
     expect(await setRatio(0.6)).toBe('lean'); // 0.6 < 0.9-0.05, < 0.7-0.05: down to lean
     expect(await setRatio(0.2)).toBe('normal');
-    expect((await call(`/challenges/${DAILY}/entries`, { token: third, body: { rulesVersion: RULES_VERSION, actions: SMALL } })).status).not.toBe(503);
+    expect((await call(`/challenges/${DAILY}/entries`, { token: third, body: { rulesVersion: BASE_RULES_VERSION, actions: SMALL } })).status).not.toBe(503);
   });
 
   it('engages on a projected write rate too', async () => {
@@ -183,7 +183,7 @@ describe('prune', () => {
     await addEntry('xo', 'x-old', u!, 5);
     await addEntry('xn', 'x-new', u!, 5);
 
-    await db.execute("INSERT INTO farms (id, user_id, seed, started_at, tick, checkpoint, checkpoint_hash, rules_version, coins, net_worth, verified_at) VALUES ('f1', ?, 1, 0, 300, '{}', 'h', ?, 0, 0, 1)", [u!, RULES_VERSION]);
+    await db.execute("INSERT INTO farms (id, user_id, seed, started_at, tick, checkpoint, checkpoint_hash, rules_version, coins, net_worth, verified_at) VALUES ('f1', ?, 1, 0, 300, '{}', 'h', ?, 0, 0, 1)", [u!, BASE_RULES_VERSION]);
     const old = BASE - CHUNK_RETENTION_MS - DAY_MS;
     for (const [from, to, at] of [[0, 100, old], [100, 200, old + 1], [200, 300, old + 2], [300, 400, BASE - 1000]] as const) {
       await db.execute("INSERT INTO chunks (farm_id, from_tick, to_tick, actions, created_at) VALUES ('f1', ?, ?, '[]', ?)", [from, to, at]);

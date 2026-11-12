@@ -3,7 +3,7 @@
 import { createHash } from 'node:crypto';
 import type { ChallengeKind } from '@tendril/sim/src/index.ts';
 
-export interface VerifyRequest { source: string; challengeId: string; kind: ChallengeKind; seed: number; ticks: number; rulesVersion: number; setupVersion?: number }
+export interface VerifyRequest { source: string; challengeId: string; kind: ChallengeKind; seed: number; ticks: number; rulesVersion: number; setupVersion?: number; market?: { p: number[] } | null }
 export type VerifyResult =
   | { ok: true; tokens: number; logHash: string; actions: number; netWorth?: number }
   | { ok: false; reason: 'compile' | 'timeout' | 'rules' | 'bad'; message: string };

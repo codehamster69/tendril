@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#0F2C31" />
+    <title>Tendril · room</title>
+    <style>
+      :root { color-scheme: dark; --bg: #0F2C31; --ink: #EAF2E3; --soft: #9DB8B0; --line: #24474C; --gold: #FFD66A; }
+      * { box-sizing: border-box; }
+      html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); font: 15px/1.4 system-ui, sans-serif; }
+      body { display: flex; flex-direction: column; }
+      header.bar { display: flex; gap: 12px; align-items: center; padding: 8px 16px; border-bottom: 1px solid var(--line); }
+      header.bar a { color: var(--ink); text-decoration: none; font-weight: 700; }
+      header.bar .meta { color: var(--soft); flex: 1; }
+      main { flex: 1; display: grid; grid-template-columns: minmax(0, 1.45fr) minmax(0, 1.55fr); min-height: 0; }
+      .host { display: flex; flex-direction: column; min-width: 0; min-height: 320px; border-right: 1px solid var(--line); }
+      .host .stage { position: relative; flex: 1; background: #9EBB8E; min-height: 260px; }
+      .host canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+      .host canvas:not([data-3d]) { object-fit: contain; background: #759464; }
+      #toggle-3d-label { color: var(--soft); font-size: 13px; white-space: nowrap; }
+      .head { display: flex; justify-content: space-between; gap: 8px; padding: 6px 12px; align-items: baseline; }
+      .rank { color: var(--gold); font-weight: 700; margin-right: 6px; font-variant-numeric: tabular-nums; }
+      .worth { color: var(--gold); font-weight: 700; font-variant-numeric: tabular-nums; }
+      .field { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); grid-auto-rows: min-content; gap: 6px; padding: 6px; overflow: auto; align-content: start; }
+      .tile { border: 1px solid var(--line); border-radius: 6px; overflow: hidden; background: #123a40; min-width: 0; }
+      .tile .head { padding: 3px 6px; font-size: 12px; }
+      .tile .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+      .tile canvas { display: block; width: 100%; aspect-ratio: 4 / 3; background: #759464; }
+      .tile.off { opacity: .75; }
+      .tile .off-note { aspect-ratio: 4 / 3; display: grid; place-items: center; color: var(--soft); font-size: 12px; text-align: center; padding: 6px; }
+      #note { margin: 0; padding: 6px 16px; color: var(--soft); border-top: 1px solid var(--line); font-size: 13px; }
+      #error { margin: auto; padding: 32px 16px; color: var(--soft); }
+      footer.controls { display: flex; gap: 10px; align-items: center; padding: 8px 16px; border-top: 1px solid var(--line); }
+      footer.controls input[type=range] { flex: 1; min-width: 0; }
+      footer.controls button, footer.controls select { background: #1b4147; color: var(--ink); border: 1px solid var(--line); border-radius: 6px; padding: 6px 12px; font: inherit; }
+      #clock { font-variant-numeric: tabular-nums; color: var(--soft); min-width: 7.5em; text-align: right; }
+      body.embed header.bar { display: none; }
+      [hidden] { display: none !important; }
+      @media (max-width: 760px) { main { grid-template-columns: 1fr; grid-template-rows: auto 1fr; } .host { border-right: 0; border-bottom: 1px solid var(--line); min-height: 240px; } }
+    </style>
+  </head>
+  <body>
+    <header class="bar">
+      <a href="../">Tendril</a>
+      <span class="meta" id="meta">Loading room…</span>
+      <a id="duel-link" href="../duel/">Duel page</a>
+    </header>
+    <main id="room" hidden>
+      <section class="host" id="host">
+        <div class="head"><span><span class="rank" data-testid="host-rank"></span><span id="host-name"></span></span><span>Net worth <span class="worth" data-testid="host-worth">0</span></span></div>
+        <div class="stage"><canvas width="800" height="600" aria-label="Host farm"></canvas></div>
+      </section>
+      <section class="field" id="field" aria-label="Everyone else, ranked live"></section>
+    </main>
+    <div id="error" hidden role="alert"></div>
+    <p id="note" hidden role="status"></p>
+    <footer class="controls" id="controls" hidden>
+      <button id="btn-play" type="button">Play</button>
+      <input id="scrub" type="range" min="0" max="3000" value="0" step="1" aria-label="Scrub through the race" />
+      <select id="speed" aria-label="Speed"><option value="1">1×</option><option value="4" selected>4×</option><option value="16">16×</option><option value="64">64×</option></select>
+      <label id="toggle-3d-label" title="Draw the host farm with the full 3D renderer. Needs a graphics card."><input id="toggle-3d" type="checkbox" /> 3D host</label>
+      <span id="clock">tick 0 / 0</span>
+    </footer>
+    <script type="module" src="/src/room-main.ts"></script>
+  </body>
+</html>

@@ -1,25 +1,27 @@
 import { test, expect, type Page } from '@playwright/test';
-import { dailyNumber, dailySeed, DAILY_PAR, RULES_VERSION } from '@tendril/sim/src/index.ts';
+import { dailyNumber, dailySeed, DAILY_PAR, BASE_RULES_VERSION, RULES_VERSION, baseMarket, marketActive, daysUntilMarket } from '@tendril/sim/src/index.ts';
 
 const date = new Date().toISOString().slice(0, 10);
 const challenge = {
   id: `d-${date}`, kind: 'daily', number: dailyNumber(date), seed: dailySeed(date), ticks: 3000, par: DAILY_PAR,
-  opensAt: Date.now() - 3_600_000, closesAt: Date.now() + 3_600_000, rulesVersion: RULES_VERSION, players: 41, best: 400,
+  opensAt: Date.now() - 3_600_000, closesAt: Date.now() + 3_600_000, rulesVersion: BASE_RULES_VERSION, players: 41, best: 400,
 };
+let served: Record<string, unknown> = challenge;
 const label = challenge.number > 0 ? `#${challenge.number}` : challenge.id; // before launch day the number is <= 0
 const profile = { id: 'u1', login: 'octo', displayName: 'Octo Cat', avatarUrl: null };
 const entry = { entryId: 'k3f9Zq1AbCdE', netWorth: 512, parTick: 1140, tokens: null, mosaic: 'B' + '1'.repeat(63), ranks: { wealth: 4, speed: 9, brevity: null }, percentile: 97, improved: true, total: 120 };
-const submitted: { actions: unknown[]; rulesVersion: number; source?: string; sourcePublic?: boolean }[] = [];
+const submitted: { actions: unknown[]; rulesVersion: number; source?: string; sourcePublic?: boolean; authorKind?: string; model?: string }[] = [];
 type Respond = (body: (typeof submitted)[number]) => { status: number; body: unknown };
 
 async function mock(page: Page, signedIn: boolean, respond: Respond = () => ({ status: 200, body: entry })): Promise<void> {
   submitted.length = 0;
+  served = challenge;
   if (signedIn) await page.addInitScript(() => localStorage.setItem('tendril.signedin', '1'));
   await page.route('**/api/**', (route) => {
     const path = new URL(route.request().url()).pathname;
     const json = (status: number, body: unknown) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
     if (path === '/api/me') return signedIn ? json(200, { profile }) : json(401, { error: 'Sign in first.' });
-    if (path === `/api/challenges/${challenge.id}` && route.request().method() === 'GET') return json(200, challenge);
+    if (path === `/api/challenges/${challenge.id}` && route.request().method() === 'GET') return json(200, served);
     if (path === `/api/challenges/${challenge.id}/entries` && signedIn) {
       const body = route.request().postDataJSON() as (typeof submitted)[number];
       submitted.push(body);
@@ -57,13 +59,34 @@ test('signed out: run to end shows the result and copies the share text', async 
   expect(lines[10]).toBe('tendril.hokora.xyz');
 });
 
+test('the daily shows the market countdown before 8 Dec and the day\'s prices from then on', async ({ page }) => {
+  await mock(page, false);
+  if (marketActive(date)) {
+    const b = baseMarket(); b.m[1] = 1500; b.p[1] = 300;
+    served = { ...challenge, rulesVersion: RULES_VERSION, market: { prices: b.p, multipliers: b.m, shares: null } };
+  }
+  await page.goto('/?mode=daily');
+  const market = page.locator('#arena-market');
+  if (marketActive(date)) {
+    await expect(market).toContainText("Today's market");
+    await expect(market.locator('tbody tr')).toHaveCount(7);
+    await expect(market.locator('tbody tr').first()).toContainText('3.00');
+    await expect(market.locator('tbody tr').first()).toContainText('+50%');
+    await expect(market).toContainText('Orders always pay the base price');
+  } else {
+    const n = daysUntilMarket(date);
+    await expect(market).toHaveText(n === 1 ? 'Market opens tomorrow' : `Market opens in ${n} days`);
+  }
+});
+
 test('signed in: the finished run is submitted and the rank shown', async ({ page }) => {
   await mock(page, true);
   await page.goto('/?mode=challenge&id=' + challenge.id);
+  await expect(page.locator('#status')).toHaveAttribute('data-state', 'paused'); // Wait for the farm to load before running it.
   await page.click('#btn-run-end');
   await expect(page.locator('#arena-facts')).toContainText('top 4% (rank 4 of 120)', { timeout: 15_000 });
   expect(submitted).toHaveLength(1);
-  expect(submitted[0]!.rulesVersion).toBe(RULES_VERSION);
+  expect(submitted[0]!.rulesVersion).toBe(BASE_RULES_VERSION);
   expect(Array.isArray(submitted[0]!.actions)).toBe(true);
   await page.click('#btn-copy-result');
   const text = await page.evaluate(() => navigator.clipboard.readText());
@@ -85,6 +108,20 @@ test('signed in: the program goes with the run, the tick box publishes it, and t
   const lines = (await page.evaluate(() => navigator.clipboard.readText())).split('\n');
   expect(lines[1]).toMatch(/^Par (at tick [\d,]+|not reached) · 112 tokens$/);
   expect(lines).toHaveLength(11);
+});
+
+test('signed in: ticking "a model wrote this" sends the model name with a published program, and is never downgraded to a human run', async ({ page }) => {
+  await mock(page, true, (body) => (body.authorKind === 'model' ? { status: 422, body: { error: 'Source does not produce this run' } } : { status: 200, body: entry }));
+  await page.goto('/?mode=daily');
+  await expect(page.locator('#model-name')).toBeHidden();
+  await page.check('#model-entry');
+  await page.fill('#model-name', 'my-model-1');
+  await page.click('#btn-run-end');
+  await expect.poll(() => submitted.length, { timeout: 15_000 }).toBe(1);
+  expect(submitted[0]).toMatchObject({ authorKind: 'model', model: 'my-model-1', sourcePublic: true });
+  expect(typeof submitted[0]!.source).toBe('string');
+  await page.waitForTimeout(500);
+  expect(submitted).toHaveLength(1); // the refusal is shown; no plain human resubmission
 });
 
 test('signed in: a program the server cannot match does not cost the score', async ({ page }) => {
@@ -115,4 +152,24 @@ test('the Season tab opens this week\'s season, runs 6,000 ticks and highlights 
   await expect(page.locator('#arena-result')).toBeVisible({ timeout: 30_000 });
   expect(Date.now() - started).toBeLessThan(30_000); // well under a minute
   await expect(page.locator('#hud-tick')).toHaveText('6000');
+});
+
+test('a day with rules this app does not know is refused with an update message', async ({ page }) => {
+  await mock(page, false);
+  served = { ...challenge, rulesVersion: 5 };
+  await page.goto('/?mode=daily');
+  await expect(page.locator('#update-needed')).toHaveText('This day needs a newer Tendril. Update the app.');
+  await expect(page.locator('#arena-head')).toHaveCount(0);
+});
+
+test('a market day: the run is played and submitted under the day\'s prices (rules v4)', async ({ page }) => {
+  await mock(page, true);
+  const prices = [0, 400, 300, 100, 600, 400, 500, 800]; // carrot at double its base price
+  served = { ...challenge, rulesVersion: 4, market: { prices, multipliers: [0, 2000, 1000, 1000, 1000, 1000, 1000, 1000], shares: null } };
+  await page.goto('/?mode=daily');
+  await expect(page.locator('#arena-head')).toBeVisible();
+  await page.click('#btn-run-end');
+  await expect(page.locator('#arena-result')).toBeVisible({ timeout: 15_000 });
+  await expect.poll(() => submitted.length).toBe(1);
+  expect(submitted[0]!.rulesVersion).toBe(4);
 });

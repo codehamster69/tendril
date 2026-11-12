@@ -53,7 +53,7 @@ export function createDuelPanel(api: FarmApi, c: ChallengeInfo, getActions: () =
   async function make(): Promise<void> {
     busy = true; draw();
     try {
-      const { challengeId } = await api.createDuel({ seed: c.seed, ticks: c.ticks });
+      const { challengeId } = await api.createDuel({ seed: c.seed, ticks: c.ticks, ...(c.kind === 'daily' && c.market ? { from: c.id } : {}) });
       await api.submitEntry(challengeId, { rulesVersion: c.rulesVersion, actions: getActions() });
       created = duelLink(challengeId);
       const ok = await copyText(created);

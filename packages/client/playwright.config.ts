@@ -8,6 +8,8 @@ export default defineConfig({
   testDir: 'e2e',
   testMatch: '**/*.spec.ts',
   timeout: 30_000,
+  // Software GL and the farm worker boot slowly when workers share few cores; waits are generous, assertions stay exact.
+  expect: { timeout: 15_000 },
   use: { baseURL: `http://localhost:${port}`, launchOptions: { args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] } },
   webServer: {
     command: `pnpm exec vite build --outDir ${out} --emptyOutDir && pnpm exec vite preview --outDir ${out} --port ${port} --strictPort`,

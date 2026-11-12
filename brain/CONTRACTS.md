@@ -14,7 +14,7 @@ The coordinator owns this file. An agent requests a contract change in its notes
 - Root `api/index.ts`: the one Vercel Node function; adapts `createApp(...)` from the server package.
 
 ## Simulation
-See SIM_SPEC. `RULES_VERSION = 3`. `LogEntry = [tick,bot,op,a?,b?]`. Server never passes `Setup`.
+See SIM_SPEC. `RULES_VERSION = 4` (newest; the daily market, section 4), `BASE_RULES_VERSION = 3`, `SUPPORTED_RULES_VERSIONS = [3, 4]`. Challenge rows carry `rules_version` and `market`; every world builder passes the row's table to `challengeSetup(kind, seed, setupV, market)`. `LogEntry = [tick,bot,op,a?,b?]`. Server never passes `Setup`.
 
 ## Language
 See LANGUAGE.md section 10 (`compile`, `createRun`, `ScriptRun`, `BotDebug`, `API`, `LANGUAGE_VERSION`).
@@ -211,6 +211,11 @@ GET /entries/:id/source        -> {entryId, source, tokens, netWorth, parTick, s
 GET /challenges/:id/sources?limit= -> {challenge, entries:[{entryId, login, displayName, avatarUrl, netWorth, parTick, tokens, mosaic, authorKind, model}]}
                                   only source_public entries, best net worth first; 403 until the challenge closes.
 POST /api/verify (verify function only) header X-Tendril-Verify = sha256("tendril-verify:" + (VERIFY_SECRET ?? TURSO_AUTH_TOKEN))
-       {source, challengeId, kind, seed, ticks, rulesVersion} -> {ok:true, tokens, logHash, actions} | {ok:false, reason, message}; no secret: 404.
+       {source, challengeId, kind, seed, ticks, rulesVersion, setupVersion?} -> {ok:true, tokens, logHash, actions, netWorth} | {ok:false, reason, message}; no secret: 404.
+       setupVersion absent = 0 (plain farm). netWorth is the end net worth of the verified run.
 ```
+**setupVersion (F1/D1).** `challenges.setup_v` (0 plain farm, 1 seed-drawn modifiers) is returned as `setupVersion` on `GET /challenges/*`, on the challenge object inside `/entries/:id`, on `GET /duels/:id` and on `GET /entries/:id/replay`. Every world build passes it: `challengeSetup(kind, seed, setupVersion)` (server replay, verify function, CLI `playLocal`, client).
+
+**Humans vs models (D1).** `authorKind: 'model'` needs `model` (F3 pattern) and a verified, published program: no `source`, or `sourcePublic` not `true`, is **422** `Model entries must include a program and publish it`; a source mismatch is 422 and an unavailable check is 503, and nothing is stored. Resending an earlier plain entry's log with a published program converts that entry to the model entry. Boards filter with `author=human|model` (unset = both); the leaderboard page defaults to Humans. CLI: `tendril submit [--publish] [--model <name>]` always sends the program. Declaration is honour-system (`docs/models.mdx`).
+
 Client: `submitRun(api, c, actions, source?)`; a refused program is resent without it so a score is never lost. Tick box key `tendril.publishSource`.
