@@ -27,6 +27,10 @@ export function mountControls({ loop, editor }: { loop: GameLoop; editor: Editor
   step.hidden = stepLine.hidden = live;
   speed.addEventListener('change', () => loop.setSpeed(Number(speed.value)));
   loop.setSpeed(Number(speed.value));
+  if (live) { // A live farm follows the real clock, so a speed choice would do nothing there.
+    speed.hidden = speed.disabled = true;
+    byId('speed-label').textContent = 'Live farms run in real time';
+  }
 
   editor.onRun(() => loop.run());
   editor.onStepLine(() => { void loop.stepLine(); });

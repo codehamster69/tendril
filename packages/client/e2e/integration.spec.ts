@@ -231,7 +231,9 @@ test('live clock catches up offline, speed cannot mint ticks and reset needs con
   const meta = await page.evaluate(() => window.tendril!.sim.meta);
   const oldTick = Number(await page.locator('#hud-tick').textContent());
   await page.clock.install({ time: new Date(meta.startedAtMs + (oldTick + 1000) * 100) });
-  await page.selectOption('#speed', '64');
+  await expect(page.locator('#speed')).toBeHidden();
+  await expect(page.locator('#speed-label')).toHaveText('Live farms run in real time');
+  await page.evaluate(() => window.tendril!.loop.setSpeed(64)); // Even asked directly, speed cannot mint ticks.
   await page.click('#btn-run');
   await expect(page.locator('#status')).toContainText('Catching up');
   await page.clock.runFor(2000);
