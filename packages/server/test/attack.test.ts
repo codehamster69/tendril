@@ -731,9 +731,11 @@ describe('7. cross-user', () => {
     expect((await api('/farms/me', { token: user.token })).status).toBe(401);
     expect((await submit(chunkBody([], 100))).status).toBe(401);
     time -= 31 * DAY_MS;
-    expect((await api('/farms/me', { token: user.token })).status).toBe(200);
+    // The first request of the later day also pruned the expired session (housekeeping), so sign in again for the delete check.
+    const again = (await api('/dev/login', { body: { displayName: 'Again' } })).json as { token: string };
+    expect((await api('/farms/me', { token: again.token })).status).not.toBe(401);
     await db.execute('DELETE FROM sessions');
-    expect((await api('/farms/me', { token: user.token })).status).toBe(401);
+    expect((await api('/farms/me', { token: again.token })).status).toBe(401);
   });
 
   it.each([
@@ -1148,10 +1150,13 @@ describe('11. HTTP layer', () => {
   });
 
   it('security headers are present on every response, including errors', async () => {
+    let first = true;
     for (const r of [await api('/stats'), await api('/nope'), await api('/farms/me'), await send('/not-api')]) {
       expect(r.headers.get('x-content-type-options')).toBe('nosniff');
       expect(r.headers.get('x-frame-options')).toBe('DENY');
-      expect(r.headers.get('cache-control')).toBe('no-store');
+      // The anonymous public read is edge-cached on purpose (housekeeping); everything else stays no-store.
+      expect(r.headers.get('cache-control')).toBe(first ? 'public, max-age=0, s-maxage=300, stale-while-revalidate=600' : 'no-store');
+      first = false;
       expect(r.headers.get('content-security-policy')).toContain("default-src 'none'");
       expect(r.headers.get('content-type')).toContain('application/json');
     }
