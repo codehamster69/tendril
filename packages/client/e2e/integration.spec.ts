@@ -222,6 +222,7 @@ test('flush is an ordered durability barrier and save failure retains logs for r
 });
 
 test('live clock catches up offline, speed cannot mint ticks and reset needs confirmation', async ({ page }) => {
+  test.slow(); // Boots the farm twice (reload) on a shared CPU with software GL.
   await page.goto('/');
   await expect(page.locator('#status')).toHaveAttribute('data-state', /running|catching-up/);
   await expect(page.locator('#mode-label')).toHaveText('Local live · unverified');

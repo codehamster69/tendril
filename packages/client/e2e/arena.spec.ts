@@ -82,6 +82,7 @@ test('the daily shows the market countdown before 8 Dec and the day\'s prices fr
 test('signed in: the finished run is submitted and the rank shown', async ({ page }) => {
   await mock(page, true);
   await page.goto('/?mode=challenge&id=' + challenge.id);
+  await expect(page.locator('#status')).toHaveAttribute('data-state', 'paused'); // Wait for the farm to load before running it.
   await page.click('#btn-run-end');
   await expect(page.locator('#arena-facts')).toContainText('top 4% (rank 4 of 120)', { timeout: 15_000 });
   expect(submitted).toHaveLength(1);

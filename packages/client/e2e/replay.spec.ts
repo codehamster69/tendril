@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { challengeSetup, createWorld, netWorth, replayChunk } from '@tendril/sim/src/index.ts';
+import { challengeSetup, createWorld, netWorth, replayChunk, SETUP_LEGACY } from '@tendril/sim/src/index.ts';
 import type { LogEntry } from '@tendril/sim/src/index.ts';
 import { readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -8,8 +8,9 @@ const SMALL: LogEntry[] = [[0, 0, 0, 1], [2, 0, 1], [5, 0, 2, 1], [7, 0, 3], [9,
 const IDLE: LogEntry[] = [];
 const SEED = 4242, TICKS = 3000;
 
+// The mocked entries carry no setupVersion, so the page replays them as legacy challenges.
 function worth(actions: LogEntry[]): number {
-  const w = createWorld({ id: 'x', seed: SEED }, challengeSetup('daily', SEED).setup);
+  const w = createWorld({ id: 'x', seed: SEED }, challengeSetup('daily', SEED, SETUP_LEGACY).setup);
   replayChunk(w, actions, TICKS);
   return netWorth(w);
 }

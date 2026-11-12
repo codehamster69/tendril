@@ -141,10 +141,11 @@ test('auto-sync reaches the leaderboard by itself and shows the rank', async ({ 
 });
 
 test('a farm far behind catches up with chunks sent back to back', async ({ page }) => {
+  test.slow(); // Replays 45,000 ticks in the browser; shared CPUs make that several times slower.
   await mockApi(page, true);
   farmAgeMs = 4_500_000; // 45,000 ticks: three chunks of at most 20,000.
   await page.goto('/?mode=live');
-  await expect(page.locator('#mode-note')).toContainText('On the leaderboard', { timeout: 30_000 });
-  await expect.poll(() => server.world.tick, { timeout: 30_000 }).toBeGreaterThan(44_000);
+  await expect(page.locator('#mode-note')).toContainText('On the leaderboard', { timeout: 60_000 });
+  await expect.poll(() => server.world.tick, { timeout: 60_000 }).toBeGreaterThan(44_000);
   expect(chunks.length).toBeGreaterThanOrEqual(3);
 });

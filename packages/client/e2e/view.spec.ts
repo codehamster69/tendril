@@ -206,6 +206,8 @@ test('GLBs replace placeholders with combined palette-aware instancing and sixte
 
 test('expansion re-frames automatically; same-count relocation does not pan; explicit focus and tile scan work', async ({ page }) => {
   await page.route('**/__view/models/manifest.json', (route) => route.fulfill({ status: 204 }));
+  // A fake clock makes the 600 ms ease independent of how slowly software GL renders frames.
+  await page.clock.install({ time: 0 });
   await harness(page);
   const canvas = page.locator('#farm-canvas');
   const initialTarget = await canvas.getAttribute('data-camera-target');
@@ -216,7 +218,8 @@ test('expansion re-frames automatically; same-count relocation does not pan; exp
   });
   await expect(canvas).toHaveAttribute('data-rendered-tiles', '128');
   // Buying land with an untouched camera eases the view over to the new centre (about 600 ms).
-  await expect.poll(async () => (JSON.parse((await canvas.getAttribute('data-camera-target'))!) as number[])[0], { timeout: 3000 }).toBeCloseTo(-0.5, 5);
+  await page.clock.runFor(1000);
+  expect((JSON.parse((await canvas.getAttribute('data-camera-target'))!) as number[])[0]).toBeCloseTo(-0.5, 5);
   expect(await canvas.getAttribute('data-camera-target')).not.toBe(initialTarget);
   await page.evaluate(() => window.__view.focusFarm());
   const farmTarget = JSON.parse((await canvas.getAttribute('data-camera-target'))!) as number[];
