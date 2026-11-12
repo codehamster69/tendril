@@ -6,6 +6,7 @@ import { board, challengeInfo, createDuel, entryReplay, entrySummary, KIND_LIMIT
 import type { AuthorKind, Medal } from './arena.ts';
 import { createFarm, dailyInfo, getFarm, getReplay, isValidDate, leaderboard, reserveAttempt, utcDate, verifyChunk } from './game.ts';
 import type { Board } from './game.ts';
+import { badgeFor, follow, listFollowing, playerPage, unfollow } from './players.ts';
 import { handleShare } from './share.ts';
 import { migrate } from './migrations.ts';
 import type { Migration } from './migrations.ts';
@@ -262,6 +263,34 @@ export function createApp(options: AppOptions): (request: Request) => Promise<Re
         rejectQuery(url);
         const input = duelInput(await readJson(request), KIND_LIMITS.duel.maxTicks);
         return json(await createDuel(db, identity.userId, input, now()), 201);
+      }
+      // ---- players: profile, follows, README badge (B5) ----
+      const playerRoute = /^\/players\/([^/]+?)(?:\/(follow|unfollow))?$/.exec(route);
+      if (playerRoute) {
+        const [, login, action] = playerRoute;
+        if (!action && method === 'GET') {
+          rejectQuery(url);
+          return json(await playerPage(db, login!, await viewerId(), now(), utcDate(now())));
+        }
+        if (action && method === 'POST') {
+          const identity = await requireUser();
+          rejectQuery(url);
+          objectWithKeys(await readJson(request), []);
+          return json(action === 'follow' ? await follow(db, identity.userId, login!, now()) : await unfollow(db, identity.userId, login!));
+        }
+      }
+      if (route === '/me/following' && method === 'GET') {
+        rejectQuery(url);
+        return json(await listFollowing(db, (await requireUser()).userId));
+      }
+      const badgeRoute = /^\/badge\/([^/]+)\.svg$/.exec(route);
+      if (badgeRoute && method === 'GET') {
+        rejectQuery(url);
+        const svg = await badgeFor(db, badgeRoute[1]!, utcDate(now()));
+        headers.set('Content-Type', 'image/svg+xml; charset=utf-8');
+        headers.set('Cache-Control', 'public, max-age=3600, s-maxage=3600');
+        headers.set('Content-Security-Policy', "default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'");
+        return new Response(svg, { status: 200, headers });
       }
       throw new HttpError(404, 'Not found');
     } catch (error) {
