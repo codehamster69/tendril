@@ -272,6 +272,10 @@ function createInnerApp(options: AppOptions): (request: Request) => Promise<Resp
           if (mode !== 'normal' && result.improved) await dropReplaysOutsideTop(db, challenge.id, result.entryId); // lean and tighter: only top entries keep a log
           return json(result);
         }
+        if (sub === 'sources' && method === 'GET') {
+          rejectQuery(url, ['limit']);
+          return json(await publishedSources(db, await loadChallenge(db, ref!, now()), limitParam(url), now()));
+        }
         if (sub === 'board' && method === 'GET') {
           rejectQuery(url, ['medal', 'scope', 'author', 'limit']);
           const medal = url.searchParams.get('medal') ?? 'wealth';
