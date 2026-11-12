@@ -5,6 +5,7 @@ import type { Db } from './db.ts';
 import { createFarm, dailyInfo, dailyLeaderboard, getFarm, getReplay, isValidDate, leaderboard, reserveAttempt, stats, submitDaily, utcDate, verifyChunk } from './game.ts';
 import type { Board } from './game.ts';
 import { migrate } from './migrations.ts';
+import type { Migration } from './migrations.ts';
 import { chunkInput, displayName, HttpError, objectWithKeys, readJson, rejectQuery, validateActions, uuid } from './validation.ts';
 
 export interface AppOptions {
@@ -13,6 +14,8 @@ export interface AppOptions {
   /** Used for the GitHub OAuth calls; tests inject a stub so nothing touches the network. */
   fetch?: FetchFn;
   now?: () => number;
+  /** Migration SQL bundled into the build (serverless); when absent the files are read from disk. */
+  migrations?: Migration[];
 }
 
 const DESKTOP_ORIGIN = 'app://tendril';
@@ -38,7 +41,7 @@ export function createApp(options: AppOptions): (request: Request) => Promise<Re
   const ctx: Ctx = { db, env, fetch: options.fetch ?? ((input, init) => fetch(input, init)), now };
   let ready: Promise<unknown> | undefined;
   // Lazy migration, guarded by schema_version; a failure is retried by the next request.
-  const ensureMigrated = (): Promise<unknown> => (ready ??= migrate(db, now).catch((error: unknown) => { ready = undefined; throw error; }));
+  const ensureMigrated = (): Promise<unknown> => (ready ??= migrate(db, now, [], options.migrations).catch((error: unknown) => { ready = undefined; throw error; }));
 
   return async (request) => {
     const headers = new Headers({

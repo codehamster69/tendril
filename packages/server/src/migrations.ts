@@ -14,7 +14,10 @@ function migrationDirs(extra: URL[]): URL[] {
   ];
 }
 
-async function loadMigrations(extra: URL[]): Promise<{ version: number; name: string; sql: string }[]> {
+export interface Migration { version: number; name: string; sql: string }
+
+async function loadMigrations(extra: URL[], embedded?: Migration[]): Promise<Migration[]> {
+  if (embedded?.length) return [...embedded].sort((a, b) => a.version - b.version);
   for (const dir of migrationDirs(extra)) {
     let files: string[];
     try { files = (await readdir(dir)).filter((f) => /^\d+_.+\.sql$/.test(f)).sort(); } catch { continue; }
@@ -27,11 +30,11 @@ async function loadMigrations(extra: URL[]): Promise<{ version: number; name: st
 }
 
 /** Applies pending migrations in order (each file runs in a transaction), recording them in schema_version. */
-export async function migrate(db: Db, now: () => number = Date.now, extraDirs: URL[] = []): Promise<number[]> {
+export async function migrate(db: Db, now: () => number = Date.now, extraDirs: URL[] = [], embedded?: Migration[]): Promise<number[]> {
   await db.execute('CREATE TABLE IF NOT EXISTS schema_version (version INTEGER PRIMARY KEY, name TEXT NOT NULL, applied_at INTEGER NOT NULL)');
   const done = new Set((await db.query<{ version: number }>('SELECT version FROM schema_version')).map((r) => r.version));
   const applied: number[] = [];
-  for (const m of await loadMigrations(extraDirs)) {
+  for (const m of await loadMigrations(extraDirs, embedded)) {
     if (done.has(m.version)) continue;
     try {
       // The files are idempotent, so a crash between the script and the stamp only means a harmless re-run.

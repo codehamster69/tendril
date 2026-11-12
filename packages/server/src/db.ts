@@ -18,7 +18,12 @@ export interface Db extends Queryable {
   close(): void;
 }
 
-export interface DbOptions { url: string; authToken?: string }
+export interface DbOptions {
+  url: string;
+  authToken?: string;
+  /** Client factory. Defaults to the full `@libsql/client` (file:, :memory: and remote); the Vercel bundle injects the web client. */
+  createClient?: (config: { url: string; authToken?: string }) => Client;
+}
 
 const isLocal = (url: string): boolean => url === ':memory:' || url.startsWith('file:');
 
@@ -49,7 +54,7 @@ function queryable(client: Run): Queryable {
  */
 export function createDb(options: DbOptions): Db {
   let client: Client | undefined;
-  const get = (): Client => (client ??= createClient({ url: options.url, authToken: options.authToken || undefined }));
+  const get = (): Client => (client ??= (options.createClient ?? createClient)({ url: options.url, authToken: options.authToken || undefined }));
   const local = isLocal(options.url);
   let tail: Promise<unknown> = Promise.resolve();
   const exclusive = <T>(work: () => Promise<T>): Promise<T> => {

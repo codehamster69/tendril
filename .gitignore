@@ -12,3 +12,4 @@ release
 dist-*
 .data
 **/__pycache__
+.vercel
