@@ -11,7 +11,7 @@ export default defineConfig({
   build: {
     chunkSizeWarningLimit: 6000,
     outDir: process.env.VITE_OUT ?? 'dist',
-    rollupOptions: { input: { main: fileURLToPath(new URL('./index.html', import.meta.url)), replay: fileURLToPath(new URL('./replay.html', import.meta.url)) } },
+    rollupOptions: { input: { main: fileURLToPath(new URL('./index.html', import.meta.url)), replay: fileURLToPath(new URL('./replay.html', import.meta.url)), room: fileURLToPath(new URL('./room.html', import.meta.url)) } },
   },
   worker: { format: 'es' },
   server: {
