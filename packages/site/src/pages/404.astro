@@ -1,0 +1,38 @@
+---
+import Base from '../layouts/Base.astro';
+---
+<Base title="Page not found" description="This page doesn't exist. Head back to the farm.">
+  <section class="wrap page lost">
+    <svg class="sprout" viewBox="0 0 120 120" aria-hidden="true">
+      <ellipse cx="60" cy="104" rx="44" ry="8" class="soil" />
+      <path d="M60 102 C60 80 62 66 72 54" class="stem" />
+      <path d="M72 54 C58 54 48 46 46 34 C60 34 70 42 72 54Z" class="leaf" />
+      <path d="M72 54 C80 62 92 64 100 58 C94 48 82 46 72 54Z" class="leaf droop" />
+    </svg>
+    <p class="code">404</p>
+    <h1>Nothing grows here</h1>
+    <p class="lede">We couldn't find that page. It may have moved, or the link has a typo.</p>
+    <pre class="snippet"><code><span class="c"># Nothing is planted at this address.</span>
+go_to barn</code></pre>
+    <ul class="ways" role="list">
+      <li><a class="btn primary" href="/">Back to the farm</a></li>
+      <li><a class="btn" href="/docs/">Read the docs</a></li>
+      <li><a class="btn" href="/play/">Play in browser</a></li>
+    </ul>
+  </section>
+</Base>
+
+<style>
+  .lost { text-align: center; padding-top: clamp(3rem, 8vw, 6rem); padding-bottom: 4rem; }
+  .sprout { width: 120px; height: 120px; display: block; margin: 0 auto 0.5rem; }
+  .soil { fill: var(--soil); opacity: 0.35; }
+  .stem { fill: none; stroke: var(--leaf); stroke-width: 4; stroke-linecap: round; }
+  .leaf { fill: var(--leaf); }
+  .droop { opacity: 0.7; }
+  .code { font: 600 0.95rem var(--mono, 'JetBrains Mono', monospace); color: var(--dim); letter-spacing: 0.2em; margin: 0; }
+  h1 { margin: 0.25rem 0 0; }
+  .lede { color: var(--dim); font-size: 1.15rem; max-width: 32rem; margin: 1rem auto 1.5rem; }
+  .snippet { display: inline-block; text-align: left; background: var(--code-bg); border: 1.5px solid var(--line); border-radius: 10px; padding: 0.9rem 1.25rem; margin: 0 0 2rem; font-size: 0.95rem; max-width: 100%; overflow-x: auto; }
+  .snippet .c { color: var(--dim); }
+  .ways { list-style: none; padding: 0; margin: 0; display: flex; flex-wrap: wrap; gap: 0.75rem; justify-content: center; }
+</style>
