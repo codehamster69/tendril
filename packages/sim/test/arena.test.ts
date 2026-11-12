@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  DAILY_EPOCH, DAILY_PAR, DAILY_TICKS, IllegalAction, challengeSetup, createWorld, dailyNumber, farmMosaic, hashWorld,
+  DAILY_EPOCH, DAILY_PAR, DAILY_TICKS, SEASON_TICKS, IllegalAction, challengeSetup, createWorld, dailyNumber, farmMosaic, hashWorld,
   netWorth, replayChunk, replayWithPar,
 } from '../src/index.ts';
 import { Driver, OP, farm, script } from './helpers.ts';
@@ -100,7 +100,7 @@ describe('challengeSetup', () => {
   it('returns the standard farm for every kind, and builds an identical world to no setup', () => {
     for (const kind of ['daily', 'season', 'duel'] as const) {
       const cs = challengeSetup(kind, 99);
-      expect(cs.ticks).toBe(DAILY_TICKS);
+      expect(cs.ticks).toBe(kind === 'season' ? SEASON_TICKS : DAILY_TICKS);
       expect(hashWorld(createWorld(farm(99), cs.setup))).toBe(hashWorld(createWorld(farm(99))));
     }
   });

@@ -2,7 +2,7 @@ import { DAILY_TICKS, RULES_VERSION } from '@tendril/sim/src/index.ts';
 import { authenticate, clearSessionCookie, devAuthEnabled, devLogin, finishGithub, getProfile, logout, pollDesktop, sessionCookie, startGithub } from './auth.ts';
 import type { Ctx, Env, FetchFn, Identity } from './auth.ts';
 import type { Db } from './db.ts';
-import { board, challengeInfo, createDuel, entryReplay, entrySummary, KIND_LIMITS, legacyLeaderboard, legacySubmit, loadChallenge, MAX_SOURCE_BYTES, moveLegacyDaily, stats, submitEntry } from './arena.ts';
+import { board, challengeInfo, createDuel, entryReplay, entrySummary, hallOfFame, KIND_LIMITS, legacyLeaderboard, legacySubmit, loadChallenge, MAX_SOURCE_BYTES, moveLegacyDaily, stats, submitEntry } from './arena.ts';
 import type { AuthorKind, Medal } from './arena.ts';
 import { createFarm, dailyInfo, getFarm, getReplay, isValidDate, leaderboard, reserveAttempt, utcDate, verifyChunk } from './game.ts';
 import type { Board } from './game.ts';
@@ -282,6 +282,10 @@ function createInnerApp(options: AppOptions): (request: Request) => Promise<Resp
           const challenge = await loadChallenge(db, ref!, now());
           return json(await board(db, challenge, { medal: medal as Medal, friends: scope === 'friends', author: (author ?? undefined) as AuthorKind | undefined, limit: limitParam(url), viewerId: viewer, now: now() }));
         }
+      }
+      if (route === '/seasons' && method === 'GET') {
+        rejectQuery(url, ['limit']);
+        return json(await hallOfFame(db, now(), limitParam(url)));
       }
       const entryRoute = /^\/entries\/([^/]+)(?:\/(replay))?$/.exec(route);
       if (entryRoute && method === 'GET') {

@@ -25,12 +25,12 @@ export function mountNotice({ live, verified }: { live: boolean; verified: boole
     const close = el('button', { class: 'quiet notice-close', type: 'button', 'aria-label': 'Dismiss this notice', title: 'Dismiss for 7 days', text: '×' });
     close.addEventListener('click', () => { closed = true; rememberDismissal(); bar.hidden = true; });
     if (profile) {
-      bar.append(el('span', { text: "You're signed in, but this is your local farm. Open your ranked farm to compete." }),
-        el('a', { class: 'notice-link', href: '?mode=live&ranked=1', text: 'Open ranked farm' }), close);
+      bar.append(el('span', { text: "You're signed in, but this is your local farm. Open your Endless farm to compete." }),
+        el('a', { class: 'notice-link', href: '?mode=live&ranked=1', text: 'Open Endless farm' }), close);
     } else {
       const signIn = el('button', { class: 'primary', type: 'button', text: 'Sign in' });
       signIn.addEventListener('click', () => startSignIn());
-      bar.append(el('span', { text: 'This farm is saved only on this computer and is not ranked. Sign in to join the leaderboard.' }), signIn, close);
+      bar.append(el('span', { text: 'This farm is saved only on this computer and is not on the leaderboard. Sign in to join the leaderboard.' }), signIn, close);
     }
     bar.hidden = false;
   };

@@ -9,7 +9,7 @@ import { el, toast } from './palette';
 import { createPendingRuns } from './pending-run';
 import { copyText, shareText } from './share';
 
-export const CHALLENGE_ID = /^[dsx]-[A-Za-z0-9-]{1,40}$/;
+export const CHALLENGE_ID = /^(?:week|[dsx]-[A-Za-z0-9-]{1,40})$/; // `week` = the current season, resolved by the server
 
 export const utcToday = (): string => new Date().toISOString().slice(0, 10);
 
@@ -75,7 +75,7 @@ export function mountArena({ loop, api, challenge: c }: { loop: GameLoop; api: F
   window.addEventListener('online', () => { void pending(api).flush(); });
   window.addEventListener('tendril:account', (event) => { if ((event as CustomEvent<{ profile: unknown }>).detail.profile) void pending(api).flush(); });
   const number = c.number !== null && c.number > 0 ? c.number : null; // days before the 1 Dec 2026 launch count as practice
-  const title = number !== null ? `Daily farm #${number}` : c.kind === 'daily' ? `Practice farm · ${c.id.slice(2)}` : c.kind === 'duel' ? 'Duel' : c.kind === 'season' ? 'Weekly season' : c.id;
+  const title = c.kind === 'season' ? (number !== null ? `Weekly season #${number}` : 'Practice week') : number !== null ? `Daily farm #${number}` : c.kind === 'daily' ? `Practice farm · ${c.id.slice(2)}` : c.kind === 'duel' ? 'Duel' : c.id;
   const left = el('b', { id: 'arena-left', text: '' });
   const beat = el('b', { id: 'arena-beat', text: '' });
   const runEnd = el('button', { id: 'btn-run-end', class: 'primary', text: 'Run to end' });
@@ -108,7 +108,7 @@ export function mountArena({ loop, api, challenge: c }: { loop: GameLoop; api: F
         el('b', { text: `${(entry?.netWorth ?? local.netWorth ?? snapshot.netWorth).toLocaleString('en-US')} net worth` }),
         ` · ${(entry?.parTick ?? local.parTick) === null ? 'par not reached' : `par at tick ${(entry?.parTick ?? local.parTick)!.toLocaleString('en-US')}`}`,
         entry?.percentile != null ? ` · top ${Math.max(1, 101 - entry.percentile)}% (rank ${entry.ranks.wealth ?? '—'} of ${entry.total})` : '');
-      const text = shareText({ number, label: c.id, netWorth: entry?.netWorth ?? local.netWorth, parTick: entry ? entry.parTick : local.parTick, par: c.par, percentile: entry?.percentile ?? null, mosaic: entry?.mosaic ?? local.mosaic, entryId: entry?.entryId ?? null });
+      const text = shareText({ number: c.kind === 'season' ? null : number, label: c.kind === 'season' && number !== null ? `Season #${number}` : c.id, netWorth: entry?.netWorth ?? local.netWorth, parTick: entry ? entry.parTick : local.parTick, par: c.par, percentile: entry?.percentile ?? null, mosaic: entry?.mosaic ?? local.mosaic, entryId: entry?.entryId ?? null });
       const copy = el('button', { id: 'btn-copy-result', class: 'primary', text: 'Copy result' });
       copy.addEventListener('click', async () => { const ok = await copyText(text); toast(ok ? 'Result copied' : 'Could not copy', ok ? 'Paste it anywhere.' : text); });
       const actionsRow: HTMLElement[] = [copy];
