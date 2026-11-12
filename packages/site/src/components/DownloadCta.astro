@@ -1,32 +1,35 @@
 ---
-// Main call to action. Before installers exist it leads with the browser version; after, with the visitor's OS.
-import { PLATFORMS, RELEASE, released } from '../data/downloads';
-const data = PLATFORMS.map((p) => ({ os: p.os, name: p.name, url: p.builds[0]?.url ?? null }));
+// Main call to action. "Play in browser" always works; the download button appears once the latest
+// GitHub release has an installer for the visitor's system (checked in the browser, so no redeploy is needed).
+import { PLATFORMS } from '../data/downloads';
+const names = Object.fromEntries(PLATFORMS.map((p) => [p.os, p.name]));
 ---
-<div class="cta" data-platforms={JSON.stringify(data)}>
-  {released ? (
-    <>
-      <a class="btn primary" href="/download/" data-cta><span data-label>Download Tendril</span><small>v{RELEASE.version}</small></a>
-      <a class="btn" href="/play/">Play in browser</a>
-    </>
-  ) : (
-    <>
-      <a class="btn primary" href="/play/">Play in browser</a>
-      <a class="btn" href="/download/">Desktop app<small>Coming soon</small></a>
-    </>
-  )}
+<div class="cta" data-names={JSON.stringify(names)}>
+  <a class="btn primary" href="/play/" data-play>Play in browser</a>
+  <a class="btn" href="/download/" data-dl>Desktop app<small data-sub>Windows, macOS, Linux</small></a>
 </div>
 <script>
-  for (const el of document.querySelectorAll<HTMLElement>('.cta')) {
-    const a = el.querySelector<HTMLAnchorElement>('[data-cta]');
-    if (!a) continue;
-    const ua = navigator.userAgent;
-    const os = /Windows/i.test(ua) ? 'windows' : /Mac OS X|Macintosh/i.test(ua) ? 'mac' : /Linux|X11/i.test(ua) && !/Android/i.test(ua) ? 'linux' : null;
-    const list = JSON.parse(el.dataset.platforms ?? '[]') as { os: string; name: string; url: string | null }[];
-    const p = list.find((x) => x.os === os);
-    if (!p?.url) continue;
-    a.querySelector('[data-label]')!.textContent = `Download for ${p.name}`;
-    a.href = p.url;
+  import { detectOs, latestRelease, preferredBuild } from '../scripts/releases';
+
+  const ctas = [...document.querySelectorAll<HTMLElement>('.cta')];
+  const os = detectOs();
+  if (os && ctas.length) {
+    void latestRelease().then(async (release) => {
+      const id = await preferredBuild(os);
+      const asset = release?.assets[id];
+      if (!release || !asset) return;
+      for (const el of ctas) {
+        const names = JSON.parse(el.dataset.names ?? '{}') as Record<string, string>;
+        const dl = el.querySelector<HTMLAnchorElement>('[data-dl]')!;
+        const play = el.querySelector<HTMLAnchorElement>('[data-play]')!;
+        dl.href = asset.url;
+        dl.firstChild!.textContent = `Download for ${names[os]}`;
+        dl.querySelector('[data-sub]')!.textContent = `v${release.version}`;
+        dl.classList.add('primary');
+        play.classList.remove('primary');
+        el.prepend(dl);
+      }
+    });
   }
 </script>
 <style>

@@ -10,7 +10,9 @@ repo on Vercel (`pnpm build:web` puts the web game under `/play/` and the API un
 - The home page farm runs the real rules and interpreter on `src/data/grower.sprout`.
 - `scripts/copy-renders.mjs` copies `assets/thumbs` then `assets/renders` into `public/art/` at build time; `src/data/art.ts`
   returns null for missing images so pages degrade without them.
-- Installers: fill in `src/data/downloads.ts` (`url`, optional `size`/`sha256`) when a release exists. Until then,
-  buttons say "Coming soon" and the main call to action is "Play in browser".
+- Installers: the browser asks GitHub for the latest release of `PUBLIC_RELEASES_REPO` (a public `owner/name`,
+  set as a build env var) and matches assets by name (`src/data/downloads.ts`). The visitor's OS (and Mac CPU where
+  the browser reports it) picks the main download button. With no release, buttons say "Coming soon" and
+  "Play in browser" leads. Publishing a release needs no redeploy.
 - `/leaderboard/` reads `/api/leaderboard` and `/api/daily/leaderboard` in the browser and shows an empty or
   unreachable state when there is no data.

@@ -1,17 +1,15 @@
 ---
 import Base from '../layouts/Base.astro';
-import { PLATFORMS, RELEASE, released } from '../data/downloads';
+import { PLATFORMS, RELEASES_PAGE } from '../data/downloads';
 ---
-<Base title="Download" description="Download Tendril for Windows, macOS or Linux.">
+<Base title="Download" description="Download Tendril for Windows, macOS or Linux, or play it in your browser.">
   <section class="wrap page">
     <h1>Download Tendril</h1>
-    <p class="lede">
-      {released
-        ? `Version ${RELEASE.version}, ${RELEASE.channel.toLowerCase()}. Pick your system below.`
-        : 'Installers for all three systems will be posted here with the first early-access build. Until then, the whole game runs in your browser.'}
+    <p class="lede" data-lede>
+      Pick your system below. Your farm, your programs and your leaderboard place are the same on every system
+      and in the browser.
     </p>
-
-    {!released && <p class="now"><a class="btn primary" href="/play/">Play in browser</a></p>}
+    <p class="now"><a class="btn primary" href="/play/">Play in browser</a></p>
 
     <ul class="platforms" role="list">
       {PLATFORMS.map((p) => (
@@ -21,16 +19,14 @@ import { PLATFORMS, RELEASE, released } from '../data/downloads';
           <ul class="builds" role="list">
             {p.builds.map((b) => (
               <li>
-                {b.url
-                  ? <a class="btn primary" href={b.url} download>{b.label}<small>{b.size ?? b.file}</small></a>
-                  : <span class="btn" aria-disabled="true">{b.label}<small>Coming soon</small></span>}
-                {b.sha256 && <code class="sha" title="SHA-256">{b.sha256}</code>}
+                <a class="btn" data-build={b.id} aria-disabled="true">{b.label}<small>Coming soon</small></a>
               </li>
             ))}
           </ul>
         </li>
       ))}
     </ul>
+    <p class="all" data-all hidden>Version <span data-version></span>. <a href={RELEASES_PAGE}>All files and release notes</a></p>
 
     <div class="after">
       <section>
@@ -42,26 +38,50 @@ import { PLATFORMS, RELEASE, released } from '../data/downloads';
       </section>
       <section>
         <h2>First launch warnings</h2>
-        <p>Early builds may not be signed yet, so your system can ask before opening them.</p>
+        <p>Early builds aren't signed yet, so your system will ask before opening them.</p>
         <ul>
           <li><b>Windows:</b> if SmartScreen appears, choose More info, then Run anyway.</li>
           <li><b>macOS:</b> if macOS blocks the app, open System Settings, Privacy &amp; Security, and choose Open Anyway.</li>
-          <li><b>Linux:</b> make the AppImage executable with <code>chmod +x Tendril.AppImage</code>, then run it.</li>
+          <li><b>Linux:</b> make the AppImage executable with <code>chmod +x Tendril-*.AppImage</code>, then run it.</li>
         </ul>
       </section>
     </div>
   </section>
 </Base>
 <script>
-  const ua = navigator.userAgent;
-  const os = /Windows/i.test(ua) ? 'windows' : /Mac OS X|Macintosh/i.test(ua) ? 'mac' : /Linux|X11/i.test(ua) ? 'linux' : null;
-  const el = os && document.querySelector<HTMLElement>(`.platform[data-os="${os}"]`);
-  if (el) { el.classList.add('mine'); el.querySelector('h2')!.insertAdjacentHTML('beforeend', ' <span class="yours">Your system</span>'); }
+  import { detectOs, latestRelease, megabytes, preferredBuild } from '../scripts/releases';
+
+  const os = detectOs();
+  if (os) {
+    const card = document.querySelector<HTMLElement>(`.platform[data-os="${os}"]`)!;
+    card.classList.add('mine');
+    const tag = document.createElement('span');
+    tag.className = 'yours';
+    tag.textContent = 'Your system';
+    card.querySelector('h2')!.append(' ', tag);
+  }
+
+  void latestRelease().then(async (release) => {
+    if (!release) return;
+    const best = os ? await preferredBuild(os) : null;
+    for (const a of document.querySelectorAll<HTMLAnchorElement>('[data-build]')) {
+      const asset = release.assets[a.dataset.build as keyof typeof release.assets];
+      if (!asset) continue;
+      a.href = asset.url;
+      a.removeAttribute('aria-disabled');
+      a.querySelector('small')!.textContent = megabytes(asset.size);
+      if (a.dataset.build === best) a.classList.add('primary');
+    }
+    document.querySelector<HTMLElement>('[data-version]')!.textContent = release.version;
+    const all = document.querySelector<HTMLElement>('[data-all]')!;
+    all.hidden = false;
+    all.querySelector('a')!.href = release.page;
+  });
 </script>
 <style>
   .page { padding-top: clamp(2.5rem, 6vw, 4.5rem); }
-  .lede { font-size: 1.2rem; color: var(--dim); max-width: 40rem; margin: 1rem 0 2.5rem; }
-  .now { margin: -1rem 0 2.5rem; }
+  .lede { font-size: 1.2rem; color: var(--dim); max-width: 40rem; margin: 1rem 0 1.5rem; }
+  .now { margin: 0 0 2.5rem; }
   .platforms { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1.25rem; }
   .platform { border: 1.5px solid var(--line); border-radius: 14px; padding: 1.5rem; display: flex; flex-direction: column; }
   .platform.mine { border-color: var(--leaf); }
@@ -70,10 +90,10 @@ import { PLATFORMS, RELEASE, released } from '../data/downloads';
   .req { color: var(--dim); font-size: 0.95rem; margin: 0.6rem 0 1.25rem; flex: 1; }
   .builds { list-style: none; padding: 0; margin: 0; display: grid; gap: 0.6rem; }
   .builds .btn { width: 100%; justify-content: space-between; }
-  .sha { display: block; font-size: 0.7rem; color: var(--dim); overflow-wrap: anywhere; margin-top: 0.35rem; }
+  .all { color: var(--dim); margin: 1.25rem 0 0; }
   .after { display: grid; grid-template-columns: 1fr 1fr; gap: 3rem; margin-top: 4rem; }
   .after h2 { font-size: 1.4rem; margin-bottom: 0.75rem; }
-  .after p, .after ul { color: var(--ink); max-width: 34rem; }
+  .after p, .after ul { max-width: 34rem; }
   .after li { margin-bottom: 0.4rem; }
-  @media (max-width: 860px) { .platforms, .after { grid-template-columns: 1fr; } }
+  @media (max-width: 860px) { .platforms, .after { grid-template-columns: minmax(0, 1fr); } }
 </style>
