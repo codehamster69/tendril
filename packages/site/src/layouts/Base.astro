@@ -5,6 +5,9 @@ const { title, description = 'Tendril is an endless farming game you play by wri
 const fullTitle = title ? `${title} | Tendril` : 'Tendril: a farm you grow by writing code';
 const path = Astro.url.pathname;
 const here = (p: string) => (p === '/' ? path === '/' : path.startsWith(p));
+// Social card drawn at build time by scripts/og.mjs (keep this path rule in step with ogPath() there).
+const canonical = new URL(path, Astro.site);
+const ogImage = new URL(`/og/${/^\/404/.test(path) ? 'index' : path.replace(/^\/+|\/+$/g, '') || 'index'}.png`, Astro.site);
 ---
 <!doctype html>
 <html lang="en">
@@ -15,9 +18,17 @@ const here = (p: string) => (p === '/' ? path === '/' : path.startsWith(p));
     <meta name="description" content={description} />
     <meta property="og:title" content={fullTitle} />
     <meta property="og:description" content={description} />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Tendril" />
+    <meta property="og:url" content={canonical} />
+    <meta property="og:image" content={ogImage} />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content={fullTitle} />
+    <meta name="twitter:card" content="summary_large_image" />
     <meta name="theme-color" content="#2f6e35" />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
-    <link rel="canonical" href={new URL(Astro.url.pathname, Astro.site)} />
+    <link rel="canonical" href={canonical} />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible+Next:ital,wght@0,400;0,700;1,400&family=Bricolage+Grotesque:opsz,wght@12..96,500..800&family=JetBrains+Mono:wght@400;600&display=swap" />
