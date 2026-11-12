@@ -11,6 +11,7 @@ import { mountControls } from './ui';
 import { mountAccount, connectRanked } from './account';
 import { mountNotice } from './notice';
 import { mountUpdates } from './updates';
+import { isFirstRun, mountFirstRun } from './firstrun';
 import { mountProgression, selectedLesson } from './progression';
 import { challengeScenario, loadChallenge, mountArena } from './arena';
 import { FarmApi, signedInHint } from './api-client';
@@ -44,7 +45,8 @@ const names = { live: sim.ranked ? 'Endless · server-verified' : 'Local live ·
 document.getElementById('mode-label')!.textContent = names[mode];
 document.getElementById('mode-note')!.textContent = mode === 'live' ? (sim.ranked ? '10 ticks per second · syncs to the server as it runs' : '10 ticks per second · local and unverified until connected') : mode === 'sandbox' ? 'Experiment freely · separate from your live farm' : mode === 'daily' ? `The same seed for everyone · ${challenge?.ticks.toLocaleString('en-US') ?? '3,000'} ticks` : 'Learn one recipe at a time';
 const loop = new GameLoop(sim);
-const editor = createEditor(document.getElementById('editor')!, `tendril.sprout.v1.${mode}${suffix}`, mode === 'campaign' ? lesson.starter : mode === 'daily' ? EXAMPLES.daily!.source : undefined);
+const firstRun = await isFirstRun(mode, sim.ranked, query, sim.prefix);
+const editor = createEditor(document.getElementById('editor')!, `tendril.sprout.v1.${mode}${suffix}`, mode === 'campaign' ? lesson.starter : mode === 'daily' ? EXAMPLES.daily!.source : firstRun ? '' : undefined);
 const view = new FarmView(document.getElementById('farm-canvas') as HTMLCanvasElement);
 
 mountControls({ loop, editor });
@@ -53,6 +55,7 @@ mountDebugger();
 mountReference((code) => editor.setSource(editor.getSource() + '\n' + code + '\n'));
 mountInspectors(view, () => sim.meta.seed);
 mountProgression({ loop, editor, view, api });
+if (firstRun) mountFirstRun({ editor, host: document.getElementById('lesson-card')! });
 if (challenge) mountArena({ loop, api, challenge });
 mountNotice({ live: mode === 'live', verified: sim.ranked });
 mountUpdates();

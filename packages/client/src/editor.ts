@@ -126,6 +126,7 @@ export interface Editor {
   setFeatures(features: ReadonlySet<string> | null): void;
   revealLine(line: number): void;
   onRun(cb: () => void): void;
+  onChange(cb: () => void): void;
   onStepLine(cb: () => void): void;
 }
 
@@ -164,6 +165,8 @@ export function createEditor(container: HTMLElement, storageKey: string, fallbac
     }
   };
   ed.onDidChangeModelContent(saveDraft);
+  const changeCbs: (() => void)[] = [];
+  ed.onDidChangeModelContent(() => changeCbs.forEach((cb) => cb()));
 
   const renderBps = (): void => {
     bpDeco.set([...bps].filter((l) => l <= model.getLineCount()).map((l) => ({
@@ -258,6 +261,7 @@ export function createEditor(container: HTMLElement, storageKey: string, fallbac
     setFeatures(f) { allowedFeatures = f; },
     revealLine(line) { const ln = clampLine(line); ed.revealLineInCenter(ln); ed.setPosition({ lineNumber: ln, column: 1 }); ed.focus(); },
     onRun(cb) { runCb = cb; },
+    onChange(cb) { changeCbs.push(cb); },
     onStepLine(cb) { stepCb = cb; },
   };
 }
