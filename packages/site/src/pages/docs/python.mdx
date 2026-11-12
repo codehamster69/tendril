@@ -1,0 +1,84 @@
+---
+layout: ../../layouts/Docs.astro
+title: Sprout for Python programmers
+description: The common Python constructs and their Sprout equivalents, side by side, with the few places the two differ.
+---
+
+If you have written a little Python, most of Sprout will already feel familiar. This page lines up the common
+constructs. Every Sprout example on it runs as written under `tendril run`, so you can paste it into a file and try it.
+
+Start with three values that the examples below use:
+
+```sprout
+x = 3
+xs = [10, 20, 30]
+pos = {x: 3, y: 4}
+```
+
+## Common constructs
+
+| Python | Sprout |
+|---|---|
+| `print("hi", x)` | `say "hi", x` |
+| `x = 3` | `x = 3` |
+| `x += 1` | `x += 1` |
+| `# a note` | `# a note` |
+| `xs[0]` | `xs[0]` |
+| `xs[-1]` | `xs[-1]` |
+| `len(xs)` | `len(xs)` |
+| `{"x": 3, "y": 4}` | `{x: 3, y: 4}` |
+| `pos["x"]` | `pos.x` |
+| `f"I have {x} coins"` | `"I have {x} coins"` |
+| `(1 < 2) and not (2 < 1)` | `(1 < 2) and not (2 < 1)` |
+| `20 in xs` | `20 in xs` |
+| `7 // 2` | `7 / 2` |
+| `7 % 3` | `7 % 3` |
+| `xs.append(40)` | `append(xs, 40)` |
+
+## Blocks
+
+Blocks work the same way as in Python. Indent the lines under `if`, `elif`, `else`, `for`, `while` and `define`.
+
+```sprout
+if x > 3:
+    say "big"
+elif x == 3:
+    say "three"
+else:
+    say "small"
+
+n = 0
+while n < 3:
+    n += 1
+
+for i from 0 to 4:
+    say i
+
+for each item in [1, 2]:
+    say item
+
+define double(a):
+    return a * 2
+
+say double(5)
+
+for i from 0 to 9:
+    if i == 1:
+        continue
+    if i == 3:
+        break
+    say "loop", i
+```
+
+## Where Sprout differs
+
+- **Output is `say`.** It takes values separated by commas, and it prints them with spaces between.
+- **`from ... to` includes both ends.** `for i from 0 to 4` gives 0, 1, 2, 3 and 4, where Python's `range(5)` stops before 5.
+- **Loops over a list read `for each`.** Write `for each item in xs:`.
+- **Division rounds down with `/`.** There is no `//`, because `/` already does what Python's `//` does on whole numbers.
+- **Numbers are whole.** Sprout has no decimals, so use whole-number maths, or scale your numbers up.
+- **Records replace dictionaries.** Read a field as `pos.x` or `pos["x"]`.
+- **Commands don't need brackets, questions do.** `harvest` and `plant carrot` are commands. `scan()` and `capacity()` are questions, and they need brackets even inside a bigger expression.
+
+For the whole language on one page, see [Learn Sprout](/docs/sprout/). For every command and question your bots can use,
+see the [reference](/docs/reference/).

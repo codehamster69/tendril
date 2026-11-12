@@ -7,6 +7,7 @@ import type { AuthorKind, Medal } from './arena.ts';
 import { createFarm, dailyInfo, getFarm, getReplay, isValidDate, leaderboard, reserveAttempt, utcDate, verifyChunk } from './game.ts';
 import type { Board } from './game.ts';
 import { badgeFor, follow, listFollowing, playerPage, unfollow } from './players.ts';
+import { handleShare } from './share.ts';
 import { migrate } from './migrations.ts';
 import type { Migration } from './migrations.ts';
 import { chunkInput, displayName, duelInput, entryIdParam, entryInput, HttpError, objectWithKeys, readJson, rejectQuery, validateActions, uuid } from './validation.ts';
@@ -28,6 +29,11 @@ const LOOPBACK_ORIGIN = /^http:\/\/(localhost|127\.0\.0\.1|\[::1\]):\d{1,5}$/;
 const DESKTOP_DONE_PAGE = '<!doctype html><html lang="en"><meta charset="utf-8"><title>Tendril</title>'
   + '<style>body{font:16px system-ui,sans-serif;max-width:32rem;margin:4rem auto;padding:0 1rem}</style>'
   + '<h1>Signed in</h1><p>You can close this tab and return to Tendril.</p></html>';
+
+function publicOriginOf(env: Env, url: URL): string {
+  const configured = env.PUBLIC_ORIGIN?.replace(/\/+$/, '');
+  return configured && /^https?:\/\/[^/\s]+$/.test(configured) ? configured : url.origin;
+}
 
 function limitParam(url: URL): number {
   const raw = url.searchParams.get('limit') ?? '20';
@@ -58,6 +64,13 @@ export function createApp(options: AppOptions): (request: Request) => Promise<Re
     const empty = (status: number): Response => new Response(null, { status, headers });
     try {
       const url = new URL(request.url);
+      // ---- B4 share links and preview cards (public GET pages; no cookies, no CORS) ----
+      if (/^(\/api)?\/(r\/[^/]+|og\/[^/]+\.png)$/.test(url.pathname)) {
+        await ensureMigrated();
+        const shareOrigin = publicOriginOf(env, url);
+        const res = await handleShare(url.pathname, request.method, { db, now: now(), origin: shareOrigin, host: new URL(shareOrigin).host });
+        if (res) return res;
+      }
       const origin = request.headers.get('origin');
       const desktop = origin === DESKTOP_ORIGIN;
       const publicOrigin = env.PUBLIC_ORIGIN?.replace(/\/+$/, '');
