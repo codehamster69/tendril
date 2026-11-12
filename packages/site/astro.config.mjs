@@ -5,7 +5,10 @@ import { sprout } from './src/sprout-lang.ts';
 
 export default defineConfig({
   // PUBLIC_ORIGIN is the deployed origin (also used by the server for OAuth). Only canonical URLs and the sitemap use it.
-  site: process.env.PUBLIC_ORIGIN || 'https://tendril.vercel.app',
+  // On Vercel, VERCEL_PROJECT_PRODUCTION_URL is the project's production domain (set automatically at build time).
+  site: process.env.PUBLIC_ORIGIN
+    || (process.env.VERCEL_PROJECT_PRODUCTION_URL && `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`)
+    || 'https://tendril-xi.vercel.app',
   trailingSlash: 'ignore',
   integrations: [mdx(), sitemap({ filter: (page) => !page.includes('/play/') })],
   markdown: {
