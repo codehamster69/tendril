@@ -45,6 +45,7 @@ function makeServer() {
 }
 
 async function runToEnd(page: Page): Promise<void> {
+  await expect(page.locator('#status')).toHaveAttribute('data-state', 'paused'); // The farm must be loaded before it can run.
   await page.click('#btn-run-end');
   await expect(page.locator('#arena-result')).toBeVisible({ timeout: 15_000 });
 }
