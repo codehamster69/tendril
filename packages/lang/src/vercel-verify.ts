@@ -26,7 +26,8 @@ export async function handleVerify(request: Request, env: Record<string, string 
   let body: Partial<VerifyRequest>;
   try { body = JSON.parse(text) as Partial<VerifyRequest>; } catch { return reply({ error: 'Invalid request' }, 400); }
   if (!body || typeof body !== 'object' || typeof body.source !== 'string' || typeof body.challengeId !== 'string' || typeof body.kind !== 'string'
-    || !KINDS.includes(body.kind) || typeof body.seed !== 'number' || typeof body.ticks !== 'number' || typeof body.rulesVersion !== 'number') return reply({ error: 'Invalid request' }, 400);
+    || !KINDS.includes(body.kind) || typeof body.seed !== 'number' || typeof body.ticks !== 'number' || typeof body.rulesVersion !== 'number'
+    || (body.setupVersion !== undefined && typeof body.setupVersion !== 'number')) return reply({ error: 'Invalid request' }, 400);
   return reply(verifySource(body as VerifyRequest));
 }
 

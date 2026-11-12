@@ -20,7 +20,9 @@ export interface ReplayResponse {
 }
 export interface ChallengeInfo {
   id: string; kind: 'daily' | 'season' | 'duel'; number: number | null; seed: number; ticks: number; par: number | null;
-  opensAt: number | null; closesAt: number | null; rulesVersion: number; players: number; best: number | null;
+  opensAt: number | null; closesAt: number | null; rulesVersion: number;
+  /** How the starting conditions derive from the seed (0 plain farm, 1 the day's modifiers). Absent from an old server: 0. */ setupVersion?: number;
+  players: number; best: number | null;
 }
 export interface EntryResult {
   entryId: string; netWorth: number; parTick: number | null; tokens: number | null; mosaic: string;
