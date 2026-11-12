@@ -1,19 +1,36 @@
 ---
 import Base from '../layouts/Base.astro';
 ---
-<Base title="Leaderboard" description="The top Tendril farms by net worth, by growth over the last day, and in today's daily challenge.">
+<Base title="Leaderboard" description="Today's Tendril farm, this week's season and the endless farm: medal boards where every score was proven by replaying the moves on the server.">
   <section class="wrap page">
     <h1>Leaderboard</h1>
-    <p class="lede">Every farm here was checked by replaying its moves on the server. <a href="/docs/leaderboard/">How that works</a></p>
+    <p class="lede">Every score here was checked by replaying its moves on the server. <a href="/docs/leaderboard/">How that works</a></p>
 
-    <div class="tabs" role="tablist" aria-label="Boards">
-      <button role="tab" id="tab-networth" aria-controls="board" aria-selected="true" data-board="networth">Net worth</button>
-      <button role="tab" id="tab-growth" aria-controls="board" aria-selected="false" data-board="growth" tabindex="-1">Growth today</button>
-      <button role="tab" id="tab-daily" aria-controls="board" aria-selected="false" data-board="daily" tabindex="-1">Daily challenge</button>
+    <div class="tabs" role="tablist" aria-label="Board" data-scopes>
+      <button role="tab" aria-selected="true" data-scope="daily">Daily</button>
+      <button role="tab" aria-selected="false" data-scope="week" tabindex="-1">Week</button>
+      <button role="tab" aria-selected="false" data-scope="endless" tabindex="-1">Endless</button>
     </div>
 
-    <div id="board" role="tabpanel" aria-labelledby="tab-networth" aria-live="polite">
+    <div class="controls">
+      <div class="seg" role="group" aria-label="Medal" data-medals>
+        <button data-medal="wealth" aria-pressed="true">Wealth</button>
+        <button data-medal="speed" aria-pressed="false">Speed</button>
+        <button data-medal="brevity" aria-pressed="false">Brevity</button>
+      </div>
+      <div class="seg" role="group" aria-label="Who" data-who>
+        <button data-who="global" aria-pressed="true">Everyone</button>
+        <button data-who="friends" aria-pressed="false">Friends</button>
+      </div>
+      <div class="seg" role="group" aria-label="Endless board" data-endless hidden>
+        <button data-end="networth" aria-pressed="true">Net worth</button>
+        <button data-end="growth" aria-pressed="false">Growth today</button>
+      </div>
+    </div>
+
+    <div id="board" role="tabpanel" aria-live="polite">
       <p class="about" data-about></p>
+      <div data-histo></div>
       <div class="table-scroll">
         <table>
           <thead><tr><th class="rank">Rank</th><th>Farmer</th><th class="num" data-col>Net worth</th></tr></thead>
@@ -22,103 +39,203 @@ import Base from '../layouts/Base.astro';
       </div>
       <p class="state" data-state>Loading…</p>
     </div>
+
+    <section class="yesterday" aria-labelledby="yh" data-yesterday hidden>
+      <h2 id="yh">Yesterday's winners</h2>
+      <ul class="winners" role="list" data-winners></ul>
+    </section>
   </section>
 </Base>
 
 <script>
-  type Entry = { rank: number; displayName: string; netWorth: number; growth24h?: number };
-  type Board = 'networth' | 'growth' | 'daily';
+  import { api, arenaCss, el, fmt, histogramEl, medalValue, MEDALS, mosaicEl, playerLink, timeLeft, msUntil, utcDay } from '../scripts/arena';
+  import type { Board, Challenge, Medal, Row } from '../scripts/arena';
 
-  const panel = document.getElementById('board')!;
-  const rows = panel.querySelector<HTMLElement>('[data-rows]')!;
-  const state = panel.querySelector<HTMLElement>('[data-state]')!;
-  const col = panel.querySelector<HTMLElement>('[data-col]')!;
-  const about = panel.querySelector<HTMLElement>('[data-about]')!;
-  const tabs = [...document.querySelectorAll<HTMLButtonElement>('[role=tab]')];
-  const fmt = new Intl.NumberFormat();
-  const today = new Date().toISOString().slice(0, 10);
+  type Scope = 'daily' | 'week' | 'endless';
+  type EndRow = { rank: number; displayName: string; netWorth: number; growth24h?: number };
 
-  const ABOUT: Record<Board, string> = {
-    networth: 'Coins, plus everything spent on land, bots, buildings and research, plus barn stock.',
-    growth: 'How much each farm\'s net worth rose in the last 24 hours.',
-    daily: `Today's challenge (${today} UTC): the same new farm for everyone, scored at tick 3,000.`,
-  };
-  const URLS: Record<Board, string> = {
-    networth: '/api/leaderboard?board=networth&limit=50',
-    growth: '/api/leaderboard?board=growth&limit=50',
-    daily: `/api/daily/leaderboard?date=${today}&limit=50`,
-  };
+  const $ = <T extends HTMLElement>(s: string) => document.querySelector<T>(s)!;
+  const rows = $('[data-rows]'), state = $('[data-state]'), about = $('[data-about]'), col = $('[data-col]'), histo = $('[data-histo]');
+  const scopeTabs = [...document.querySelectorAll<HTMLButtonElement>('[data-scope]')];
+  const medalBtns = [...document.querySelectorAll<HTMLButtonElement>('[data-medal]')];
+  const whoBtns = [...document.querySelectorAll<HTMLButtonElement>('[data-who]')];
+  const endBtns = [...document.querySelectorAll<HTMLButtonElement>('[data-end]')];
 
+  const st = { scope: 'daily' as Scope, medal: 'wealth' as Medal, who: 'global', end: 'networth' };
+  const hash = location.hash.slice(1);
+  if (hash === 'daily' || hash === 'week' || hash === 'endless') st.scope = hash;
   let token = 0;
-  async function show(board: Board) {
-    const mine = ++token;
-    about.textContent = ABOUT[board];
-    col.textContent = board === 'growth' ? 'Growth' : board === 'daily' ? 'Score' : 'Net worth';
+
+  const style = document.createElement('style');
+  style.textContent = arenaCss;
+  document.head.append(style);
+
+  function pressed(btns: HTMLButtonElement[], key: string, val: string) {
+    for (const b of btns) b.setAttribute('aria-pressed', String(b.dataset[key] === val));
+  }
+
+  function fill(cells: (Node | string)[][]) {
     rows.replaceChildren();
+    for (const r of cells) {
+      const tr = el('tr');
+      r.forEach((c, i) => {
+        const td = el('td', i === 0 ? 'rank' : i === r.length - 1 ? 'num' : '');
+        td.append(c);
+        tr.append(td);
+      });
+      rows.append(tr);
+    }
+  }
+
+  function farmerCell(r: Row) {
+    const wrap = el('span', 'farmer');
+    const m = mosaicEl(r.mosaic, '2.25rem');
+    if (m) wrap.append(m);
+    const name = playerLink(r.login, r.displayName || r.login);
+    wrap.append(name);
+    if (r.authorKind === 'model') wrap.append(el('span', 'tag', r.model ? `model: ${r.model}` : 'model'));
+    return wrap;
+  }
+
+  async function show() {
+    const mine = ++token;
+    pressed(scopeTabs, 'scope', st.scope);
+    scopeTabs.forEach((t) => { t.setAttribute('aria-selected', String(t.dataset.scope === st.scope)); t.tabIndex = t.dataset.scope === st.scope ? 0 : -1; });
+    pressed(medalBtns, 'medal', st.medal);
+    pressed(whoBtns, 'who', st.who);
+    pressed(endBtns, 'end', st.end);
+    const endless = st.scope === 'endless';
+    $('[data-medals]').hidden = endless;
+    $('[data-who]').hidden = endless;
+    $('[data-endless]').hidden = !endless;
+    $('[data-yesterday]').hidden = true;
+    history.replaceState(null, '', `#${st.scope}`);
+    rows.replaceChildren();
+    histo.replaceChildren();
     state.hidden = false;
     state.textContent = 'Loading…';
     try {
-      const res = await fetch(URLS[board], { headers: { accept: 'application/json' } });
-      if (!res.ok) throw new Error(String(res.status));
-      const data = (await res.json()) as { entries?: Entry[] };
-      if (mine !== token) return;
-      const entries = data.entries ?? [];
-      if (!entries.length) {
-        state.textContent = board === 'daily'
-          ? 'No scores yet today. Play the daily challenge in the game and yours will be the first.'
-          : 'No farms have been checked yet. Sign in from the game and yours will be the first.';
-        return;
-      }
-      state.hidden = true;
-      for (const e of entries) {
-        const tr = document.createElement('tr');
-        const value = board === 'growth' ? `${(e.growth24h ?? 0) >= 0 ? '+' : ''}${fmt.format(e.growth24h ?? 0)}` : fmt.format(e.netWorth);
-        for (const [text, cls] of [[String(e.rank), 'rank'], [e.displayName, ''], [value, 'num']] as const) {
-          const td = document.createElement('td');
-          td.textContent = text;
-          if (cls) td.className = cls;
-          tr.append(td);
-        }
-        rows.append(tr);
-      }
+      if (endless) await showEndless(mine); else await showChallenge(mine);
     } catch {
-      if (mine !== token) return;
-      state.textContent = 'The leaderboard can\'t be reached right now. Your farm is safe; try again in a minute.';
+      if (mine === token) state.textContent = "The leaderboard can't be reached right now. Your farm is safe; try again in a minute.";
     }
   }
 
-  function select(tab: HTMLButtonElement) {
-    for (const t of tabs) {
-      const on = t === tab;
-      t.setAttribute('aria-selected', String(on));
-      t.tabIndex = on ? 0 : -1;
-    }
-    panel.setAttribute('aria-labelledby', tab.id);
-    history.replaceState(null, '', `#${tab.dataset.board}`);
-    void show(tab.dataset.board as Board);
+  async function showEndless(mine: number) {
+    col.textContent = st.end === 'growth' ? 'Growth' : 'Net worth';
+    about.textContent = st.end === 'growth'
+      ? "How much each farm's net worth rose in the last 24 hours."
+      : 'The real-time farm that never resets: coins, plus everything spent on land, bots, buildings and research, plus barn stock.';
+    const data = await api<{ entries?: EndRow[] }>(`/leaderboard?board=${st.end}&limit=50`);
+    if (mine !== token) return;
+    if (!data) throw new Error('down');
+    const list = data.entries ?? [];
+    if (!list.length) { state.textContent = 'No farms have been checked yet. Sign in from the game and yours will be the first.'; return; }
+    state.hidden = true;
+    fill(list.map((e) => [String(e.rank), e.displayName, st.end === 'growth' ? `${(e.growth24h ?? 0) >= 0 ? '+' : ''}${fmt.format(e.growth24h ?? 0)}` : fmt.format(e.netWorth)]));
   }
-  tabs.forEach((t, i) => {
-    t.addEventListener('click', () => select(t));
+
+  async function showChallenge(mine: number) {
+    const id = st.scope === 'week' ? 'week' : 'today';
+    col.textContent = st.medal === 'wealth' ? 'Net worth' : st.medal === 'speed' ? 'Par reached' : 'Tokens';
+    const [ch, board] = await Promise.all([
+      api<Challenge>(`/challenges/${id}`),
+      api<Board>(`/challenges/${id}/board?medal=${st.medal}&scope=${st.who}&limit=50`),
+    ]);
+    if (mine !== token) return;
+    if (!ch || !board) {
+      if (st.who === 'friends' && ch) { state.textContent = 'Sign in from the game to see the people you follow.'; about.textContent = ''; return; }
+      throw new Error('down');
+    }
+    const label = st.scope === 'week' ? `Season week #${ch.number}` : `Daily #${ch.number}`;
+    about.textContent = `${label}: ${MEDALS[st.medal].blurb} ${ch.players} player${ch.players === 1 ? '' : 's'}, ${timeLeft(msUntil(ch.closesAt))}.`;
+    if (!board.entries.length) {
+      state.textContent = st.who === 'friends'
+        ? 'None of the players you follow have an entry here yet.'
+        : st.medal === 'brevity'
+          ? 'No Brevity scores yet. Token counts arrive with the next game update.'
+          : 'No scores yet. Play in the game and yours will be the first.';
+      void yesterday();
+      return;
+    }
+    state.hidden = true;
+    histo.replaceChildren(histogramEl(board, st.medal));
+    const cells = board.entries.map((r) => [String(r.rank), farmerCell(r), medalValue(st.medal, r.value)]);
+    if (board.me && !board.entries.some((r) => r.entryId === board.me!.entryId)) {
+      cells.push([String(board.me.rank), farmerCell(board.me), medalValue(st.medal, board.me.value)]);
+    }
+    fill(cells);
+    void yesterday();
+  }
+
+  async function yesterday() {
+    if (st.scope !== 'daily') return;
+    const mine = token;
+    const id = `d-${utcDay(-1)}`;
+    const [ch, w, s, b] = await Promise.all([
+      api<Challenge>(`/challenges/${id}`),
+      ...(['wealth', 'speed', 'brevity'] as Medal[]).map((m) => api<Board>(`/challenges/${id}/board?medal=${m}&limit=1`)),
+    ]) as [Challenge | null, Board | null, Board | null, Board | null];
+    if (mine !== token || !ch) return;
+    const list = $('[data-winners]');
+    list.replaceChildren();
+    ([['wealth', w], ['speed', s], ['brevity', b]] as [Medal, Board | null][]).forEach(([m, bd]) => {
+      const r = bd?.entries[0];
+      if (!r) return;
+      const li = el('li', 'winner');
+      const pic = mosaicEl(r.mosaic, '5rem');
+      if (pic) li.append(pic);
+      const txt = el('div');
+      txt.append(el('strong', undefined, MEDALS[m].label), el('br'), playerLink(r.login, r.displayName || r.login), el('br'), el('span', 'dim', medalValue(m, r.value)));
+      li.append(txt);
+      list.append(li);
+    });
+    if (!list.children.length) return;
+    $('#yh').textContent = `Yesterday's winners (daily #${ch.number})`;
+    $('[data-yesterday]').hidden = false;
+  }
+
+  scopeTabs.forEach((t, i) => {
+    t.addEventListener('click', () => { st.scope = t.dataset.scope as Scope; void show(); });
     t.addEventListener('keydown', (ev) => {
       const d = ev.key === 'ArrowRight' ? 1 : ev.key === 'ArrowLeft' ? -1 : 0;
       if (!d) return;
-      const next = tabs[(i + d + tabs.length) % tabs.length]!;
-      next.focus();
-      select(next);
+      const n = scopeTabs[(i + d + scopeTabs.length) % scopeTabs.length]!;
+      n.focus(); st.scope = n.dataset.scope as Scope; void show();
     });
   });
-  select(tabs.find((t) => `#${t.dataset.board}` === location.hash) ?? tabs[0]!);
+  medalBtns.forEach((b) => b.addEventListener('click', () => { st.medal = b.dataset.medal as Medal; void show(); }));
+  whoBtns.forEach((b) => b.addEventListener('click', () => { st.who = b.dataset.who!; void show(); }));
+  endBtns.forEach((b) => b.addEventListener('click', () => { st.end = b.dataset.end!; void show(); }));
+  void show();
 </script>
 
-<style>
+<style is:global>
   .page { padding-top: clamp(2.5rem, 6vw, 4.5rem); max-width: 52rem; }
-  .lede { font-size: 1.2rem; color: var(--dim); margin: 1rem 0 2rem; }
-  .tabs { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 1.25rem; }
+  .page .lede { font-size: 1.2rem; color: var(--dim); margin: 1rem 0 2rem; }
+  .tabs { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 1rem; }
   .tabs button { background: none; border: 1.5px solid var(--line); color: var(--ink); border-radius: 999px; padding: 0.45rem 1rem; font: 600 0.98rem var(--display); cursor: pointer; }
   .tabs button[aria-selected='true'] { background: var(--ink); border-color: var(--ink); color: var(--paper); }
+  .controls { display: flex; flex-wrap: wrap; gap: 0.75rem 1.25rem; margin-bottom: 1.25rem; }
+  .seg { display: inline-flex; border: 1.5px solid var(--line); border-radius: 8px; overflow: hidden; }
+  .seg[hidden] { display: none; }
+  .seg button { background: none; border: 0; color: var(--ink); padding: 0.35rem 0.8rem; font: 600 0.92rem var(--display); cursor: pointer; }
+  .seg button + button { border-left: 1.5px solid var(--line); }
+  .seg button[aria-pressed='true'] { background: var(--leaf); color: var(--leaf-ink); }
   .about { color: var(--dim); margin: 0 0 1rem; }
   td.rank, th.rank { width: 4.5rem; }
   .num { text-align: right; padding-right: 0; }
   tbody tr:nth-child(-n + 3) td.rank { color: var(--leaf); font-weight: 700; }
   .state { color: var(--dim); padding: 1.5rem 0; }
+  .farmer { display: inline-flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; }
+  .tag { font-size: 0.75rem; border: 1px solid var(--line); border-radius: 999px; padding: 0 0.5rem; color: var(--dim); }
+  .dim { color: var(--dim); }
+  .histo { margin: 0 0 1.5rem; }
+  .histo .bars { display: flex; align-items: flex-end; gap: 4px; height: 6rem; border-bottom: 1.5px solid var(--line); }
+  .histo .bar { flex: 1; background: var(--line); border-radius: 3px 3px 0 0; min-width: 0; }
+  .histo .bar.me { background: var(--carrot); }
+  .histo figcaption { color: var(--dim); font-size: 0.88rem; margin-top: 0.4rem; }
+  .yesterday { margin-top: 3rem; }
+  .winners { list-style: none; padding: 0; margin: 1rem 0 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr)); gap: 1rem; }
+  .winner { display: flex; gap: 0.8rem; align-items: center; }
 </style>
