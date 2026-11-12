@@ -95,8 +95,9 @@ const ATTEMPT_MESSAGES: Record<AttemptKind, string> = {
   chunk: 'Too many chunk attempts', daily: 'Too many daily submissions', entry: 'Too many entry submissions', duel: 'Too many duels created',
 };
 
-export async function reserveAttempt(db: Db, userId: string, kind: AttemptKind, time: number, chunkLimit = CHUNK_ATTEMPTS_PER_HOUR): Promise<void> {
-  const limit = kind === 'chunk' ? chunkLimit : ATTEMPT_LIMITS[kind];
+export async function reserveAttempt(db: Db, userId: string, kind: AttemptKind, time: number, chunkLimit = CHUNK_ATTEMPTS_PER_HOUR, scale = 1): Promise<void> {
+  // `scale` < 1 is the budget guard's tightened mode (housekeeping.ts); never below one attempt.
+  const limit = Math.max(1, Math.floor((kind === 'chunk' ? chunkLimit : ATTEMPT_LIMITS[kind]) * scale));
   const since = kind === 'chunk' ? time - HOUR_MS : time - (time % DAY_MS);
   const allowed = await db.transaction(async (tx) => {
     await tx.execute('DELETE FROM submission_attempts WHERE user_id = ? AND kind = ? AND at_ms <= ?', [userId, kind, kind === 'chunk' ? time - HOUR_MS : time - 2 * DAY_MS]);

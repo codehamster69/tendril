@@ -161,3 +161,20 @@ about 1 MB, under both our 2 MB limit and Vercel's 4.5 MB (a test asserts it). C
 
 **Old clients.** `/daily`, `/daily/submit`, `/daily/leaderboard` keep their shapes and now read and write the Arena tables
 (a repeat of your own log is answered with the existing entry, not 409). They also keep the one-day-late grace (`LEGACY_GRACE_MS`); set it to 0 when 0.1.x is gone.
+
+## Players (B5; `packages/server/src/players.ts`, no new tables: uses `follows`)
+```
+GET  /players/:login           -> {login, displayName, avatarUrl, streak:{current,best,lastDay}, medals:{wealth,speed,brevity},
+                                   topPercent, followers, following, viewer:{isSelf,following}|null,
+                                   recent:[{entryId, challengeId, kind, number, netWorth, parTick, tokens, mosaic, createdAt}]}
+POST /players/:login/follow    {} (session) -> {following:true, changed}     404 unknown, 422 self, 409 over 500 follows
+POST /players/:login/unfollow  {} (session) -> {following:false, changed}
+GET  /me/following             (session) -> {players:[{login, displayName, avatarUrl}]}
+GET  /badge/:login.svg         -> image/svg+xml, Cache-Control public max-age=3600; always 200 (unknown login = grey badge)
+```
+Logins match case-insensitively (newest account wins a clash). `streak`: consecutive UTC dates of daily challenges the player
+has an entry for (the challenge's date, not the submit time); `current` is the run ending today or yesterday, else 0.
+`medals`: first places on closed daily/season boards (ties go to the earlier entry; players with the identical winning log all count, as on the board).
+`topPercent`: best "top N%" (ceil(100*rank/total), min 1) on any daily/season wealth board; null with no entries. `recent`:
+10 newest daily/season entries (duels excluded). Follow and unfollow are idempotent; `scope=friends` boards use the same graph.
+Cookie sessions need `X-Tendril-Client: 1` on POST. B3 reads `/players/:login`; C1 makes accepted duels follow each other via the same table.

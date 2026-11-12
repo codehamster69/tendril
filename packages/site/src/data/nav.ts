@@ -14,6 +14,7 @@ export const DOCS_NAV: NavGroup[] = [
     title: 'Sprout',
     items: [
       { href: '/docs/sprout/', title: 'Learn Sprout' },
+      { href: '/docs/python/', title: 'Sprout for Python programmers' },
       { href: '/docs/running/', title: 'How programs run' },
       { href: '/docs/reference/', title: 'Reference' },
       { href: '/docs/examples/', title: 'Example programs' },
@@ -24,6 +25,7 @@ export const DOCS_NAV: NavGroup[] = [
     items: [
       { href: '/docs/leaderboard/', title: 'Leaderboard and fair play' },
       { href: '/docs/daily/', title: 'Daily challenge' },
+      { href: '/docs/badge/', title: 'README badge and streaks' },
       { href: '/docs/faq/', title: 'FAQ' },
     ],
   },

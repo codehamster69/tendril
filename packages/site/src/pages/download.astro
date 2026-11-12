@@ -19,7 +19,7 @@ import { PLATFORMS, RELEASES_PAGE } from '../data/downloads';
           <ul class="builds" role="list">
             {p.builds.map((b) => (
               <li>
-                <a class="btn" data-build={b.id} aria-disabled="true">{b.label}<small>Coming soon</small></a>
+                <a class="btn" data-build={b.id} aria-disabled="true">{b.label}<small>Checking release…</small></a>
               </li>
             ))}
           </ul>
@@ -61,17 +61,21 @@ import { PLATFORMS, RELEASES_PAGE } from '../data/downloads';
     card.querySelector('h2')!.append(' ', tag);
   }
 
-  void latestRelease().then(async (release) => {
-    if (!release) return;
-    const best = os ? await preferredBuild(os) : null;
+  void latestRelease().catch(() => null).then(async (release) => {
+    const best = release && os ? await preferredBuild(os) : null;
     for (const a of document.querySelectorAll<HTMLAnchorElement>('[data-build]')) {
-      const asset = release.assets[a.dataset.build as keyof typeof release.assets];
-      if (!asset) continue;
+      const size = a.querySelector('small')!;
+      const asset = release?.assets[a.dataset.build as keyof typeof release.assets];
+      if (!asset) {
+        size.textContent = 'Coming soon';
+        continue;
+      }
       a.href = asset.url;
       a.removeAttribute('aria-disabled');
-      a.querySelector('small')!.textContent = megabytes(asset.size);
+      size.textContent = megabytes(asset.size);
       if (a.dataset.build === best) a.classList.add('primary');
     }
+    if (!release) return;
     document.querySelector<HTMLElement>('[data-version]')!.textContent = release.version;
     const all = document.querySelector<HTMLElement>('[data-all]')!;
     all.hidden = false;

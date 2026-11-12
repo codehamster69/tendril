@@ -6,6 +6,9 @@ import { board, challengeInfo, createDuel, entryReplay, entrySummary, KIND_LIMIT
 import type { AuthorKind, Medal } from './arena.ts';
 import { createFarm, dailyInfo, getFarm, getReplay, isValidDate, leaderboard, reserveAttempt, utcDate, verifyChunk } from './game.ts';
 import type { Board } from './game.ts';
+import { badgeFor, follow, listFollowing, playerPage, unfollow } from './players.ts';
+import { handleShare } from './share.ts';
+import { createGuard, dropReplaysOutsideTop, pruneOncePerDay, rateScale, refreshGuard, prune, withCacheHeaders } from './housekeeping.ts';
 import { migrate } from './migrations.ts';
 import type { Migration } from './migrations.ts';
 import { chunkInput, displayName, duelInput, entryIdParam, entryInput, HttpError, objectWithKeys, readJson, rejectQuery, validateActions, uuid } from './validation.ts';
@@ -28,6 +31,11 @@ const DESKTOP_DONE_PAGE = '<!doctype html><html lang="en"><meta charset="utf-8">
   + '<style>body{font:16px system-ui,sans-serif;max-width:32rem;margin:4rem auto;padding:0 1rem}</style>'
   + '<h1>Signed in</h1><p>You can close this tab and return to Tendril.</p></html>';
 
+function publicOriginOf(env: Env, url: URL): string {
+  const configured = env.PUBLIC_ORIGIN?.replace(/\/+$/, '');
+  return configured && /^https?:\/\/[^/\s]+$/.test(configured) ? configured : url.origin;
+}
+
 function limitParam(url: URL): number {
   const raw = url.searchParams.get('limit') ?? '20';
   if (!/^[1-9]\d{0,2}$/.test(raw) || Number(raw) > 100) throw new HttpError(400, 'Invalid limit');
@@ -35,6 +43,14 @@ function limitParam(url: URL): number {
 }
 
 export function createApp(options: AppOptions): (request: Request) => Promise<Response> {
+  return withCache(createInnerApp(options));
+}
+
+function withCache(inner: (request: Request) => Promise<Response>): (request: Request) => Promise<Response> {
+  return async (request) => withCacheHeaders(request, await inner(request));
+}
+
+function createInnerApp(options: AppOptions): (request: Request) => Promise<Response> {
   const { db, env } = options;
   const clock = options.now ?? Date.now;
   const now = (): number => {
@@ -43,6 +59,8 @@ export function createApp(options: AppOptions): (request: Request) => Promise<Re
     return value;
   };
   const ctx: Ctx = { db, env, fetch: options.fetch ?? ((input, init) => fetch(input, init)), now };
+  const guard = createGuard(db, env, now);
+  let prunedDay = ''; // this instance has already checked today's prune claim
   let ready: Promise<unknown> | undefined;
   // Lazy migration, guarded by schema_version; a failure is retried by the next request.
   const ensureMigrated = (): Promise<unknown> => (ready ??= migrate(db, now, [], options.migrations).then(() => moveLegacyDaily(db)).catch((error: unknown) => { ready = undefined; throw error; }));
@@ -57,6 +75,13 @@ export function createApp(options: AppOptions): (request: Request) => Promise<Re
     const empty = (status: number): Response => new Response(null, { status, headers });
     try {
       const url = new URL(request.url);
+      // ---- B4 share links and preview cards (public GET pages; no cookies, no CORS) ----
+      if (/^(\/api)?\/(r\/[^/]+|og\/[^/]+\.png)$/.test(url.pathname)) {
+        await ensureMigrated();
+        const shareOrigin = publicOriginOf(env, url);
+        const res = await handleShare(url.pathname, request.method, { db, now: now(), origin: shareOrigin, host: new URL(shareOrigin).host });
+        if (res) return res;
+      }
       const origin = request.headers.get('origin');
       const desktop = origin === DESKTOP_ORIGIN;
       const publicOrigin = env.PUBLIC_ORIGIN?.replace(/\/+$/, '');
@@ -78,6 +103,25 @@ export function createApp(options: AppOptions): (request: Request) => Promise<Re
       const route = url.pathname.slice(4); // keep the leading "/"
       const method = request.method;
       await ensureMigrated();
+      // Housekeeping: the first request of each UTC day prunes (the cron does the same; whichever comes first wins).
+      const today = new Date(now()).toISOString().slice(0, 10);
+      if (prunedDay !== today) { prunedDay = today; await pruneOncePerDay(db, now()).catch(() => { console.error('Housekeeping prune failed'); }); }
+
+      if (route === '/cron/housekeeping' && method === 'GET') {
+        // Vercel Cron sends `Authorization: Bearer $CRON_SECRET`. Without the secret set the route is closed and the lazy path still prunes.
+        const secret = env.CRON_SECRET;
+        if (!secret || request.headers.get('authorization') !== `Bearer ${secret}`) throw new HttpError(401, 'Unauthorized');
+        rejectQuery(url);
+        const report = await prune(db, now());
+        return json({ report, guard: await refreshGuard(db, env, now()) });
+      }
+      // Budget guard: read-only mode refuses writes except sign-in/out, so the game keeps serving without growing.
+      const mode = method === 'GET' || method === 'HEAD' || method === 'OPTIONS' ? 'normal' : await guard.mode();
+      const scale = rateScale(mode);
+      if (mode === 'readonly' && !route.startsWith('/auth/') && route !== '/dev/login') {
+        headers.set('Retry-After', '1800');
+        throw new HttpError(503, 'Tendril is read-only for a while to stay inside its free limits. Your result is safe on your device; try again later.');
+      }
 
       /** Requires a session; cookie-authenticated mutations also need the CSRF header. */
       const requireUser = async (): Promise<Identity> => {
@@ -156,7 +200,7 @@ export function createApp(options: AppOptions): (request: Request) => Promise<Re
       const chunk = /^\/farms\/([^/]+)\/chunks$/.exec(route);
       if (chunk && method === 'POST') {
         const identity = await requireUser();
-        await reserveAttempt(db, identity.userId, 'chunk', now(), options.chunkAttemptsPerHour);
+        await reserveAttempt(db, identity.userId, 'chunk', now(), options.chunkAttemptsPerHour, scale);
         rejectQuery(url);
         const input = chunkInput(await readJson(request));
         return json(await verifyChunk(db, identity.userId, uuid(chunk[1]!), input, now));
@@ -195,7 +239,7 @@ export function createApp(options: AppOptions): (request: Request) => Promise<Re
       }
       if (route === '/daily/submit' && method === 'POST') {
         const identity = await requireUser();
-        await reserveAttempt(db, identity.userId, 'daily', now());
+        await reserveAttempt(db, identity.userId, 'daily', now(), undefined, scale);
         rejectQuery(url);
         const body = objectWithKeys(await readJson(request), ['date', 'rulesVersion', 'actions'], 422);
         if (!isValidDate(body.date)) throw new HttpError(422, 'Invalid date');
@@ -215,13 +259,15 @@ export function createApp(options: AppOptions): (request: Request) => Promise<Re
         }
         if (sub === 'entries' && method === 'POST') {
           const identity = await requireUser();
-          await reserveAttempt(db, identity.userId, 'entry', now());
+          await reserveAttempt(db, identity.userId, 'entry', now(), undefined, scale);
           rejectQuery(url);
           const challenge = await loadChallenge(db, ref!, now());
           const input = entryInput(await readJson(request), MAX_SOURCE_BYTES);
           const limits = KIND_LIMITS[challenge.kind];
           const actions = validateActions(input.actions, 0, challenge.ticks, limits.maxActions);
-          return json(await submitEntry(db, identity.userId, challenge, input, actions, now()));
+          const result = await submitEntry(db, identity.userId, challenge, input, actions, now());
+          if (mode !== 'normal' && result.improved) await dropReplaysOutsideTop(db, challenge.id, result.entryId); // lean and tighter: only top entries keep a log
+          return json(result);
         }
         if (sub === 'board' && method === 'GET') {
           rejectQuery(url, ['medal', 'scope', 'author', 'limit']);
@@ -245,10 +291,38 @@ export function createApp(options: AppOptions): (request: Request) => Promise<Re
       }
       if (route === '/duels' && method === 'POST') {
         const identity = await requireUser();
-        await reserveAttempt(db, identity.userId, 'duel', now());
+        await reserveAttempt(db, identity.userId, 'duel', now(), undefined, scale);
         rejectQuery(url);
         const input = duelInput(await readJson(request), KIND_LIMITS.duel.maxTicks);
         return json(await createDuel(db, identity.userId, input, now()), 201);
+      }
+      // ---- players: profile, follows, README badge (B5) ----
+      const playerRoute = /^\/players\/([^/]+?)(?:\/(follow|unfollow))?$/.exec(route);
+      if (playerRoute) {
+        const [, login, action] = playerRoute;
+        if (!action && method === 'GET') {
+          rejectQuery(url);
+          return json(await playerPage(db, login!, await viewerId(), now(), utcDate(now())));
+        }
+        if (action && method === 'POST') {
+          const identity = await requireUser();
+          rejectQuery(url);
+          objectWithKeys(await readJson(request), []);
+          return json(action === 'follow' ? await follow(db, identity.userId, login!, now()) : await unfollow(db, identity.userId, login!));
+        }
+      }
+      if (route === '/me/following' && method === 'GET') {
+        rejectQuery(url);
+        return json(await listFollowing(db, (await requireUser()).userId));
+      }
+      const badgeRoute = /^\/badge\/([^/]+)\.svg$/.exec(route);
+      if (badgeRoute && method === 'GET') {
+        rejectQuery(url);
+        const svg = await badgeFor(db, badgeRoute[1]!, utcDate(now()));
+        headers.set('Content-Type', 'image/svg+xml; charset=utf-8');
+        headers.set('Cache-Control', 'public, max-age=3600, s-maxage=3600');
+        headers.set('Content-Security-Policy', "default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'");
+        return new Response(svg, { status: 200, headers });
       }
       throw new HttpError(404, 'Not found');
     } catch (error) {
