@@ -6,6 +6,7 @@ import type { ChallengeInfo, EntryResult, FarmApi } from './api-client';
 import type { GameLoop } from './game-loop';
 import { startSignIn } from './account';
 import { el, toast } from './palette';
+import { createPendingRuns } from './pending-run';
 import { copyText, shareText } from './share';
 
 export const CHALLENGE_ID = /^[dsx]-[A-Za-z0-9-]{1,40}$/;
@@ -43,13 +44,36 @@ export function localResult(c: ChallengeInfo, actions: LogEntry[]): { netWorth: 
   return replayWithPar(world, actions, c.ticks, c.par ?? Number.MAX_SAFE_INTEGER);
 }
 
-/** Submits the finished run. Kept apart from the panel so a retry can wrap it (F2). */
+const PENDING_KEY = 'tendril.pending-runs.v1';
+let pendingRuns: ReturnType<typeof createPendingRuns> | undefined;
+/** A run the server could not take (offline, rate limit, read-only budget guard) is kept on this device and retried. */
+function pending(api: FarmApi): ReturnType<typeof createPendingRuns> {
+  return (pendingRuns ??= createPendingRuns({
+    load: () => { try { return JSON.parse(localStorage.getItem(PENDING_KEY) ?? '{}'); } catch { return {}; } },
+    save: (all) => { try { localStorage.setItem(PENDING_KEY, JSON.stringify(all)); } catch { /* storage full or blocked: the run stays in memory only */ } },
+    submit: (run) => api.submitEntry(run.challengeId, { rulesVersion: run.rulesVersion, actions: run.actions }),
+    setTimer: (fn, ms) => setTimeout(fn, ms),
+    clearTimer: (h) => clearTimeout(h as number),
+    now: Date.now,
+    onSubmitted: (run, entry) => { window.dispatchEvent(new CustomEvent('tendril:entry-submitted', { detail: { challengeId: run.challengeId, entry } })); toast('Run submitted', 'Your saved run reached the server.'); },
+  }));
+}
+
+/** Submits the finished run; if it cannot be delivered it is kept and retried automatically (F2). */
 export async function submitRun(api: FarmApi, c: ChallengeInfo, actions: LogEntry[]): Promise<EntryResult> {
-  return api.submitEntry(c.id, { rulesVersion: c.rulesVersion, actions });
+  try {
+    return await pending(api).submit({ challengeId: c.id, rulesVersion: c.rulesVersion, actions }) as EntryResult;
+  } catch (e) {
+    if (e instanceof ApiError && (e.status === 0 || e.status === 429 || e.status >= 500)) throw new ApiError(e.status, 'Could not reach the server right now. Your run is saved on this device and will be sent automatically.');
+    throw e;
+  }
 }
 
 export function mountArena({ loop, api, challenge: c }: { loop: GameLoop; api: FarmApi; challenge: ChallengeInfo }): void {
   const host = document.getElementById('lesson-card')!; host.hidden = false;
+  void pending(api).flush(); // send any run left over from an earlier visit
+  window.addEventListener('online', () => { void pending(api).flush(); });
+  window.addEventListener('tendril:account', (event) => { if ((event as CustomEvent<{ profile: unknown }>).detail.profile) void pending(api).flush(); });
   const number = c.number !== null && c.number > 0 ? c.number : null; // days before the 1 Dec 2026 launch count as practice
   const title = number !== null ? `Daily farm #${number}` : c.kind === 'daily' ? `Practice farm · ${c.id.slice(2)}` : c.kind === 'duel' ? 'Duel' : c.kind === 'season' ? 'Weekly season' : c.id;
   const left = el('b', { id: 'arena-left', text: '' });
