@@ -14,3 +14,5 @@ export { IllegalAction } from './types.ts';
 export type {
   Farm, Setup, World, Order, LogEntry, Snapshot, SnapshotTile, SnapshotBot, ScanResult, Segment, Bot, Plot,
 } from './types.ts';
+export { DAILY_EPOCH, DAILY_PAR, dailyNumber, farmMosaic, replayWithPar, challengeSetup } from './arena.ts';
+export type { ParReplay, ChallengeKind, ChallengeSetup } from './arena.ts';

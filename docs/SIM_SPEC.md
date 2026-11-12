@@ -186,3 +186,12 @@ interface Snapshot {
 }
 ```
 `World` keeps `lastOp: (number | null)[]` per bot for the snapshot only; it is not hashed but is serialized.
+
+## Appendix: Arena helpers (`packages/sim/src/arena.ts`)
+Pure helpers shared by the server and clients. They add no rules and do not change `RULES_VERSION` (3) or any hash.
+
+- `DAILY_EPOCH = '2026-12-01'`; `dailyNumber(date)` = UTC days since the epoch + 1 (epoch day is 1). `date` is a real `YYYY-MM-DD`, else it throws.
+- `DAILY_PAR = 290`: net worth at tick 3000 that the bundled `daily.sprout` reaches or beats on 96 of the 100 daily seeds from the epoch (`dailySeed` of 2026-12-01 .. 2027-03-10; observed range 286..352).
+- `farmMosaic(world)`: 64 characters for plot (0,0), row by row (y, then x). `B` barn tile (0,0), `h` hive, `c` composter, `1`..`6` crop id (settled state, so a crop killed by frost shows as empty), `t` tilled and empty, `0` untilled. Read-only.
+- `replayWithPar(world, actions, toTick, par)`: same validation and end state as `replayChunk`, returns `{ netWorth, parTick, mosaic }`. `parTick` is the first `world.tick` at which `netWorth >= par`, checked at the start, after every applied action and after every tick (so a sale at tick t counts as t); `null` if never reached. Throws `IllegalAction` on a bad log or non-integer `par`.
+- `challengeSetup(kind, seed)` with `kind` `'daily' | 'season' | 'duel'` returns `{ ticks, setup }`, currently `{ ticks: DAILY_TICKS, setup: {} }` for every kind. Servers must create challenge worlds through it.
