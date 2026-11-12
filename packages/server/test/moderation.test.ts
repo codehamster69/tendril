@@ -62,7 +62,7 @@ beforeEach(async () => {
 });
 afterEach(() => db.close());
 
-const closed = () => { time = BASE + DAY_MS; };
+const closed = () => { time = BASE + 2 * DAY_MS; }; // closed and past the legacy grace (D2 F1)
 const visible = async () => (await call(`/entries/${entryId}/source`)).status === 200;
 const listed = async () => ((await call(`/challenges/${DAILY}/sources`)).json.entries as Json[]).some((e) => e.entryId === entryId);
 
