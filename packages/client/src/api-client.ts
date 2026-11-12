@@ -23,7 +23,9 @@ export class ApiError extends Error {
 
 const TOKEN_KEY = 'tendril.token';
 const DESKTOP = typeof location !== 'undefined' && location.protocol === 'app:';
-export const API_ORIGIN: string = (import.meta.env.VITE_API_ORIGIN as string | undefined) ?? (DESKTOP ? 'https://tendril-farm.vercel.app' : '');
+// Must equal DEFAULT_API_ORIGIN in electron/config.cjs (checked by navigation.test.cjs).
+const DEFAULT_DESKTOP_API_ORIGIN = 'https://tendril.hokora.xyz';
+export const API_ORIGIN: string = (import.meta.env.VITE_API_ORIGIN as string | undefined) ?? (DESKTOP ? DEFAULT_DESKTOP_API_ORIGIN : '');
 
 export class FarmApi {
   constructor(readonly token: string | null = readToken(), readonly base = `${API_ORIGIN}/api`) {}
@@ -84,26 +86,44 @@ export function writeToken(token: string | null): void {
   try { if (token) localStorage.setItem(TOKEN_KEY, token); else localStorage.removeItem(TOKEN_KEY); } catch { /* private mode */ }
 }
 
-/** Web: full-page redirect through GitHub. Desktop: system browser plus a one-time nonce poll. */
-export async function signIn(): Promise<Profile | null> {
+export const SIGN_IN_TIMEOUT_MS = 5 * 60_000;
+const POLL_INTERVAL_MS = 2000;
+export const isDesktop = DESKTOP;
+
+function abortableSleep(ms: number, signal: AbortSignal): Promise<void> {
+  return new Promise((resolve) => {
+    const done = (): void => { clearTimeout(timer); signal.removeEventListener('abort', done); resolve(); };
+    const timer = setTimeout(done, ms);
+    signal.addEventListener('abort', done);
+  });
+}
+
+/**
+ * Web: full-page redirect through GitHub, resolves null. Desktop: the system browser plus a one-time
+ * nonce poll that gives up after five minutes. Resolves null when `signal` aborts (the player cancelled).
+ */
+export async function signIn(signal: AbortSignal = new AbortController().signal): Promise<Profile | null> {
   if (!DESKTOP) {
     setSignedInHint(true);
     location.href = `/api/auth/github?return=${encodeURIComponent(location.pathname + location.search)}`;
     return null;
   }
-  const nonce = Array.from(crypto.getRandomValues(new Uint8Array(24)), (b) => b.toString(16).padStart(2, '0')).join('');
-  const url = `${API_ORIGIN}/api/auth/github?desktop=${nonce}`;
   const bridge = (window as unknown as { tendrilDesktop?: { openExternal(u: string): void } }).tendrilDesktop;
-  if (bridge) bridge.openExternal(url); else window.open(url, '_blank', 'noopener');
+  if (!bridge) throw new Error('This desktop build cannot open the system browser.');
+  const nonce = Array.from(crypto.getRandomValues(new Uint8Array(24)), (b) => b.toString(16).padStart(2, '0')).join('');
+  bridge.openExternal(`${API_ORIGIN}/api/auth/github?desktop=${nonce}`);
   const api = new FarmApi(null);
-  for (let i = 0; i < 150; i++) {
-    await new Promise((r) => setTimeout(r, 2000));
+  const deadline = Date.now() + SIGN_IN_TIMEOUT_MS;
+  while (Date.now() < deadline) {
+    await abortableSleep(POLL_INTERVAL_MS, signal);
+    if (signal.aborted) return null;
     try {
       const res = await api.pollDesktop(nonce);
       if (res?.token) { writeToken(res.token); setSignedInHint(true); return res.profile; }
     } catch (e) {
-      if (!(e instanceof ApiError) || (e.status !== 404 && e.status !== 0)) throw e;
+      // 404/202: not approved yet. 0: offline blip. Anything else ends the attempt.
+      if (!(e instanceof ApiError) || (e.status !== 404 && e.status !== 202 && e.status !== 0)) throw e;
     }
   }
-  throw new Error('Sign-in timed out. Try again.');
+  throw new Error('Sign-in timed out.');
 }

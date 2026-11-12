@@ -46,4 +46,23 @@ function hardenContents(contents, entry) {
   contents.setWindowOpenHandler(() => ({ action: 'deny' }));
 }
 
-module.exports = { entryURL, allowsNavigation, hardenContents };
+/**
+ * The only URL the desktop app may hand to the system browser: the GitHub
+ * sign-in route on the configured API origin, over https, with a desktop nonce.
+ */
+function isAllowedExternalURL(destination, apiOrigin) {
+  try {
+    if (typeof destination !== 'string') return false;
+    const url = new URL(destination);
+    const api = new URL(apiOrigin);
+    if (url.protocol !== 'https:' || api.protocol !== 'https:') return false;
+    if (url.origin !== api.origin || url.username || url.password) return false;
+    if (url.pathname !== '/api/auth/github' && !url.pathname.startsWith('/api/auth/github/')) return false;
+    const nonces = url.searchParams.getAll('desktop');
+    return nonces.length === 1 && /^[A-Za-z0-9_-]{16,128}$/.test(nonces[0]);
+  } catch {
+    return false;
+  }
+}
+
+module.exports = { entryURL, allowsNavigation, hardenContents, isAllowedExternalURL };

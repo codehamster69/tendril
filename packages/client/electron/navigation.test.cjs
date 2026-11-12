@@ -1,7 +1,10 @@
 const assert = require('node:assert/strict');
 const { EventEmitter } = require('node:events');
 const { test } = require('node:test');
-const { entryURL, allowsNavigation, hardenContents } = require('./navigation.cjs');
+const { entryURL, allowsNavigation, hardenContents, isAllowedExternalURL } = require('./navigation.cjs');
+const { DEFAULT_API_ORIGIN, apiOrigin } = require('./config.cjs');
+const { readFileSync } = require('node:fs');
+const nodePath = require('node:path');
 
 const file = 'app://tendril/index.html';
 
@@ -85,4 +88,41 @@ test('the app scheme serves only files inside the built client', () => {
   for (const url of ['app://tendril/..%2f..%2fetc/passwd', 'app://tendril/%2e%2e%2fsecret', 'app://other/index.html', 'file:///etc/passwd', 'nonsense']) {
     assert.equal(resolveRequest(dist, url), null, url);
   }
+});
+
+test('only the sign-in URL on the API origin may reach the system browser', () => {
+  const api = 'https://tendril.hokora.xyz';
+  const nonce = 'a'.repeat(48);
+  assert.equal(isAllowedExternalURL(`${api}/api/auth/github?desktop=${nonce}`, api), true);
+  assert.equal(isAllowedExternalURL(`${api}/api/auth/github?return=/play/&desktop=${nonce}`, api), true);
+  for (const url of [
+    `https://example.com/api/auth/github?desktop=${nonce}`,
+    `https://tendril.hokora.xyz.evil.com/api/auth/github?desktop=${nonce}`,
+    `https://evil.com/?https://tendril.hokora.xyz/api/auth/github?desktop=${nonce}`,
+    `http://tendril.hokora.xyz/api/auth/github?desktop=${nonce}`,
+    `https://tendril.hokora.xyz:8443/api/auth/github?desktop=${nonce}`,
+    `https://user:pw@tendril.hokora.xyz/api/auth/github?desktop=${nonce}`,
+    `https://tendril.hokora.xyz@evil.com/api/auth/github?desktop=${nonce}`,
+    `https://tendril.hokora.xyz/api/auth/githubx?desktop=${nonce}`,
+    `https://tendril.hokora.xyz/api/me?desktop=${nonce}`,
+    `https://tendril.hokora.xyz/api/auth/github`,
+    `https://tendril.hokora.xyz/api/auth/github?desktop=`,
+    `https://tendril.hokora.xyz/api/auth/github?desktop=${nonce}&desktop=${nonce}`,
+    `file:///etc/passwd`, 'javascript:alert(1)', 'data:text/html,x', 'app://tendril/index.html', 'not a URL', '', null, undefined, 42,
+  ]) {
+    assert.equal(isAllowedExternalURL(url, api), false, String(url));
+  }
+  assert.equal(isAllowedExternalURL(`${api}/api/auth/github?desktop=${nonce}`, 'http://tendril.hokora.xyz'), false);
+});
+
+test('the API origin is defined once and the renderer default matches it', () => {
+  assert.equal(DEFAULT_API_ORIGIN, 'https://tendril.hokora.xyz');
+  assert.equal(apiOrigin(''), DEFAULT_API_ORIGIN);
+  assert.equal(apiOrigin('http://evil.test'), DEFAULT_API_ORIGIN);
+  assert.equal(apiOrigin('https://staging.example.com/x'), 'https://staging.example.com');
+  const renderer = readFileSync(nodePath.join(__dirname, '..', 'src', 'api-client.ts'), 'utf8');
+  const match = renderer.match(/const DEFAULT_DESKTOP_API_ORIGIN = '([^']+)'/);
+  assert.ok(match, 'renderer default constant not found');
+  assert.equal(match[1], DEFAULT_API_ORIGIN);
+  assert.ok(!renderer.includes('vercel.app'));
 });

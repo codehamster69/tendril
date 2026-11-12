@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { access, mkdir, mkdtemp, rm } from 'node:fs/promises';
+import { access, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { _electron, expect as playwrightExpect } from '@playwright/test';
@@ -18,7 +18,10 @@ if (packagedExecutable) {
 const releaseDir = path.join(clientDir, 'release');
 await mkdir(releaseDir, { recursive: true });
 const profile = await mkdtemp(path.join(releaseDir, 'electron-smoke-'));
-const env = { ...process.env, TENDRIL_ELECTRON_SMOKE: '1', TENDRIL_ELECTRON_SMOKE_USER_DATA: profile };
+const openLog = path.join(profile, 'open-external.log');
+const env = { ...process.env, TENDRIL_ELECTRON_SMOKE: '1', TENDRIL_ELECTRON_SMOKE_USER_DATA: profile, TENDRIL_ELECTRON_SMOKE_OPEN_LOG: openLog };
+delete env.TENDRIL_API_ORIGIN;
+await writeFile(openLog, '');
 delete env.VITE_DEV_URL;
 delete env.ELECTRON_RUN_AS_NODE;
 
@@ -89,6 +92,22 @@ try {
     ['undefined', 'undefined'], 'Renderer must not have Node access');
   assert.equal(await page.evaluate(() => 'tendril' in window), false,
     'Packaged app entry must not expose the localhost-only E2E bridge');
+
+  // The preload bridge exposes exactly one function; the main process allow-lists what it opens.
+  assert.equal(await page.evaluate(() => typeof window.tendrilDesktop?.openExternal), 'function');
+  assert.deepEqual(await page.evaluate(() => Object.keys(window.tendrilDesktop)), ['openExternal']);
+  const nonce = 'ab'.repeat(24);
+  const allowed = `https://tendril.hokora.xyz/api/auth/github?desktop=${nonce}`;
+  await page.evaluate((urls) => { for (const url of urls) window.tendrilDesktop.openExternal(url); }, [
+    'https://example.com', 'http://tendril.hokora.xyz/api/auth/github?desktop=' + nonce,
+    'https://tendril.hokora.xyz.evil.com/api/auth/github?desktop=' + nonce, 'file:///etc/passwd', 'javascript:alert(1)',
+    'https://tendril.hokora.xyz/api/me', allowed,
+  ]);
+  // IPC is asynchronous: poll until the one legitimate call is recorded, then check nothing else was.
+  await expect.poll(async () => (await readFile(openLog, 'utf8')).trim()).toBe(allowed);
+  await page.evaluate(() => window.tendrilDesktop.openExternal('https://example.com'));
+  await page.evaluate(() => new Promise((resolve) => setTimeout(resolve, 300)));
+  assert.equal((await readFile(openLog, 'utf8')).trim(), allowed, 'Only the allowed sign-in URL may be opened');
 
   // Use real DOM/editor controls, never a mock or a privileged renderer bridge.
   const marker = 'TENDRIL_ELECTRON_SPROUT_SMOKE';

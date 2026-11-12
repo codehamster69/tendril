@@ -13,8 +13,9 @@ body {
   margin: 0; color: var(--mist); font: 14px/1.45 var(--sans); background:
     radial-gradient(1200px 600px at 10% -10%, rgba(213,182,91,.08), transparent 60%),
     radial-gradient(900px 500px at 110% 10%, rgba(127,183,217,.07), transparent 60%), var(--ink);
-  display: grid; grid-template-rows: auto 1fr auto; min-height: 100vh;
+  display: grid; grid-template-rows: auto auto 1fr auto; min-height: 100vh;
 }
+#topbar { grid-row: 1; } #unranked-notice { grid-row: 2; } #workbench { grid-row: 3; } #statusbar { grid-row: 4; }
 button, select, input { font: inherit; color: inherit; }
 button {
   background: var(--teal); border: 1px solid var(--line); border-radius: 9px; padding: 6px 12px; cursor: pointer;
@@ -161,6 +162,17 @@ h1, h2, h3 { margin: 0; }
 }
 .toast b { color: var(--wheat); display: block; margin-bottom: 2px; }
 @keyframes toast-in { from { opacity: 0; transform: translateY(-8px) scale(.98); } }
+
+/* unranked notice: a slim bar between the top bar and the workbench */
+#unranked-notice {
+  display: flex; align-items: center; gap: 12px; padding: 6px 20px; font-size: 13px; color: var(--mist);
+  background: rgba(217,119,66,.14); border-bottom: 1px solid rgba(213,182,91,.4);
+}
+#unranked-notice[hidden] { display: none; }
+#unranked-notice > span { flex: 1; min-width: 0; }
+#unranked-notice button.primary { padding: 3px 12px; }
+#unranked-notice .notice-link { color: var(--wheat); font-weight: 650; }
+#unranked-notice .notice-close { border: 0; padding: 0 8px; font-size: 20px; line-height: 1; color: var(--mist-2); }
 
 @media (max-width: 1100px) {
   #workbench { grid-template-columns: 1fr; }

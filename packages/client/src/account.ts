@@ -1,10 +1,14 @@
-import { ApiError, FarmApi, setSignedInHint, signedInHint, signIn, readToken, writeToken } from './api-client';
-import type { FarmResponse } from './api-client';
+import { ApiError, FarmApi, isDesktop, setSignedInHint, signedInHint, signIn, readToken, writeToken } from './api-client';
+import type { FarmResponse, Profile } from './api-client';
 import type { GameLoop } from './game-loop';
 import type { RealSim } from './real-sim';
 import { el, toast } from './palette';
 
 /** Connects the ranked farm, if requested. Falls back to local play with a toast. */
+/** Starts the same sign-in flow as the account dialog's GitHub button. Set by mountAccount. */
+let signInStarter: () => void = () => {};
+export const startSignIn = (): void => signInStarter();
+
 export async function connectRanked(api: FarmApi): Promise<FarmResponse | undefined> {
   try { return await api.farm(); } catch (e) {
     if (e instanceof ApiError && e.status === 404) return api.createFarm();
@@ -13,9 +17,42 @@ export async function connectRanked(api: FarmApi): Promise<FarmResponse | undefi
   }
 }
 
+/** Who is signed in, as far as this page knows. `fresh` marks a sign-in completed in this page session. */
+export interface AccountEvent { profile: Profile | null; fresh: boolean }
+const announce = (detail: AccountEvent): void => { window.dispatchEvent(new CustomEvent<AccountEvent>('tendril:account', { detail })); };
+
 /** The account button and its dialog. Local play never needs an account. */
 export function mountAccount(api: FarmApi, sim: RealSim, loop: GameLoop): void {
   const account = document.getElementById('btn-account') as HTMLButtonElement;
+  let attempt: AbortController | null = null;
+  const beginSignIn = (): void => {
+    if (attempt) return;
+    const mine = attempt = new AbortController();
+    if (!isDesktop) { void signIn(mine.signal); return; }
+    account.disabled = true;
+    account.textContent = 'Waiting for browser…';
+    const dialog = el('dialog', { class: 'campaign-map', 'aria-label': 'Waiting for browser sign-in' });
+    const hide = el('button', { text: 'Hide' });
+    hide.addEventListener('click', () => { dialog.close(); dialog.remove(); });
+    const cancel = el('button', { text: 'Cancel', class: 'primary' });
+    cancel.addEventListener('click', () => { mine.abort(); dialog.close(); dialog.remove(); });
+    dialog.append(el('header', {}, el('h2', { text: 'Waiting for browser…' }), hide),
+      el('p', { text: 'Finish signing in with GitHub in the browser window that just opened. This waits up to 5 minutes.' }), cancel);
+    document.body.append(dialog);
+    dialog.showModal();
+    let signedIn = false;
+    void signIn(mine.signal).then((profile) => {
+      if (!profile) return;
+      signedIn = true;
+      account.textContent = profile.login;
+      announce({ profile, fresh: true });
+      toast('Signed in', `Welcome, ${profile.login}.`);
+    }).catch(() => { toast("Sign-in didn't complete.", 'Try again.'); }).finally(() => {
+      attempt = null; account.disabled = false; dialog.close(); dialog.remove();
+      if (!signedIn) account.textContent = 'Sign in';
+    });
+  };
+  signInStarter = beginSignIn;
   account.addEventListener('click', async () => {
     const dialog = el('dialog', { class: 'campaign-map', 'aria-label': 'Account and ranked farm' });
     const close = el('button', { text: 'Close' });
@@ -47,13 +84,14 @@ export function mountAccount(api: FarmApi, sim: RealSim, loop: GameLoop): void {
     } catch {
       dialog.append(el('p', { text: 'Local play never needs an account. Sign in with GitHub to verify your farm and submit daily scores.' }));
       const login = el('button', { text: 'Continue with GitHub', class: 'primary' });
-      login.addEventListener('click', () => { void signIn().catch((e: unknown) => toast('Sign-in unavailable', e instanceof Error ? e.message : 'Try again later.')); });
+      login.addEventListener('click', () => { dialog.close(); dialog.remove(); beginSignIn(); });
       dialog.append(login);
     }
     document.body.append(dialog);
     dialog.showModal();
   });
   if (readToken() || signedInHint()) {
-    void api.me().then(({ profile }) => { account.textContent = profile.displayName; }).catch((e: unknown) => { if (e instanceof ApiError && e.status === 401) setSignedInHint(false); });
-  }
+    void api.me().then(({ profile }) => { account.textContent = profile.login; announce({ profile, fresh: false }); })
+      .catch((e: unknown) => { if (e instanceof ApiError && e.status === 401) setSignedInHint(false); announce({ profile: null, fresh: false }); });
+  } else announce({ profile: null, fresh: false });
 }

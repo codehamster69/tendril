@@ -10,6 +10,7 @@ import { mountDebugger } from './debugger';
 import { mountConsole } from './console-panel';
 import { mountControls } from './ui';
 import { mountAccount, connectRanked } from './account';
+import { mountNotice } from './notice';
 import { mountProgression, selectedLesson, today } from './progression';
 import { FarmApi } from './api-client';
 import { el } from './palette';
@@ -43,6 +44,7 @@ mountDebugger();
 mountReference((code) => editor.setSource(editor.getSource() + '\n' + code + '\n'));
 mountInspectors(view, () => sim.meta.seed);
 mountProgression({ loop, editor, view, api });
+mountNotice({ live: mode === 'live', verified: sim.ranked });
 mountAccount(api, sim, loop);
 window.addEventListener('tendril:snapshot', (event) => view.update((event as CustomEvent).detail));
 
