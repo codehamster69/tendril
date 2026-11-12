@@ -26,5 +26,11 @@
     "electron-builder": "^26.18.0",
     "typescript": "^5.9.3",
     "vite": "^7.3.8"
+  },
+  "homepage": "https://github.com/codehamster69/tendril",
+  "description": "A farming game powered by player-written Sprout programs.",
+  "author": {
+    "name": "Tendril",
+    "email": "175239922+codehamster69@users.noreply.github.com"
   }
 }

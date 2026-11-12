@@ -42,7 +42,7 @@ nsis:
 linux:
   executableName: tendril
   category: Game
-  maintainer: Tendril
+  maintainer: Tendril <175239922+codehamster69@users.noreply.github.com>
   synopsis: Tendril farming game
   description: A farming game powered by player-written Sprout programs.
   target:
