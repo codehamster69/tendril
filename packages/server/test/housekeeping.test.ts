@@ -230,7 +230,7 @@ describe('cache headers', () => {
   it('caches anonymous successful reads at the edge and nothing else', async () => {
     const stats = await call('/stats');
     expect(stats.headers.get('Cache-Control')).toBe('public, max-age=0, s-maxage=300, stale-while-revalidate=600');
-    expect(stats.headers.get('Vary')).toContain('Authorization');
+    expect(stats.headers.get('Vary')).toBe('Origin'); // never Cookie: Vercel's CDN will not cache a response that varies on it
     expect((await call('/leaderboard')).headers.get('Cache-Control')).toContain('s-maxage=30');
     expect((await call(`/challenges/${DAILY}/board`)).headers.get('Cache-Control')).toContain('s-maxage=30');
     // a signed-in viewer's response may differ per person
