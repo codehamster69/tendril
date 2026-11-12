@@ -3,7 +3,7 @@ import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'n
 import { randomBytes } from 'node:crypto';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
-import { challengeSetup, createWorld, replayWithPar, RULES_VERSION } from '@tendril/sim/src/index.ts';
+import { challengeSetup, createWorld, replayWithPar, RULES_VERSION, SETUP_LEGACY, describeModifiers } from '@tendril/sim/src/index.ts';
 import type { ChallengeKind, LogEntry } from '@tendril/sim/src/index.ts';
 import { createRun } from './index.ts';
 
@@ -31,7 +31,7 @@ export function loadToken(): string | null {
   return saved && saved.api === apiOrigin() ? saved.token : null;
 }
 
-export interface Challenge { id: string; kind: ChallengeKind; number: number | null; seed: number; ticks: number; par: number | null; rulesVersion: number }
+export interface Challenge { id: string; kind: ChallengeKind; number: number | null; seed: number; ticks: number; par: number | null; rulesVersion: number; setupVersion?: number }
 export interface LastRun { api: string; challengeId: string; rulesVersion: number; actions: LogEntry[]; netWorth: number; parTick: number | null; mosaic: string; source: string }
 
 async function api<T>(path: string, init: { body?: unknown; token?: string | null } = {}): Promise<{ status: number; json: T }> {
@@ -73,7 +73,7 @@ export async function getChallenge(id: string): Promise<Challenge> {
 /** Run a Sprout file on the challenge's world, then replay its log with par tracking (the same check the server makes). */
 export function playLocal(c: Challenge, source: string): LastRun & { errors: string[] } {
   if (c.rulesVersion !== RULES_VERSION) throw new Error(`This CLI plays rules v${RULES_VERSION} but the challenge uses v${c.rulesVersion}. Update the CLI.`);
-  const { setup } = challengeSetup(c.kind, c.seed);
+  const { setup } = challengeSetup(c.kind, c.seed, c.setupVersion ?? SETUP_LEGACY);
   const run = createRun(createWorld({ id: c.id, seed: c.seed }, setup), source);
   for (let left = c.ticks; left > 0; left -= Math.min(left, 20_000)) run.step(Math.min(left, 20_000));
   const actions = run.pending.slice();
@@ -86,6 +86,8 @@ export function playLocal(c: Challenge, source: string): LastRun & { errors: str
 export async function play(id: string, file: string | undefined): Promise<void> {
   const c = await getChallenge(id);
   console.log(`${c.kind} ${c.id}${c.number ? ` (#${c.number})` : ''}: seed ${c.seed}, ${c.ticks} ticks${c.par !== null ? `, par ${c.par}` : ''}`);
+  const mods = describeModifiers(challengeSetup(c.kind, c.seed, c.setupVersion ?? SETUP_LEGACY).modifiers, c.kind);
+  if (mods.length) console.log(`Today's modifiers: ${mods.join(', ')}`);
   if (!file) { console.log('Add a Sprout file to play it: tendril daily my.sprout'); return; }
   const { errors, ...last } = playLocal(c, readFileSync(file, 'utf8'));
   for (const e of errors) console.error(e);

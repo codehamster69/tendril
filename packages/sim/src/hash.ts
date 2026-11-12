@@ -35,6 +35,7 @@ export function serialize(w: World): string {
     bots: w.bots.map((b) => ({ x: b.x, y: b.y, busyUntil: b.busyUntil, load: Array.from(b.load) })),
     plots: w.plots.map((p) => ({ px: p.px, py: p.py, tiles: Array.from(p.tiles) })),
     lastOp: w.lastOp,
+    ...(w.weatherBias ? { weatherBias: w.weatherBias } : {}),
   });
 }
 
@@ -43,7 +44,7 @@ export function deserialize(s: string): World {
     rulesVersion: number; id: string; seed: number; tick: number; coins: number; spent: number; unlocks: number; wrng: number; orng: number;
     nextOrderAt: number; nextOrderId: number; stock: number[]; weather: Segment[]; orders: Order[];
     bots: { x: number; y: number; busyUntil: number; load: number[] }[];
-    plots: { px: number; py: number; tiles: number[] }[]; lastOp: (number | null)[];
+    plots: { px: number; py: number; tiles: number[] }[]; lastOp: (number | null)[]; weatherBias?: number;
   };
   if (d.rulesVersion !== RULES_VERSION) throw new Error(`unsupported rules version ${String(d.rulesVersion)}`);
   const bots: Bot[] = d.bots.map((b) => {
@@ -60,5 +61,6 @@ export function deserialize(s: string): World {
     id: d.id, seed: d.seed, tick: d.tick, coins: d.coins, spent: d.spent, unlocks: d.unlocks, wrng: d.wrng, orng: d.orng,
     nextOrderAt: d.nextOrderAt, nextOrderId: d.nextOrderId, stock: d.stock, weather: d.weather, orders: d.orders,
     bots, plots, plotIndex, lastOp: d.lastOp,
+    ...(d.weatherBias === -1 || d.weatherBias === 1 ? { weatherBias: d.weatherBias } : {}),
   };
 }

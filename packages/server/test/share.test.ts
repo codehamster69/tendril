@@ -23,7 +23,7 @@ async function submit(name: string): Promise<string> {
 
 beforeEach(() => {
   db = createDb({ url: ':memory:' });
-  app = createApp({ db, env: { TENDRIL_DEV_AUTH: '1', PUBLIC_ORIGIN: ORIGIN }, now: () => BASE });
+  app = createApp({ db, env: { TENDRIL_DEV_AUTH: '1', PUBLIC_ORIGIN: ORIGIN }, setupVersion: 0, now: () => BASE });
 });
 afterEach(() => db.close());
 

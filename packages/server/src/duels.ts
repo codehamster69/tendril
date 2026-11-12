@@ -39,7 +39,7 @@ export async function duelPage(db: Db, c: ChallengeRow, viewerId: string | undef
     viewer = { isChallenger: viewerId === c.created_by, accepted: !!done, entryId: mine?.id ?? null };
   }
   return {
-    id: c.id, seed: c.seed, ticks: c.ticks, par: c.par, rulesVersion: c.rules_version, createdAt: c.opens_at,
+    id: c.id, seed: c.seed, ticks: c.ticks, par: c.par, rulesVersion: c.rules_version, setupVersion: c.setup_v, createdAt: c.opens_at,
     challenger: challenger ? { login: challenger.login, displayName: challenger.display_name, avatarUrl: challenger.avatar_url } : null,
     entry: best ? { entryId: best.id, netWorth: best.net_worth, parTick: best.par_tick, mosaic: best.mosaic } : null,
     accepted: accepted!.n, viewer,
