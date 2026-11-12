@@ -15,11 +15,16 @@ const bot = art('bot_tender');
 <Base>
   <section class="hero wrap">
     <div class="pitch">
-      <h1>A farm that grows as far as your code does.</h1>
+      <h1>Wordle for programmers. Every score is proven.</h1>
       <p class="lede">
-        Tendril is a farming game you play by writing programs. Your bots till, plant and harvest
-        on land that never runs out. Buy more plots, hire more bots, and let your code run all of it.
+        The farming game where your code competes with everyone else's. Everyone gets the same farm each day.
+        Write a program, watch it run, and see where it lands.
       </p>
+      <div class="today" data-today aria-live="polite">
+        <p class="eyebrow">Today's farm <span data-num>#…</span></p>
+        <p class="facts"><span><strong data-players>–</strong> players</span> <span>Score to beat <strong data-best>–</strong></span> <span data-left></span></p>
+        <a class="btn primary" href="/play/?mode=daily">Play today's farm</a>
+      </div>
       <DownloadCta />
       <p class="note">Free on Windows, macOS and Linux. No account needed to play.</p>
     </div>
@@ -106,7 +111,25 @@ const bot = art('bot_tender');
   </section>
 </Base>
 
+<script>
+  import { api, fmt, msUntil, timeLeft } from '../scripts/arena';
+  import type { Challenge } from '../scripts/arena';
+  const root = document.querySelector<HTMLElement>('[data-today]')!;
+  const q = (s: string) => root.querySelector<HTMLElement>(s)!;
+  void api<Challenge>('/challenges/today').then((c) => {
+    if (!c) { q('[data-num]').textContent = ''; q('.facts').textContent = 'A new farm every day, the same for everyone.'; return; }
+    q('[data-num]').textContent = `#${c.number}`;
+    q('[data-players]').textContent = fmt.format(c.players);
+    q('[data-best]').textContent = c.best == null ? 'none yet' : fmt.format(c.best);
+    q('[data-left]').textContent = timeLeft(msUntil(c.closesAt));
+  });
+</script>
+
 <style>
+  .today { background: var(--panel); border: 1.5px solid var(--line); border-radius: 12px; padding: 1rem 1.25rem; margin: 0 0 1.25rem; max-width: 34rem; }
+  .eyebrow { font: 700 1.2rem var(--display); margin: 0; }
+  .facts { display: flex; flex-wrap: wrap; gap: 0.25rem 1.25rem; color: var(--dim); margin: 0.4rem 0 0.9rem; }
+  .facts strong { color: var(--ink); }
   .hero { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 6fr); gap: clamp(2rem, 5vw, 4.5rem); align-items: center; padding-block: clamp(2.5rem, 7vw, 5.5rem) 3rem; }
   .hero h1 { font-size: clamp(2.5rem, 6vw, 4.25rem); line-height: 1.02; max-width: 12ch; }
   .lede { font-size: 1.22rem; color: var(--dim); margin: 1.25rem 0 1.75rem; max-width: 34rem; }
