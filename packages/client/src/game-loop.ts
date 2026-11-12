@@ -178,6 +178,13 @@ export class GameLoop {
     });
   }
 
+  /** Finish a challenge without drawing every tick: one worker command, one render at the end. */
+  runToEnd(): Promise<void> {
+    const limit = this.sim.scenario.tickLimit;
+    const left = limit === undefined ? 0 : limit - (this.snapshot()?.tick ?? 0);
+    return left > 0 ? this.step(left) : Promise.resolve();
+  }
+
   stepLine(): Promise<void> {
     return this.guarded(async () => {
       if (this.sim.mode === 'live') return;
