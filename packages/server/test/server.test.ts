@@ -124,7 +124,7 @@ describe('migrations', () => {
       const me = await two(new Request('http://localhost:8787/api/me', { headers: { Authorization: `Bearer ${token}` } }));
       expect(me.status).toBe(200);
       second.close();
-    } finally { rmSync(dir, { recursive: true, force: true }); }
+    } finally { try { rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }); } catch { /* Windows keeps SQLite files locked briefly; temp dir cleanup is best effort */ } }
   });
 });
 

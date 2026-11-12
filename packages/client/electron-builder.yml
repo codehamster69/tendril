@@ -40,6 +40,7 @@ nsis:
   perMachine: false
   allowToChangeInstallationDirectory: true
 linux:
+  executableName: tendril
   category: Game
   maintainer: Tendril
   synopsis: Tendril farming game

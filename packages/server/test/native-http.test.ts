@@ -33,7 +33,7 @@ afterAll(async () => {
     });
   }
   db?.close();
-  if (dir) rmSync(dir, { recursive: true, force: true });
+  if (dir) try { rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }); } catch { /* Windows keeps SQLite files locked briefly; temp dir cleanup is best effort */ }
 });
 
 function post(body: string, finish = false, declaredLength?: number, host = 'localhost:8787') {
