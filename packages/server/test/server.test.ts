@@ -40,7 +40,8 @@ function githubStub(profile: Record<string, unknown> = { id: 4242, login: 'octo-
   return { calls, fetch: fetchStub };
 }
 
-function makeApp(): void { app = createApp({ db, env, fetch: github.fetch, now: () => time }); }
+// Small chunk budget for the rate-limit tests; the production default is tested in attack.test.ts.
+function makeApp(): void { app = createApp({ db, env, fetch: github.fetch, now: () => time, chunkAttemptsPerHour: 10 }); }
 
 async function request(path: string, options: Opts = {}) {
   const headers = new Headers(options.headers);

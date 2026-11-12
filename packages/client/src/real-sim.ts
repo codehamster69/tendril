@@ -170,7 +170,8 @@ export class RealSim implements SimSource {
   planChunk(): Promise<Submission | null> {
     let plan: Submission | null = null;
     return this.enqueue(async () => {
-      if (!this.accepted || !this.snap || this.persistenceError || this.fatal) throw new Error('The server farm is not ready to sync.');
+      if (this.persistenceError || this.fatal) throw new Error('The farm could not be saved, so it cannot sync. Your local logs are kept.');
+      if (!this.accepted || !this.snap) return; // Still loading: nothing to sync yet.
       plan = planSubmission(this.accepted.farm, this.pendingLog, this.snap.tick);
     }).then(() => plan);
   }

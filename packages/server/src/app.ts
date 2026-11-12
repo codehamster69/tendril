@@ -16,6 +16,8 @@ export interface AppOptions {
   now?: () => number;
   /** Migration SQL bundled into the build (serverless); when absent the files are read from disk. */
   migrations?: Migration[];
+  /** Chunk attempts per user per rolling hour. Defaults to CHUNK_ATTEMPTS_PER_HOUR; tests pass a small number. */
+  chunkAttemptsPerHour?: number;
 }
 
 const DESKTOP_ORIGIN = 'app://tendril';
@@ -152,7 +154,7 @@ export function createApp(options: AppOptions): (request: Request) => Promise<Re
       const chunk = /^\/farms\/([^/]+)\/chunks$/.exec(route);
       if (chunk && method === 'POST') {
         const identity = await requireUser();
-        await reserveAttempt(db, identity.userId, 'chunk', now());
+        await reserveAttempt(db, identity.userId, 'chunk', now(), options.chunkAttemptsPerHour);
         rejectQuery(url);
         const input = chunkInput(await readJson(request));
         return json(await verifyChunk(db, identity.userId, uuid(chunk[1]!), input, now));

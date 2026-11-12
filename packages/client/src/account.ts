@@ -66,7 +66,7 @@ export function mountAccount(api: FarmApi, sim: RealSim): void {
       const { profile } = await api.me();
       dialog.append(el('p', { text: `Signed in as ${profile.displayName}` }));
       if (sim.ranked) {
-        dialog.append(el('p', { text: 'Your ranked farm syncs to the server by itself every few minutes while it runs.' }));
+        dialog.append(el('p', { text: 'Your ranked farm syncs to the leaderboard every few seconds while the game is open.' }));
         const sync = el('button', { text: 'Sync now', class: 'primary' });
         sync.addEventListener('click', async () => {
           sync.disabled = true;

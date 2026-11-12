@@ -87,7 +87,7 @@ POST /api/daily/submit {date, rulesVersion, actions}   replays from createWorld;
 GET  /api/daily/leaderboard?date=&limit=20
 GET  /api/stats                                        {players, farms, dailyEntries}
 ```
-Chunk limits unchanged (2 MB, 20,000 actions, span 1..20,000, toTick <= floor((now-startedAt)/100), 10 attempts/user/hour,
+Chunk limits unchanged (2 MB, 20,000 actions, span 1..20,000, toTick <= floor((now-startedAt)/100), 360 attempts/user/hour (client syncs every ~15 s),
 CAS on checkpoint). Daily: today or yesterday (UTC) only, 20 submissions/user/day, best score kept. Errors `{error}`.
 CORS: same-origin only for cookies; Bearer requests also allowed from `app://tendril` (Electron) without credentials.
 

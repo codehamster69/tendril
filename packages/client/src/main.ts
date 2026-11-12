@@ -49,7 +49,7 @@ mountInspectors(view, () => sim.meta.seed);
 mountProgression({ loop, editor, view, api });
 mountNotice({ live: mode === 'live', verified: sim.ranked });
 mountAccount(api, sim);
-if (sim.ranked) mountAutoSync(api, sim);
+if (sim.ranked) mountAutoSync(api, sim, document.getElementById('mode-note'));
 window.addEventListener('tendril:snapshot', (event) => view.update((event as CustomEvent).detail));
 
 declare global { interface Window { tendril?: { sim: RealSim; editor: typeof editor; loop: GameLoop } } }
