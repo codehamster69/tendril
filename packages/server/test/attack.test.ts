@@ -75,7 +75,8 @@ const submit = (body: unknown, token = user.token, id = farm.id, extra: Opts = {
 async function snapshot(): Promise<string> {
   return JSON.stringify({
     farm: (await api('/farms/me', { token: user.token })).text,
-    farms: await db.query('SELECT * FROM farms ORDER BY id'),
+    // The attempt counter is rate-limit bookkeeping (it moves on rejected attempts, like submission_attempts used to).
+    farms: (await db.query<Record<string, unknown>>('SELECT * FROM farms ORDER BY id')).map((row) => Object.fromEntries(Object.entries(row).filter(([k]) => !k.startsWith('att_')))),
     chunks: await db.query('SELECT * FROM chunks ORDER BY farm_id, from_tick'),
     history: await db.query('SELECT * FROM worth_history ORDER BY id'),
     daily: await db.query('SELECT * FROM daily_entries ORDER BY date, user_id'),
@@ -662,7 +663,9 @@ describe('7. cross-user', () => {
     const victim = await newPlayer('Victim2');
     time += 2_000_000;
     for (let i = 0; i < 10; i++) expect((await submit(chunkBody([], 100, victim.farm), user.token, victim.farm.id)).status).toBe(403);
-    expect((await submit(chunkBody([], 100, victim.farm), user.token, victim.farm.id)).status).toBe(429);
+    // Foreign-farm requests are refused after one read: they neither write anything nor touch the victim's counter.
+    expect((await submit(chunkBody([], 100, victim.farm), user.token, victim.farm.id)).status).toBe(403);
+    expect((await db.query<{ att_n: number }>('SELECT att_n FROM farms WHERE id = ?', [victim.farm.id]))[0]!.att_n).toBe(0);
     expect((await submit(chunkBody(GOOD, GOOD_TO, victim.farm), victim.user.token, victim.farm.id)).status).toBe(200);
   });
 
@@ -766,8 +769,9 @@ describe('8. concurrency', () => {
     const results = await Promise.all(Array.from({ length: 10 }, () => submit(body)));
     const statuses = results.map((r) => r.status).sort();
     expect(statuses).toEqual([200, 409, 409, 409, 409, 409, 409, 409, 409, 409]);
-    expect(await db.query('SELECT * FROM chunks')).toHaveLength(1);
-    expect(await db.query('SELECT * FROM worth_history')).toHaveLength(2); // creation + the one accepted chunk
+    // The accepted log sits in the farm row's buffer until it is 10 minutes old; the clock here is 33 minutes past creation, so one sample was taken.
+    expect(await db.query('SELECT * FROM farms WHERE pending_from IS NOT NULL')).toHaveLength(1);
+    expect(await db.query('SELECT * FROM worth_history')).toHaveLength(2);
     const want = expected(farm, GOOD, GOOD_TO);
     const stored = await myFarm();
     expect(stored.netWorth).toBe(want.worth); // the sell was applied once, not ten times
@@ -789,7 +793,7 @@ describe('8. concurrency', () => {
     const results = await Promise.all(Array.from({ length: 25 }, () => submit(chunkBody(GOOD, GOOD_TO))));
     expect(results.filter((r) => r.status === 429)).toHaveLength(15);
     expect(results.filter((r) => r.status === 200)).toHaveLength(1);
-    expect(await db.query("SELECT * FROM submission_attempts WHERE kind = 'chunk'")).toHaveLength(10);
+    expect((await db.query<{ att_n: number }>('SELECT att_n FROM farms WHERE id = ?', [farm.id]))[0]!.att_n).toBe(10);
   });
 });
 
@@ -843,12 +847,13 @@ describe('9. rate limit bypass', () => {
     expect((await myFarm()).tick).toBe(0);
   });
 
-  it('queries and bad content types still count as attempts (they are reserved before the body is read)', async () => {
+  it('queries and bad content types are refused before any database work, so they use no attempts', async () => {
     for (let i = 0; i < 5; i++) expect((await submit(chunkBody([], 100), user.token, farm.id, {})).status).toBe(i === 0 ? 200 : 409);
     const farmNow = await myFarm();
     for (let i = 0; i < 3; i++) expect((await send(`/api/farms/${farm.id}/chunks?q=${i}`, { token: user.token, body: chunkBody([], 200, farmNow) })).status).toBe(400);
     for (let i = 0; i < 2; i++) expect((await send(`/api/farms/${farm.id}/chunks`, { token: user.token, raw: 'x', contentType: 'text/plain' })).status).toBe(400);
-    expect((await submit(chunkBody([], 200, farmNow))).status).toBe(429);
+    expect((await db.query<{ att_n: number }>('SELECT att_n FROM farms WHERE id = ?', [farm.id]))[0]!.att_n).toBe(5);
+    expect((await submit(chunkBody([], 200, farmNow))).status).toBe(200);
   });
 
   it('cookie and bearer for the same user share one budget', async () => {

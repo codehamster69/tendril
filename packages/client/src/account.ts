@@ -72,7 +72,7 @@ export function mountAccount(api: FarmApi, sim: RealSim): void {
           sync.disabled = true;
           try {
             const result = await syncOnce(api, sim);
-            if (result) toast('Farm verified', `Tick ${result.tick}, rank ${result.rank}.`);
+            if (result) toast('Farm verified', `Tick ${result.tick}, ${result.rank === null ? 'outside the top 500' : `rank ${result.rank}`}.`);
             else toast('Already synced', 'No new ticks need verifying.');
           } catch (e) { toast('Sync stopped', e instanceof Error ? e.message : 'Your local logs are kept.'); } finally { sync.disabled = false; }
         });

@@ -80,7 +80,11 @@ POST /api/auth/desktop/poll {nonce}                    200 {token,profile} once 
 POST /api/auth/logout                                  204
 GET  /api/me                                           200 {profile:{id,login,displayName,avatarUrl}} | 401
 POST /api/dev/login {displayName}                      dev only
-POST /api/farms, GET /api/farms/me, POST /api/farms/:id/chunks, GET /api/farms/:id/replay   (unchanged semantics, rulesVersion 3)
+POST /api/farms, GET /api/farms/me, POST /api/farms/:id/chunks, GET /api/farms/:id/replay   (rulesVersion 3)
+   chunk response: {tick, checkpointHash, netWorth, rank, nextSyncMs}. `rank` is exact up to 500 and null beyond ("outside the top 500"),
+   refreshed at most every 5 min. `nextSyncMs` is the server's wish for the next sync (15 s top 25, 60 s up to 500, 180 s beyond; doubled/quadrupled
+   under budget pressure); clients follow it within 15 s..10 min. Replay serves a log still buffered in the farm row as its last chunk, and
+   consecutive syncs may be stored as one merged chunk (replaying it is identical). GET /api/leaderboard growth is cached on the farm, <= 5 min old.
 GET  /api/leaderboard?board=networth|growth&limit=20
 GET  /api/daily                                        {date, seed, ticks:3000, rulesVersion}
 POST /api/daily/submit {date, rulesVersion, actions}   replays from createWorld; {netWorth, rank, best}

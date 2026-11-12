@@ -7,11 +7,11 @@ import { createWorld, dailySeed, DAILY_TICKS, deserialize, hashWorld, netWorth, 
 import type { LogEntry } from '@tendril/sim/src/index.ts';
 import { createApp, createDb, migrate } from '../src/index.ts';
 import type { Db, FarmResponse, FetchFn, LeaderEntry, Profile } from '../src/index.ts';
-import { DAY_MS, HOUR_MS } from '../src/game.ts';
+import { DAY_MS, growthOf, HOUR_MS } from '../src/game.ts';
 import { MAX_BODY_BYTES } from '../src/validation.ts';
 
 type Login = { token: string; profile: Profile };
-type Accepted = { tick: number; checkpointHash: string; netWorth: number; rank: number };
+type Accepted = { tick: number; checkpointHash: string; netWorth: number; rank: number | null; nextSyncMs: number };
 type ReplayPage = { seed: number; rulesVersion: number; chunks: { fromTick: number; toTick: number; actions: LogEntry[] }[]; nextFromTick: number | null };
 type Env = Record<string, string | undefined>;
 type Opts = { method?: string; token?: string; body?: unknown; raw?: string; headers?: Record<string, string>; cookie?: string; csrf?: boolean };
@@ -67,11 +67,17 @@ async function submit(body: unknown, token = user.token, id = farm.id) {
   return request(`/farms/${id}/chunks`, { token, body });
 }
 async function myFarm(token = user.token) { return await (await request('/farms/me', { token })).json() as FarmResponse; }
+/** Every verified action log in order: flushed `chunks` rows plus the log still buffered in each farm row. */
+async function logs() {
+  return db.query(`SELECT farm_id, from_tick, to_tick, actions FROM chunks UNION ALL
+    SELECT id, pending_from, tick, pending_actions FROM farms WHERE pending_from IS NOT NULL ORDER BY 1, 2`);
+}
 async function state() {
   return {
     farm: await (await request('/farms/me', { token: user.token })).json(),
-    farms: await db.query('SELECT * FROM farms ORDER BY id'),
-    chunks: await db.query('SELECT * FROM chunks ORDER BY farm_id, from_tick'),
+    // The attempt counter is rate-limit bookkeeping, not game state (it moves on rejected attempts too).
+    farms: (await db.query<Record<string, unknown>>('SELECT * FROM farms ORDER BY id')).map((row) => Object.fromEntries(Object.entries(row).filter(([k]) => !k.startsWith('att_')))),
+    chunks: await logs(),
     history: await db.query('SELECT * FROM worth_history ORDER BY id'),
   };
 }
@@ -103,13 +109,13 @@ afterEach(() => { db.close(); });
 
 describe('migrations', () => {
   it('are idempotent, recorded in schema_version, and applied lazily on the first request', async () => {
-    expect(await db.query('SELECT version FROM schema_version')).toEqual([{ version: 1 }, { version: 2 }, { version: 3 }]);
+    expect(await db.query('SELECT version FROM schema_version')).toEqual([{ version: 1 }, { version: 2 }, { version: 3 }, { version: 4 }]);
     expect(await migrate(db)).toEqual([]);
     const fresh = createDb({ url: ':memory:' });
     try {
       const lazy = createApp({ db: fresh, env, fetch: github.fetch, now: () => time });
       expect((await lazy(new Request('http://localhost:8787/api/stats'))).status).toBe(200);
-      expect(await fresh.query('SELECT version FROM schema_version')).toEqual([{ version: 1 }, { version: 2 }, { version: 3 }]);
+      expect(await fresh.query('SELECT version FROM schema_version')).toEqual([{ version: 1 }, { version: 2 }, { version: 3 }, { version: 4 }]);
     } finally { fresh.close(); }
   });
   it('persist in a file database across reopen', async () => {
@@ -367,19 +373,18 @@ describe('transactional verification', () => {
     const accepted = await result.json() as Accepted;
     const local = createWorld({ id: farm.id, seed: farm.seed });
     replayChunk(local, harvest, 102);
-    expect(accepted).toEqual({ tick: 102, checkpointHash: hashWorld(local), netWorth: 8, rank: 1 });
+    expect(accepted).toEqual({ tick: 102, checkpointHash: hashWorld(local), netWorth: 8, rank: 1, nextSyncMs: 15_000 });
     expect(netWorth(local)).toBe(8);
     const current = await myFarm();
     expect(current.coins).toBe(8);
     expect(current.checkpoint).toBe(serialize(local));
     const next = await submit(chunkBody([], 200, current));
     expect(next.status).toBe(200);
+    // Both chunks are still buffered in the farm row, and replay serves them as one chunk.
     const replay = await (await request(`/farms/${farm.id}/replay`)).json() as ReplayPage;
-    expect(replay).toEqual({ seed: farm.seed, rulesVersion: RULES_VERSION, chunks: [{ fromTick: 0, toTick: 102, actions: harvest }], nextFromTick: 102 });
-    const tail = await (await request(`/farms/${farm.id}/replay?fromTick=${replay.nextFromTick}&limit=1`)).json() as ReplayPage;
-    expect(tail).toEqual({ seed: farm.seed, rulesVersion: RULES_VERSION, chunks: [{ fromTick: 102, toTick: 200, actions: [] }], nextFromTick: null });
+    expect(replay).toEqual({ seed: farm.seed, rulesVersion: RULES_VERSION, chunks: [{ fromTick: 0, toTick: 200, actions: harvest }], nextFromTick: null });
     const replayed = createWorld({ id: farm.id, seed: replay.seed });
-    for (const chunk of [...replay.chunks, ...tail.chunks]) replayChunk(replayed, chunk.actions, chunk.toTick);
+    for (const chunk of replay.chunks) replayChunk(replayed, chunk.actions, chunk.toTick);
     expect(hashWorld(replayed)).toBe((await next.json() as Accepted).checkpointHash);
     const board = await (await request('/leaderboard?board=networth&limit=1')).json();
     expect(board).toEqual({ board: 'networth', entries: [{ rank: 1, userId: user.profile.id, displayName: 'Farmer', farmId: farm.id, netWorth: 8, growth24h: 8, tick: 200, verifiedAtMs: time }] });
@@ -434,8 +439,8 @@ describe('transactional verification', () => {
   it('lets exactly one of two concurrent submissions win and the other get 409', async () => {
     const responses = await Promise.all([submit(chunkBody(harvest, 102)), submit(chunkBody(harvest, 102))]);
     expect(responses.map((r) => r.status).sort()).toEqual([200, 409]);
-    expect(await db.query('SELECT * FROM chunks')).toHaveLength(1);
-    expect(await db.query('SELECT * FROM worth_history')).toHaveLength(2);
+    expect(await logs()).toHaveLength(1);
+    expect(await db.query('SELECT * FROM worth_history')).toHaveLength(2); // creation + one sample (the clock is 33 minutes past creation)
     await rejected(chunkBody(harvest, 102), 409);
   });
   it('rejects zero-span chunks without stranding subsequent advancement', async () => {
@@ -458,7 +463,7 @@ describe('transactional verification', () => {
     expect((await request('/farms/me', { token: other.token })).status).toBe(404);
   });
   it('rate limits to 10 attempts per user per rolling hour, counting malformed bodies, and resets', async () => {
-    for (let i = 0; i < 10; i++) await rejected({ ...chunkBody(), netWorth: 42 });
+    for (let i = 0; i < 10; i++) await rejected({ ...chunkBody(), rulesVersion: 99 }, 409);
     makeApp();
     await rejected(chunkBody(), 429);
     const other = await login('Unaffected');
@@ -467,10 +472,10 @@ describe('transactional verification', () => {
     expect((await submit(chunkBody())).status).toBe(200);
   });
   it('reserves attempts atomically under concurrent abuse', async () => {
-    const responses = await Promise.all(Array.from({ length: 12 }, () => submit({ ...chunkBody(), score: 1 })));
-    expect(responses.filter((r) => r.status === 422)).toHaveLength(10);
+    const responses = await Promise.all(Array.from({ length: 12 }, () => submit({ ...chunkBody(), rulesVersion: 99 })));
+    expect(responses.filter((r) => r.status === 409)).toHaveLength(10);
     expect(responses.filter((r) => r.status === 429)).toHaveLength(2);
-    expect(await db.query('SELECT * FROM chunks')).toHaveLength(0);
+    expect(await logs()).toHaveLength(0);
   });
   it('rolls back every game write if a later database write fails', async () => {
     const before = await state();
@@ -488,6 +493,7 @@ describe('bounded public replay', () => {
   it.each([1, 2])('reconstructs five chunks across limit=%i pages without gaps or duplicates', async (limit) => {
     let current = farm;
     for (const toTick of [102, 200, 300, 400, 500]) {
+      time += 11 * 60_000; // each chunk is flushed on its own once the buffer is 10 minutes old
       expect((await submit(chunkBody(toTick === 102 ? harvest : [], toTick, current))).status).toBe(200);
       current = await myFarm();
     }
@@ -511,13 +517,15 @@ describe('bounded public replay', () => {
       cursors.push(cursor);
       expect(cursors.length).toBeLessThanOrEqual(5);
     } while (cursor !== null);
-    expect(starts).toEqual([0, 102, 200, 300, 400]);
-    expect(cursors).toEqual(limit === 1 ? [102, 200, 300, 400, null] : [200, 400, null]);
+    // A buffered log is flushed into `chunks` together with the next chunk once it is 10 minutes old, so the five syncs
+    // are stored as [0,200) and [200,400) plus the log still buffered in the farm row [400,500).
+    expect(starts).toEqual([0, 200, 400]);
+    expect(cursors).toEqual(limit === 1 ? [200, 400, null] : [400, null]);
     // The hash is the contract; serialize() text can differ when weather segments were generated lazily.
     expect(hashWorld(replayed)).toBe(current.checkpointHash);
     const between = await (await request(`/farms/${farm.id}/replay?fromTick=1`)).json() as ReplayPage;
-    expect(between.chunks.map((c) => c.fromTick)).toEqual([102]);
-    expect(between.nextFromTick).toBe(200);
+    expect(between.chunks.map((c) => c.fromTick)).toEqual([200]);
+    expect(between.nextFromTick).toBe(400);
     for (const fromTick of [500, Number.MAX_SAFE_INTEGER]) {
       expect(await (await request(`/farms/${farm.id}/replay?fromTick=${fromTick}&limit=2`)).json()).toEqual({ seed: farm.seed, rulesVersion: RULES_VERSION, chunks: [], nextFromTick: null });
     }
@@ -562,12 +570,15 @@ describe('HTTP boundary', () => {
     const response = await submit(chunkBody(Array.from({ length: 20000 }, () => [0, -1, 10]), 20000));
     expect(response.status).toBe(200);
   });
-  it('counts invalid JSON and size errors toward the per-user rate cap', async () => {
+  it('refuses invalid JSON and oversize bodies before touching the database, so they use no attempts', async () => {
+    const before = await state();
     for (let i = 0; i < 10; i++) {
       const response = await request(`/farms/${farm.id}/chunks`, { token: user.token, raw: i % 2 ? '{' : ' '.repeat(MAX_BODY_BYTES + 1) });
       expect(response.status).toBe(i % 2 ? 400 : 413);
     }
-    expect((await submit(chunkBody())).status).toBe(429);
+    expect(await state()).toEqual(before);
+    expect((await db.query<{ att_n: number }>('SELECT att_n FROM farms WHERE id = ?', [farm.id]))[0]!.att_n).toBe(0);
+    expect((await submit(chunkBody())).status).toBe(200);
   });
   it('sets safe headers and secure preflights for same-origin callers', async () => {
     const response = await request('/leaderboard');
@@ -578,7 +589,7 @@ describe('HTTP boundary', () => {
     expect((await request('/farms', { method: 'OPTIONS', headers: { 'Access-Control-Request-Method': 'DELETE' } })).status).toBe(400);
   });
   it('never returns stack traces or SQL in errors', async () => {
-    await db.script('DROP TABLE chunks;');
+    await db.script('DROP TABLE worth_history;'); // the first chunk is sample-due, so it writes there
     const response = await submit(chunkBody());
     expect(response.status).toBe(500);
     expect(await response.json()).toEqual({ error: 'Internal server error' });
@@ -610,6 +621,10 @@ describe('ranking and 24-hour history', () => {
       await tx.execute('UPDATE farms SET net_worth = ?, tick = 100, verified_at = ? WHERE id = ?', [50, now, otherFarm.id]);
       for (const [id, worth, at] of [[farm.id, 70, cutoff - 1000], [farm.id, 80, cutoff], [farm.id, 90, cutoff + 1000], [otherFarm.id, 5, cutoff]] as const) {
         await tx.execute('INSERT INTO worth_history (farm_id, net_worth, at_ms) VALUES (?, ?, ?)', [id, worth, at]);
+      }
+      // Growth is cached on the farm and refreshed by a sync; do what that refresh does.
+      for (const [id, worth] of [[farm.id, 100], [otherFarm.id, 50]] as const) {
+        await tx.execute('UPDATE farms SET growth = ? WHERE id = ?', [await growthOf(tx, id, worth, now), id]);
       }
     });
     time = now;

@@ -8,7 +8,7 @@ import { createFarm, dailyInfo, getFarm, getReplay, isValidDate, leaderboard, re
 import type { Board } from './game.ts';
 import { badgeFor, follow, listFollowing, playerPage, unfollow } from './players.ts';
 import { handleShare } from './share.ts';
-import { createGuard, dropReplaysOutsideTop, pruneOncePerDay, rateScale, refreshGuard, prune, withCacheHeaders } from './housekeeping.ts';
+import { createGuard, dropReplaysOutsideTop, pruneOncePerDay, rateScale, refreshGuard, prune, syncScale, withCacheHeaders } from './housekeeping.ts';
 import { migrate } from './migrations.ts';
 import type { Migration } from './migrations.ts';
 import { chunkInput, displayName, duelInput, entryIdParam, entryInput, HttpError, objectWithKeys, readJson, rejectQuery, validateActions, uuid } from './validation.ts';
@@ -200,10 +200,10 @@ function createInnerApp(options: AppOptions): (request: Request) => Promise<Resp
       const chunk = /^\/farms\/([^/]+)\/chunks$/.exec(route);
       if (chunk && method === 'POST') {
         const identity = await requireUser();
-        await reserveAttempt(db, identity.userId, 'chunk', now(), options.chunkAttemptsPerHour, scale);
         rejectQuery(url);
         const input = chunkInput(await readJson(request));
-        return json(await verifyChunk(db, identity.userId, uuid(chunk[1]!), input, now));
+        // The attempt limit lives in the farm row (one write per sync, not two).
+        return json(await verifyChunk(db, identity.userId, uuid(chunk[1]!), input, now, { chunkAttemptsPerHour: options.chunkAttemptsPerHour, rateScale: scale, syncScale: syncScale(mode) }));
       }
       const replay = /^\/farms\/([^/]+)\/replay$/.exec(route);
       if (replay && method === 'GET') {
@@ -280,7 +280,7 @@ function createInnerApp(options: AppOptions): (request: Request) => Promise<Resp
           const viewer = await viewerId();
           if (scope === 'friends' && !viewer) throw new HttpError(401, 'Authentication required');
           const challenge = await loadChallenge(db, ref!, now());
-          return json(await board(db, challenge, { medal: medal as Medal, friends: scope === 'friends', author: (author ?? undefined) as AuthorKind | undefined, limit: limitParam(url), viewerId: viewer }));
+          return json(await board(db, challenge, { medal: medal as Medal, friends: scope === 'friends', author: (author ?? undefined) as AuthorKind | undefined, limit: limitParam(url), viewerId: viewer, now: now() }));
         }
       }
       const entryRoute = /^\/entries\/([^/]+)(?:\/(replay))?$/.exec(route);

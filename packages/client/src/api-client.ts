@@ -11,7 +11,8 @@ export interface LeaderEntry {
 }
 export interface DailyEntry { rank: number; userId: string; displayName: string; netWorth: number; submittedAtMs: number }
 export interface Profile { id: string; login: string; displayName: string; avatarUrl: string | null }
-export interface ChunkResponse { tick: number; checkpointHash: string; netWorth: number; rank: number }
+/** rank is null beyond the top 500; nextSyncMs is how long the server would like the client to wait before the next sync. */
+export interface ChunkResponse { tick: number; checkpointHash: string; netWorth: number; rank: number | null; nextSyncMs?: number }
 export interface ReplayResponse {
   seed: number; rulesVersion: number;
   chunks: { fromTick: number; toTick: number; actions: LogEntry[] }[];
