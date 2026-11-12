@@ -1,0 +1,82 @@
+---
+import Base from '../layouts/Base.astro';
+---
+<Base title="Duel" description="A friend challenged you to a Tendril farm. Play the same seed, no account needed, and race their ghost.">
+  <section class="wrap page">
+    <p class="state" data-state>Loading…</p>
+    <div data-duel hidden>
+      <header class="who">
+        <img data-avatar alt="" width="72" height="72" hidden />
+        <div>
+          <p class="lede" data-eyebrow>You have been challenged</p>
+          <h1 data-title></h1>
+        </div>
+      </header>
+      <div class="entry duel-score" data-score hidden>
+        <div class="duel-mosaic" data-mosaic></div>
+        <div><strong data-networth></strong><br /><span class="dim" data-detail></span></div>
+      </div>
+      <p data-pending class="dim" hidden>They have not posted a score yet. You can still play the same farm.</p>
+      <p class="duel-actions">
+        <a class="btn primary" data-play href="/play/?mode=daily">Accept the duel</a>
+      </p>
+      <p class="dim">Same seed, same length. You play in the browser with no account. Sign in afterwards to race their ghost and follow each other.</p>
+      <p class="dim" data-count></p>
+    </div>
+  </section>
+</Base>
+
+<script>
+  import { api, arenaCss, fmt, mosaicEl } from '../scripts/arena';
+
+  interface Duel {
+    id: string; seed: number; ticks: number; par: number | null;
+    challenger: { login: string; displayName: string; avatarUrl: string | null } | null;
+    entry: { entryId: string; netWorth: number; parTick: number | null; mosaic: string | null } | null;
+    accepted: number;
+  }
+  const $ = <T extends HTMLElement>(s: string) => document.querySelector<T>(s)!;
+  const style = document.createElement('style');
+  style.textContent = arenaCss;
+  document.head.append(style);
+
+  const id = new URLSearchParams(location.search).get('id')?.trim() ?? '';
+  async function main() {
+    const state = $('[data-state]');
+    if (!/^x-[A-Za-z0-9_-]{8}$/.test(id)) { state.textContent = 'This duel link is not valid. Ask your friend to send it again.'; return; }
+    const d = await api<Duel>(`/duels/${encodeURIComponent(id)}`);
+    if (!d) { state.textContent = "We couldn't find that duel. It may have been mistyped, or the server is busy. Try again in a moment."; return; }
+    const name = d.challenger?.displayName || d.challenger?.login || 'A friend';
+    document.title = `${name} challenged you | Tendril`;
+    state.hidden = true;
+    $('[data-duel]').hidden = false;
+    $('[data-title]').textContent = d.entry ? `${name} scored ${fmt.format(d.entry.netWorth)}. Beat it.` : `${name} challenged you to a farm`;
+    const avatar = d.challenger?.avatarUrl;
+    if (avatar && /^https:\/\//.test(avatar)) { const a = $<HTMLImageElement>('[data-avatar]'); a.src = avatar; a.hidden = false; }
+    if (d.entry) {
+      $('[data-score]').hidden = false;
+      $('[data-networth]').textContent = `${fmt.format(d.entry.netWorth)} net worth`;
+      $('[data-detail]').textContent = `${d.ticks.toLocaleString('en-US')} ticks${d.entry.parTick != null ? ` · par at tick ${fmt.format(d.entry.parTick)}` : ''}`;
+      const m = mosaicEl(d.entry.mosaic, '5rem');
+      if (m) $('[data-mosaic]').append(m);
+    } else {
+      $('[data-pending]').hidden = false;
+    }
+    $<HTMLAnchorElement>('[data-play]').href = `/play/?mode=challenge&id=${encodeURIComponent(d.id)}`;
+    if (d.accepted > 0) $('[data-count]').textContent = `${fmt.format(d.accepted)} ${d.accepted === 1 ? 'player has' : 'players have'} accepted this duel.`;
+  }
+  void main();
+</script>
+
+<style is:global>
+  .page { padding-top: clamp(2.5rem, 6vw, 4.5rem); max-width: 52rem; }
+  .state { color: var(--dim); padding: 1.5rem 0; }
+  .dim { color: var(--dim); }
+  .who { display: flex; align-items: center; gap: 1rem; margin-bottom: 1.5rem; }
+  .who img { border-radius: 50%; }
+  .who img[hidden] { display: none; }
+  .duel-score { display: flex; align-items: center; gap: 1rem; border: 1.5px solid var(--line); border-radius: 10px; padding: 1rem; margin-bottom: 1.5rem; }
+  .duel-score[hidden], [data-pending][hidden] { display: none; }
+  .duel-score strong { font: 700 1.9rem var(--display); }
+  .duel-actions { margin: 1.5rem 0; }
+</style>

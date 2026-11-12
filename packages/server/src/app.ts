@@ -2,6 +2,7 @@ import { DAILY_TICKS, RULES_VERSION } from '@tendril/sim/src/index.ts';
 import { authenticate, clearSessionCookie, devAuthEnabled, devLogin, finishGithub, getProfile, logout, pollDesktop, sessionCookie, startGithub } from './auth.ts';
 import type { Ctx, Env, FetchFn, Identity } from './auth.ts';
 import type { Db } from './db.ts';
+import { acceptDuel, duelCounts, duelPage } from './duels.ts';
 import { board, challengeInfo, createDuel, entryReplay, entrySource, entrySummary, hallOfFame, publishedSources, KIND_LIMITS, legacyLeaderboard, legacySubmit, loadChallenge, MAX_SOURCE_BYTES, moveLegacyDaily, stats, submitEntry } from './arena.ts';
 import type { AuthorKind, Medal } from './arena.ts';
 import { createFarm, dailyInfo, getFarm, getReplay, isValidDate, leaderboard, reserveAttempt, utcDate, verifyChunk } from './game.ts';
@@ -224,6 +225,10 @@ function createInnerApp(options: AppOptions): (request: Request) => Promise<Resp
         if (board !== 'networth' && board !== 'growth') throw new HttpError(400, 'Invalid board');
         return json({ board, entries: await leaderboard(db, board as Board, limitParam(url), now()) });
       }
+      if (route === '/stats/duels' && method === 'GET') {
+        rejectQuery(url);
+        return json(await duelCounts(db));
+      }
       if (route === '/stats' && method === 'GET') {
         rejectQuery(url);
         return json(await stats(db));
@@ -307,6 +312,20 @@ function createInnerApp(options: AppOptions): (request: Request) => Promise<Resp
         rejectQuery(url);
         const input = duelInput(await readJson(request), KIND_LIMITS.duel.maxTicks);
         return json(await createDuel(db, identity.userId, input, now()), 201);
+      }
+      const duelRoute = /^\/duels\/(x-[A-Za-z0-9_-]{8})(?:\/(accept))?$/.exec(route);
+      if (duelRoute) {
+        const [, ref, action] = duelRoute;
+        if (!action && method === 'GET') {
+          rejectQuery(url);
+          return json(await duelPage(db, await loadChallenge(db, ref!, now()), await viewerId()));
+        }
+        if (action && method === 'POST') {
+          const identity = await requireUser();
+          rejectQuery(url);
+          objectWithKeys(await readJson(request), []);
+          return json(await acceptDuel(db, await loadChallenge(db, ref!, now()), identity.userId, now()));
+        }
       }
       // ---- players: profile, follows, README badge (B5) ----
       const playerRoute = /^\/players\/([^/]+?)(?:\/(follow|unfollow))?$/.exec(route);

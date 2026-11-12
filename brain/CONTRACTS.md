@@ -185,3 +185,15 @@ has an entry for (the challenge's date, not the submit time); `current` is the r
 `topPercent`: best "top N%" (ceil(100*rank/total), min 1) on any daily/season wealth board; null with no entries. `recent`:
 10 newest daily/season entries (duels excluded). Follow and unfollow are idempotent; `scope=friends` boards use the same graph.
 Cookie sessions need `X-Tendril-Client: 1` on POST. B3 reads `/players/:login`; C1 makes accepted duels follow each other via the same table.
+
+## Duels (C1; `packages/server/src/duels.ts`, `packages/client/src/duel.ts`, site `/duel/?id=`)
+```
+GET  /duels/:id          -> {id, seed, ticks, par, rulesVersion, createdAt, challenger:{login,displayName,avatarUrl}|null,
+                             entry:{entryId, netWorth, parTick, mosaic}|null (challenger's best wealth run), accepted,
+                             viewer:{isChallenger, accepted, entryId}|null}            404 for non-duel ids
+POST /duels/:id/accept   {} (session) -> {accepted:true, changed, challenger:{login,displayName}}
+                             409 until you have an entry on this duel, 422 own duel; idempotent; both players follow each other
+GET  /stats/duels        -> {created, accepted}
+```
+`duel_accepts(challenge_id, user_id, created_at)` is created lazily (no migration). Duel ids are `x-` + 8 base64url chars, so `_` is legal: ids in client and Electron regexes must allow `[A-Za-z0-9_-]`.
+Client: "Challenge a friend" = `POST /duels` with the played seed/ticks, then submit the run as the challenger's entry, copy `<origin>/duel/?id=`. Race = `replay.html?e=<challenger entry>&vs=<my entry>&embed=1`.
