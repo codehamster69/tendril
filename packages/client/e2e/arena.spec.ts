@@ -9,9 +9,10 @@ const challenge = {
 const label = challenge.number > 0 ? `#${challenge.number}` : challenge.id; // before launch day the number is <= 0
 const profile = { id: 'u1', login: 'octo', displayName: 'Octo Cat', avatarUrl: null };
 const entry = { entryId: 'k3f9Zq1AbCdE', netWorth: 512, parTick: 1140, tokens: null, mosaic: 'B' + '1'.repeat(63), ranks: { wealth: 4, speed: 9, brevity: null }, percentile: 97, improved: true, total: 120 };
-const submitted: { actions: unknown[]; rulesVersion: number }[] = [];
+const submitted: { actions: unknown[]; rulesVersion: number; source?: string; sourcePublic?: boolean }[] = [];
+type Respond = (body: (typeof submitted)[number]) => { status: number; body: unknown };
 
-async function mock(page: Page, signedIn: boolean): Promise<void> {
+async function mock(page: Page, signedIn: boolean, respond: Respond = () => ({ status: 200, body: entry })): Promise<void> {
   submitted.length = 0;
   if (signedIn) await page.addInitScript(() => localStorage.setItem('tendril.signedin', '1'));
   await page.route('**/api/**', (route) => {
@@ -20,9 +21,10 @@ async function mock(page: Page, signedIn: boolean): Promise<void> {
     if (path === '/api/me') return signedIn ? json(200, { profile }) : json(401, { error: 'Sign in first.' });
     if (path === `/api/challenges/${challenge.id}` && route.request().method() === 'GET') return json(200, challenge);
     if (path === `/api/challenges/${challenge.id}/entries` && signedIn) {
-      const body = route.request().postDataJSON() as { actions: unknown[]; rulesVersion: number };
+      const body = route.request().postDataJSON() as (typeof submitted)[number];
       submitted.push(body);
-      return json(200, entry);
+      const answer = respond(body);
+      return json(answer.status, answer.body);
     }
     return json(404, { error: 'not mocked' });
   });
@@ -67,4 +69,30 @@ test('signed in: the finished run is submitted and the rank shown', async ({ pag
   const text = await page.evaluate(() => navigator.clipboard.readText());
   expect(text.split('\n')[0]).toMatch(/· top 4%$/);
   expect(text.endsWith('tendril.hokora.xyz/r/k3f9Zq1AbCdE')).toBe(true);
+});
+
+test('signed in: the program goes with the run, the tick box publishes it, and tokens join the share text', async ({ page }) => {
+  await mock(page, true, (body) => ({ status: 200, body: { ...entry, tokens: 112, ranks: { ...entry.ranks, brevity: 3 }, source: body.source } }));
+  await page.goto('/?mode=daily');
+  await expect(page.locator('#publish-source')).not.toBeChecked();
+  await page.check('#publish-source');
+  await page.click('#btn-run-end');
+  await expect(page.locator('#arena-note')).toContainText('Your program is 112 tokens (Brevity rank 3)', { timeout: 15_000 });
+  expect(submitted).toHaveLength(1);
+  expect(typeof submitted[0]!.source).toBe('string');
+  expect(submitted[0]!.sourcePublic).toBe(true);
+  await page.click('#btn-copy-result');
+  const lines = (await page.evaluate(() => navigator.clipboard.readText())).split('\n');
+  expect(lines[1]).toMatch(/^Par (at tick [\d,]+|not reached) · 112 tokens$/);
+  expect(lines).toHaveLength(11);
+});
+
+test('signed in: a program the server cannot match does not cost the score', async ({ page }) => {
+  await mock(page, true, (body) => (body.source !== undefined ? { status: 422, body: { error: 'Source does not produce this run' } } : { status: 200, body: entry }));
+  await page.goto('/?mode=daily');
+  await page.click('#btn-run-end');
+  await expect(page.locator('#arena-facts')).toContainText('top 4% (rank 4 of 120)', { timeout: 15_000 });
+  await expect(page.locator('#arena-note')).toContainText('does not match this run');
+  expect(submitted.map((b) => b.source !== undefined)).toEqual([true, false]);
+  expect(submitted[1]!.sourcePublic).toBeUndefined();
 });

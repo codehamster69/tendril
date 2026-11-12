@@ -1,6 +1,7 @@
 import { createClient } from '@libsql/client/web';
 import { createApp } from './app.ts';
 import { createDb } from './db.ts';
+import { remoteVerifier } from './verify-client.ts';
 // Provided by scripts/build-api.mjs: the contents of packages/server/migrations/*.sql, inlined at build time.
 import migrations from 'virtual:tendril-migrations';
 
@@ -10,6 +11,10 @@ import migrations from 'virtual:tendril-migrations';
 type Handler = (request: Request) => Promise<Response>;
 let handler: Handler | undefined;
 
+function verifyOrigin(env: NodeJS.ProcessEnv): string {
+  return env.PUBLIC_ORIGIN?.replace(/\/+$/, '') || (env.VERCEL_URL ? `https://${env.VERCEL_URL}` : 'http://localhost:3000');
+}
+
 function getHandler(env: NodeJS.ProcessEnv): Handler {
   handler ??= createApp({
     db: createDb({ url: env.TURSO_DATABASE_URL ?? '', authToken: env.TURSO_AUTH_TOKEN, createClient }),
@@ -17,6 +22,8 @@ function getHandler(env: NodeJS.ProcessEnv): Handler {
     fetch: (input, init) => fetch(input, init),
     now: Date.now,
     migrations,
+    // The program check runs in its own function (api/verify.mjs); this one never imports the interpreter.
+    verifySource: remoteVerifier(verifyOrigin(env), env),
   });
   return handler;
 }

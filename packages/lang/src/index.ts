@@ -7,3 +7,4 @@ export type { BotDebug, OutputLine, ScriptError, ScriptRun, StepResult } from '.
 export { CompileError, SproutError } from './errors.ts';
 export type { Diagnostic } from './errors.ts';
 export const LANGUAGE_VERSION = 1;
+export { countTokens, STRING_CHUNK } from './tokens.ts';

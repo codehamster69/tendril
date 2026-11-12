@@ -28,21 +28,37 @@ const webClientPlugin = {
   },
 };
 
-await build({
-  entryPoints: [resolve(root, 'packages/server/src/vercel.ts')],
-  outfile: resolve(root, 'dist-api/index.mjs'),
+const common = {
   bundle: true,
   platform: 'node',
   format: 'esm',
   target: 'node22',
   conditions: ['node', 'import'],
   mainFields: ['module', 'main'],
-  // db.ts imports the default client (native `libsql` binding, needed for file:/:memory: in tests and dev); in the
-  // function only remote URLs are used, so swap in the pure HTTP/WebSocket client and keep native code out of the bundle.
-  plugins: [migrationsPlugin, webClientPlugin],
   // Some CJS dependencies call require(); give them one in ESM output.
   banner: { js: "import { createRequire as __cr } from 'node:module'; const require = __cr(import.meta.url);" },
   legalComments: 'none',
   logLevel: 'warning',
+};
+
+await build({
+  ...common,
+  entryPoints: [resolve(root, 'packages/server/src/vercel.ts')],
+  outfile: resolve(root, 'dist-api/index.mjs'),
+  // db.ts imports the default client (native `libsql` binding, needed for file:/:memory: in tests and dev); in the
+  // function only remote URLs are used, so swap in the pure HTTP/WebSocket client and keep native code out of the bundle.
+  plugins: [migrationsPlugin, webClientPlugin],
 });
-console.log('api bundle ready: dist-api/index.mjs');
+
+// The source check (C3) is its own function: @tendril/lang's interpreter plus the sim, no database, no server code.
+await build({
+  ...common,
+  entryPoints: [resolve(root, 'packages/lang/src/vercel-verify.ts')],
+  outfile: resolve(root, 'dist-api/verify.mjs'),
+});
+
+// Player code runs only in verify.mjs. If the interpreter ever leaks into the main bundle, fail the build.
+const INTERPRETER_MARK = 'Too many nested function calls';
+if (readFileSync(resolve(root, 'dist-api/index.mjs'), 'utf8').includes(INTERPRETER_MARK)) throw new Error('The main API bundle contains the Sprout interpreter. Keep it in api/verify.mjs.');
+if (!readFileSync(resolve(root, 'dist-api/verify.mjs'), 'utf8').includes(INTERPRETER_MARK)) throw new Error('The verify bundle is missing the Sprout interpreter.');
+console.log('api bundles ready: dist-api/index.mjs, dist-api/verify.mjs');

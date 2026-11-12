@@ -44,6 +44,21 @@ import Base from '../layouts/Base.astro';
       <h2 id="yh">Yesterday's winners</h2>
       <ul class="winners" role="list" data-winners></ul>
     </section>
+
+    <section id="programs" aria-labelledby="programs-title">
+      <h2 id="programs-title">Published programs</h2>
+      <p class="about">Players can choose to share the Sprout program behind a run. They appear here once the challenge has closed, best net worth first. The server ran each one and checked that it produces exactly the moves behind the score.</p>
+      <div class="tabs" role="group" aria-label="Closed challenge">
+        <button type="button" id="pick-daily" aria-pressed="true">Yesterday's daily</button>
+        <button type="button" id="pick-season" aria-pressed="false">Last week's season</button>
+      </div>
+      <p class="state" data-programs-state>Loading…</p>
+      <ul class="programs" data-programs></ul>
+      <figure class="program" data-program hidden>
+        <figcaption data-program-caption></figcaption>
+        <pre class="sprout" tabindex="0" aria-label="Sprout program"><code data-program-code></code></pre>
+      </figure>
+    </section>
   </section>
 </Base>
 
@@ -210,6 +225,91 @@ import Base from '../layouts/Base.astro';
   void show();
 </script>
 
+<script>
+  import { highlight } from '@tendril/lang/src/highlight.ts';
+
+  // ---- published programs (C3) ----
+
+  type Published = { entryId: string; displayName: string; login: string; netWorth: number; parTick: number | null; tokens: number | null; authorKind: 'human' | 'model'; model: string | null };
+  const DAY = 86_400_000;
+  const dayId = (ms: number) => `d-${new Date(ms).toISOString().slice(0, 10)}`;
+  /** Same ISO-week id the server uses (s-YYYY-Www), for the week before this one. */
+  function lastWeekId(ms: number) {
+    const d = new Date(ms - 7 * DAY);
+    const monday = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()) - ((d.getUTCDay() + 6) % 7) * DAY;
+    const thursday = new Date(monday + 3 * DAY);
+    const year = thursday.getUTCFullYear();
+    const week = Math.floor((thursday.getTime() - Date.UTC(year, 0, 1)) / (7 * DAY)) + 1;
+    return `s-${year}-W${String(week).padStart(2, '0')}`;
+  }
+  const fmt = new Intl.NumberFormat('en-US');
+  const picks = { daily: document.getElementById('pick-daily')!, season: document.getElementById('pick-season')! };
+  const pState = document.querySelector<HTMLElement>('[data-programs-state]')!;
+  const pList = document.querySelector<HTMLElement>('[data-programs]')!;
+  const pFigure = document.querySelector<HTMLElement>('[data-program]')!;
+  const pCaption = pFigure.querySelector<HTMLElement>('[data-program-caption]')!;
+  const pCode = pFigure.querySelector<HTMLElement>('[data-program-code]')!;
+  let pToken = 0;
+
+  async function showPrograms(kind: 'daily' | 'season') {
+    const mine = ++pToken;
+    for (const [k, b] of Object.entries(picks)) b.setAttribute('aria-pressed', String(k === kind));
+    pList.replaceChildren();
+    pFigure.hidden = true;
+    pState.hidden = false;
+    pState.textContent = 'Loading…';
+    const id = kind === 'daily' ? dayId(Date.now() - DAY) : lastWeekId(Date.now());
+    try {
+      const res = await fetch(`/api/challenges/${id}/sources?limit=20`, { headers: { accept: 'application/json' } });
+      if (mine !== pToken) return;
+      if (res.status === 404 || res.status === 403) { pState.textContent = 'Nothing has been published for this challenge.'; return; }
+      if (!res.ok) throw new Error(String(res.status));
+      const data = (await res.json()) as { entries: Published[] };
+      if (mine !== pToken) return;
+      if (!data.entries.length) { pState.textContent = 'Nobody has published a program for this challenge yet.'; return; }
+      pState.hidden = true;
+      for (const e of data.entries) {
+        const li = document.createElement('li');
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        const who = e.authorKind === 'model' && e.model ? `${e.displayName} (${e.model})` : e.displayName;
+        btn.textContent = `${who} · ${fmt.format(e.netWorth)} coins${e.tokens === null ? '' : ` · ${fmt.format(e.tokens)} tokens`}`;
+        btn.addEventListener('click', () => void readProgram(e, who, btn));
+        li.append(btn);
+        pList.append(li);
+      }
+    } catch {
+      if (mine === pToken) pState.textContent = 'Programs can\'t be loaded right now. Try again in a minute.';
+    }
+  }
+
+  async function readProgram(e: Published, who: string, btn: HTMLElement) {
+    for (const b of pList.querySelectorAll('button')) b.removeAttribute('aria-current');
+    btn.setAttribute('aria-current', 'true');
+    pFigure.hidden = false;
+    pCaption.textContent = `${who}'s program`;
+    pCode.textContent = 'Loading…';
+    try {
+      const res = await fetch(`/api/entries/${encodeURIComponent(e.entryId)}/source`, { headers: { accept: 'application/json' } });
+      if (!res.ok) throw new Error(String(res.status));
+      const data = (await res.json()) as { source: string; tokens: number | null };
+      pCaption.textContent = `${who}'s program · ${fmt.format(e.netWorth)} coins${data.tokens === null ? '' : ` · ${fmt.format(data.tokens)} tokens`}`;
+      pCode.replaceChildren(...highlight(data.source).map((span) => {
+        if (span.kind === 'plain') return document.createTextNode(span.text);
+        const el = document.createElement('span');
+        el.className = `t-${span.kind}`;
+        el.textContent = span.text;
+        return el;
+      }));
+    } catch {
+      pCode.textContent = 'This program can\'t be loaded right now.';
+    }
+  }
+  picks.daily.addEventListener('click', () => void showPrograms('daily'));
+  picks.season.addEventListener('click', () => void showPrograms('season'));
+  void showPrograms('daily');
+</script>
+
 <style is:global>
   .page { padding-top: clamp(2.5rem, 6vw, 4.5rem); max-width: 52rem; }
   .page .lede { font-size: 1.2rem; color: var(--dim); margin: 1rem 0 2rem; }
@@ -238,4 +338,21 @@ import Base from '../layouts/Base.astro';
   .yesterday { margin-top: 3rem; }
   .winners { list-style: none; padding: 0; margin: 1rem 0 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr)); gap: 1rem; }
   .winner { display: flex; gap: 0.8rem; align-items: center; }
+  #programs { margin-top: 3.5rem; }
+  #programs h2 { margin-bottom: 0.5rem; }
+  .tabs button[aria-pressed='true'] { background: var(--ink); border-color: var(--ink); color: var(--paper); }
+  .programs { list-style: none; margin: 0 0 1.25rem; padding: 0; display: grid; gap: 0.4rem; }
+  .programs :global(button) { width: 100%; text-align: left; background: none; border: 1px solid var(--line); border-radius: 0.6rem; padding: 0.55rem 0.8rem; color: var(--ink); font: inherit; cursor: pointer; }
+  .programs :global(button[aria-current='true']) { border-color: var(--leaf); box-shadow: inset 3px 0 0 var(--leaf); }
+  .program { margin: 0; }
+  .program figcaption { color: var(--dim); margin-bottom: 0.5rem; }
+  pre.sprout { margin: 0; padding: 1rem; overflow-x: auto; border: 1px solid var(--line); border-radius: 0.6rem; font: 0.92rem/1.55 ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace; tab-size: 4; }
+  pre.sprout { --t-str: #8a5a1c; --t-num: #7a4aa8; --t-const: #b0562a; --t-builtin: #1f6f8b; }
+  @media (prefers-color-scheme: dark) { pre.sprout { --t-str: #e0b070; --t-num: #c9a0ef; --t-const: #f0a47a; --t-builtin: #7cc8e0; } }
+  pre.sprout :global(.t-comment) { color: var(--dim); font-style: italic; }
+  pre.sprout :global(.t-string) { color: var(--t-str); }
+  pre.sprout :global(.t-number) { color: var(--t-num); }
+  pre.sprout :global(.t-keyword) { color: var(--leaf); font-weight: 700; }
+  pre.sprout :global(.t-constant) { color: var(--t-const); }
+  pre.sprout :global(.t-builtin) { color: var(--t-builtin); }
 </style>

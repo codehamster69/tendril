@@ -76,7 +76,7 @@ export class FarmApi {
   }
   replay(id: string, fromTick = 0): Promise<ReplayResponse> { return this.request(`/farms/${encodeURIComponent(id)}/replay?fromTick=${fromTick}&limit=1`); }
   challenge(id: string): Promise<ChallengeInfo> { return this.request(`/challenges/${encodeURIComponent(id)}`); }
-  submitEntry(id: string, body: { rulesVersion: number; actions: LogEntry[] }): Promise<EntryResult> {
+  submitEntry(id: string, body: { rulesVersion: number; actions: LogEntry[]; source?: string; sourcePublic?: boolean }): Promise<EntryResult> {
     return this.request(`/challenges/${encodeURIComponent(id)}/entries`, 'POST', body);
   }
   daily(): Promise<{ date: string; seed: number; ticks: number; rulesVersion: number }> { return this.request('/daily'); }

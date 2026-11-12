@@ -17,15 +17,18 @@ export interface ShareInput {
   number: number | null; netWorth: number; parTick: number | null; par: number | null;
   /** 1-based "at or above this share of players", from the server. Null when signed out. */
   percentile: number | null; mosaic: string; entryId: string | null; label?: string;
+  /** Sprout tokens of the checked program, from the server. Absent or null when no program was checked. */
+  tokens?: number | null;
 }
 
 export const topShare = (percentile: number): number => Math.min(100, Math.max(1, 101 - percentile));
 
-/** The text behind "Copy result". The tokens line joins in C3. */
+/** The text behind "Copy result". */
 export function shareText(r: ShareInput): string {
   const head = [`Tendril ${r.number !== null ? `#${r.number}` : (r.label ?? 'challenge')}`, `${r.netWorth.toLocaleString('en-US')} coins`];
   if (r.percentile !== null) head.push(`top ${topShare(r.percentile)}%`);
   const second = r.par === null ? [] : [r.parTick === null ? 'Par not reached' : `Par at tick ${r.parTick.toLocaleString('en-US')}`];
+  if (r.tokens != null) second.push(`${r.tokens.toLocaleString('en-US')} tokens`);
   return [head.join(' · '), ...(second.length ? [second.join(' · ')] : []), ...mosaicEmoji(r.mosaic), r.entryId ? `${SHARE_HOST}/r/${r.entryId}` : SHARE_HOST].join('\n');
 }
 

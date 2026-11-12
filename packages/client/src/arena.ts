@@ -8,6 +8,8 @@ import { startSignIn } from './account';
 import { el, toast } from './palette';
 import { createPendingRuns } from './pending-run';
 import { copyText, shareText } from './share';
+import { publishBox, submitWithProgram } from './publish';
+import type { ProgramStatus } from './publish';
 
 export const CHALLENGE_ID = /^[dsx]-[A-Za-z0-9-]{1,40}$/;
 
@@ -60,13 +62,22 @@ function pending(api: FarmApi): ReturnType<typeof createPendingRuns> {
 }
 
 /** Submits the finished run; if it cannot be delivered it is kept and retried automatically (F2). */
-export async function submitRun(api: FarmApi, c: ChallengeInfo, actions: LogEntry[]): Promise<EntryResult> {
+async function submitPlain(api: FarmApi, c: ChallengeInfo, actions: LogEntry[]): Promise<EntryResult> {
   try {
     return await pending(api).submit({ challengeId: c.id, rulesVersion: c.rulesVersion, actions }) as EntryResult;
   } catch (e) {
     if (e instanceof ApiError && (e.status === 0 || e.status === 429 || e.status >= 500)) throw new ApiError(e.status, 'Could not reach the server right now. Your run is saved on this device and will be sent automatically.');
     throw e;
   }
+}
+
+/** With a program: sent with the run for the Brevity check. If the server cannot be reached the plain run goes through the retry queue. */
+export async function submitRun(api: FarmApi, c: ChallengeInfo, actions: LogEntry[], source: string | null = null): Promise<EntryResult & { program: ProgramStatus }> {
+  if (source !== null && source.trim() !== '') {
+    try { return await submitWithProgram(api, c, actions, source); }
+    catch (e) { if (!(e instanceof ApiError && (e.status === 0 || e.status === 429 || e.status >= 500))) throw e; }
+  }
+  return { ...(await submitPlain(api, c, actions)), program: 'none' as const };
 }
 
 export function mountArena({ loop, api, challenge: c }: { loop: GameLoop; api: FarmApi; challenge: ChallengeInfo }): void {
@@ -83,7 +94,7 @@ export function mountArena({ loop, api, challenge: c }: { loop: GameLoop; api: F
   const head = el('header', { id: 'arena-head' }, el('span', { class: 'eyebrow', text: title }), runEnd);
   const stats = el('p', { id: 'arena-stats' }, 'Time left ', left, ' · Score to beat ', beat);
   const result = el('section', { id: 'arena-result', class: 'daily-result', hidden: '' });
-  host.append(head, el('h3', { text: `One seed. ${c.ticks.toLocaleString('en-US')} ticks. Your best program.` }), stats, result);
+  host.append(head, publishBox(), el('h3', { text: `One seed. ${c.ticks.toLocaleString('en-US')} ticks. Your best program.` }), stats, result);
 
   const draw = (): void => {
     left.textContent = c.closesAt === null ? 'open' : c.closesAt <= Date.now() ? 'closed' : clock(c.closesAt - Date.now());
@@ -101,24 +112,30 @@ export function mountArena({ loop, api, challenge: c }: { loop: GameLoop; api: F
   async function showResult(snapshot: Snapshot): Promise<void> {
     const actions = loop.logChunks().flatMap((k) => k.actions).filter((a) => a[0] < c.ticks);
     const local = localResult(c, actions);
-    let entry: EntryResult | null = null;
+    let entry: (EntryResult & { program: ProgramStatus }) | null = null;
     let note = signedIn ? 'Submitting…' : 'Saved on this device. Sign in to submit this run and see your rank.';
     const render = (): void => {
       const facts = el('p', { id: 'arena-facts' },
         el('b', { text: `${(entry?.netWorth ?? local.netWorth ?? snapshot.netWorth).toLocaleString('en-US')} net worth` }),
         ` · ${(entry?.parTick ?? local.parTick) === null ? 'par not reached' : `par at tick ${(entry?.parTick ?? local.parTick)!.toLocaleString('en-US')}`}`,
         entry?.percentile != null ? ` · top ${Math.max(1, 101 - entry.percentile)}% (rank ${entry.ranks.wealth ?? '—'} of ${entry.total})` : '');
-      const text = shareText({ number, label: c.id, netWorth: entry?.netWorth ?? local.netWorth, parTick: entry ? entry.parTick : local.parTick, par: c.par, percentile: entry?.percentile ?? null, mosaic: entry?.mosaic ?? local.mosaic, entryId: entry?.entryId ?? null });
+      const text = shareText({ number, label: c.id, netWorth: entry?.netWorth ?? local.netWorth, parTick: entry ? entry.parTick : local.parTick, par: c.par, percentile: entry?.percentile ?? null, mosaic: entry?.mosaic ?? local.mosaic, entryId: entry?.entryId ?? null, tokens: entry?.tokens ?? null });
       const copy = el('button', { id: 'btn-copy-result', class: 'primary', text: 'Copy result' });
       copy.addEventListener('click', async () => { const ok = await copyText(text); toast(ok ? 'Result copied' : 'Could not copy', ok ? 'Paste it anywhere.' : text); });
       const actionsRow: HTMLElement[] = [copy];
       if (!signedIn) { const si = el('button', { id: 'btn-arena-signin', text: 'Sign in to submit' }); si.addEventListener('click', () => startSignIn()); actionsRow.push(si); }
-      result.replaceChildren(facts, el('pre', { id: 'arena-mosaic', text: text.split('\n').slice(c.par === null ? 1 : 2, c.par === null ? 9 : 10).join('\n') }), el('p', { id: 'arena-note', class: 'muted', text: note }), el('div', {}, ...actionsRow));
+      result.replaceChildren(facts, el('pre', { id: 'arena-mosaic', text: text.split('\n').slice(-9, -1).join('\n') }), el('p', { id: 'arena-note', class: 'muted', text: note }), el('div', {}, ...actionsRow));
       result.hidden = false;
     };
     render();
     if (!signedIn) return;
-    try { entry = await submitRun(api, c, actions); note = entry.improved ? 'Verified by the server.' : 'Verified. Your earlier run is still your best.'; }
+    try {
+      entry = await submitRun(api, c, actions, loop.sourceProvider?.() ?? null);
+      note = entry.improved ? 'Verified by the server.' : 'Verified. Your earlier run is still your best.';
+      if (entry.program === 'verified') note += ` Your program is ${entry.tokens?.toLocaleString('en-US')} tokens${entry.ranks.brevity !== null ? ` (Brevity rank ${entry.ranks.brevity})` : entry.parTick === null ? ' (Brevity needs par)' : ''}.`;
+      else if (entry.program === 'mismatch') note += ' Your program does not match this run (edited mid-run?), so it has no Brevity entry.';
+      else if (entry.program === 'unavailable') note += ' The program check is busy; your score counted without Brevity.';
+    }
     catch (e) {
       if (e instanceof ApiError && e.status === 401) { signedIn = false; note = 'Sign in to submit this run and see your rank.'; }
       else if (e instanceof ApiError && e.status === 409) note = e.message;
