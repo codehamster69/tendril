@@ -5,6 +5,7 @@ import type { LogEntry } from '@tendril/sim/src/index.ts';
 import { createApp, createDb, migrate } from '../src/index.ts';
 import type { Db, Profile } from '../src/index.ts';
 import { keepIds, KIND_LIMITS, logHash, moveLegacyDaily, percentileOf, seasonId, seasonSeed, VERCEL_BODY_LIMIT } from '../src/arena.ts';
+import { verifySource } from '../../lang/src/verify.ts';
 import { DAY_MS } from '../src/game.ts';
 import { MAX_BODY_BYTES } from '../src/validation.ts';
 
@@ -19,6 +20,9 @@ const DAILY = `d-${TODAY}`;
 const FULL = JSON.parse(readFileSync(new URL('./fixtures/daily-example-seed7.json', import.meta.url), 'utf8')) as LogEntry[];
 /** A short legal harvest on any daily seed (the same shape the other server tests use). */
 const SMALL: LogEntry[] = [[0, 0, 0, 1], [2, 0, 1], [5, 0, 2, 1], [7, 0, 3], [9, 0, 3], [300, 0, 4], [303, 0, 0, 3], [305, 0, 5], [306, 0, 8, 1, 4]];
+
+/** Does nothing, so its log is empty: the cheapest program the verify step accepts. */
+const IDLE = 'x = 1\n';
 
 let db: Db;
 let app: (request: Request) => Promise<Response>;
@@ -52,7 +56,7 @@ async function duel(token = user.token, body: Json = { seed: 7 }): Promise<strin
 beforeEach(async () => {
   time = BASE;
   db = createDb({ url: ':memory:' });
-  app = createApp({ db, env: { TENDRIL_DEV_AUTH: '1', PUBLIC_ORIGIN: 'https://tendril.example' }, now: () => time });
+  app = createApp({ db, env: { TENDRIL_DEV_AUTH: '1', PUBLIC_ORIGIN: 'https://tendril.example' }, now: () => time, verifySource: async (r) => verifySource(r) });
   user = await login();
 });
 afterEach(() => db.close());
@@ -236,10 +240,10 @@ describe('POST /challenges/:id/entries', () => {
   });
 
   it('records the declared author kind and model', async () => {
-    const r = await enter(DAILY, SMALL, user.token, { authorKind: 'model', model: 'test-model-1' });
+    const r = await enter(DAILY, [], user.token, { authorKind: 'model', model: 'test-model-1', source: IDLE, sourcePublic: true });
     expect(r.status).toBe(200);
     const e = await call(`/entries/${r.json.entryId}`);
-    expect(e.json).toMatchObject({ authorKind: 'model', model: 'test-model-1', sourceVerified: false, tokens: null });
+    expect(e.json).toMatchObject({ authorKind: 'model', model: 'test-model-1', sourceVerified: true, sourcePublic: true });
   });
 
   it('accepts a season entry on this week\'s challenge', async () => {
@@ -284,7 +288,7 @@ describe('GET /challenges/:id/board', () => {
     const model = await login('Robot');
     await enter(id, FULL);
     await enter(id, SMALL, rival.token);
-    await enter(id, [], model.token, { authorKind: 'model', model: 'bot-1' });
+    await enter(id, [], model.token, { authorKind: 'model', model: 'bot-1', source: IDLE, sourcePublic: true });
     return { id, rival, model };
   }
 

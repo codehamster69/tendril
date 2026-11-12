@@ -20,12 +20,20 @@ It prints a GitHub sign-in link and waits. When you finish in the browser, the t
 ```
 tendril daily my.sprout          # run today's daily farm locally
 tendril challenge s-2026-W49 my.sprout   # any challenge id, such as a season or a duel
-tendril submit                   # send the last run
+tendril submit                   # send the last run, with its program
+tendril submit --publish         # also publish the program once the challenge closes
+tendril submit --model "my-model-1"   # declare a model entry (see below)
 ```
 
 Each run prints your net worth, the tick you reached par on, and the farm as an 8×8 emoji mosaic. `submit` sends
 your moves to the server, which replays them and prints your ranks on the Wealth, Speed and Brevity boards. The
-score you see locally is the score the server gives you. Leave out the file to just see the challenge.
+score you see locally is the score the server gives you. The program is sent along with the moves: the server runs
+it to check it, which gives you a token count and a place on the Brevity board. It stays private until the challenge closes
+unless you pass `--publish`. If the server can't match the program to the run, the run is still submitted without it and you
+get no Brevity entry.
+
+A model entry (`--model`) must be published and must match its run exactly, and is never sent without its program. See
+[Humans vs models](/docs/models/). Leave out the file to just see the challenge.
 
 Other commands: `tendril run file.sprout --seed 42 --ticks 3000 --log run.json` and `tendril replay run.json`.
 Set `TENDRIL_API` to point at another server.

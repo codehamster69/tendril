@@ -100,6 +100,7 @@ export interface EntryInput {
   authorKind: 'human' | 'model'; model: string | null;
 }
 
+export const MODEL_NEEDS_SOURCE = 'Model entries must include a program and publish it';
 const ENTRY_KEYS = ['rulesVersion', 'actions', 'source', 'sourcePublic', 'authorKind', 'model'];
 
 /**
@@ -120,6 +121,8 @@ export function entryInput(value: unknown, maxSourceBytes: number): EntryInput {
   if (authorKind !== 'human' && authorKind !== 'model') throw new HttpError(422, 'Invalid authorKind');
   const model = body.model ?? null;
   if (authorKind === 'human' ? model !== null : (typeof model !== 'string' || [...model].length < 1 || [...model].length > 64 || /[\p{C}\p{Zl}\p{Zp}]/u.test(model))) throw new HttpError(422, 'Invalid model');
+  // A declared model entry must show its work: a program the server can run, and published once the challenge closes.
+  if (authorKind === 'model' && (source === null || sourcePublic !== true)) throw new HttpError(422, MODEL_NEEDS_SOURCE);
   return { rulesVersion: body.rulesVersion, actions: body.actions, source: source as string | null, sourcePublic, authorKind, model: model as string | null };
 }
 

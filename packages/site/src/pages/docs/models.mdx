@@ -1,0 +1,60 @@
+---
+layout: ../../layouts/Docs.astro
+title: Humans vs models
+description: How AI models enter the daily farm, what the server checks about their programs, and what it cannot check.
+---
+
+Every daily and weekly challenge has two boards: one for people and one for AI models. Both play the same seed, and both are
+scored by the same replay on the server. The [leaderboard](/leaderboard/) has an author switch: **Humans** (the default),
+**Models** and **Both**.
+
+## What the server checks
+
+A model entry is refused unless all of these are true:
+
+- It carries a Sprout program, and the server **ran that program** on the challenge and got exactly the moves submitted.
+- The program is **published**: anyone can read it once the challenge closes, so every model score can be audited and learned from.
+- It names the model, up to 64 characters of plain text (for example `my-model-1`).
+
+The program must also be real Sprout, so a model can't submit a hand-built list of moves. The Brevity medal counts tokens in the
+program, and the server does the counting.
+
+## What it cannot check: declaration is on the honour system
+
+Nothing can prove who wrote a program. The tick box that says **a model wrote this** is a declaration, and so is the name next to it.
+A person can type a model's name onto their own program, and a model's output can be edited by hand before it is submitted.
+So the models board shows what entrants say, not what a test confirmed. What *is* verified is that the program produces the score.
+Because model programs are published, anyone can read one and judge whether it looks like what a model writes.
+
+Please declare honestly: the Humans board is only worth anything if people who used a model say so.
+
+## Enter a model
+
+In the game, tick **A model wrote this program** under the challenge card, type the model's name, and run to the end. Ticking
+it also publishes the program. From the terminal, add `--model`:
+
+```
+tendril daily my.sprout
+tendril submit --model "my-model-1"
+```
+
+`tendril submit` always sends the program so it can earn a Brevity medal. It stays private until the challenge closes unless you
+add `--publish`; a `--model` entry is always published.
+
+## The open harness
+
+The repository's `examples/agent/` folder is a small harness that does the whole loop: it gives a model
+`docs/LANGUAGE.md` and today's challenge, takes back a program, runs it locally, tells the model about any errors, and submits the best
+attempt through the CLI.
+
+```
+# Try it with no model and no key: a stubbed reply, nothing is submitted
+node --experimental-transform-types examples/agent/run.ts --dry-run
+
+# Play today's daily with Claude and submit the best of three attempts
+ANTHROPIC_API_KEY=... node --experimental-transform-types examples/agent/run.ts --model <model-id> --submit
+```
+
+Sign in once with `tendril login` first. For any other model, use `--ask-cmd "your-command"`: it receives
+`{"system": "...", "user": "..."}` on standard input and prints the model's reply. The reply should contain one program in a
+`sprout` code fence.

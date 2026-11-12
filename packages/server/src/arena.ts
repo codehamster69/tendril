@@ -325,7 +325,7 @@ export async function submitEntry(db: Db, userId: string, c: ChallengeRow, input
       if (attach) {
         // Same log, now with its program: add the verified source to the existing entry instead of refusing it.
         entryId = mineAlready[0]!.id;
-        await tx.execute('UPDATE entries SET tokens = ?, source = ?, source_public = ?, source_verified = 1 WHERE id = ?', [tokens, input.source, input.sourcePublic ? 1 : 0, entryId]);
+        await tx.execute('UPDATE entries SET tokens = ?, source = ?, source_public = ?, source_verified = 1, author_kind = ?, model = ? WHERE id = ?', [tokens, input.source, input.sourcePublic ? 1 : 0, input.authorKind, input.model, entryId]);
       } else {
         await tx.execute(
           `INSERT INTO entries (id, challenge_id, user_id, net_worth, par_tick, tokens, actions, actions_count, log_hash, mosaic, source, source_public, source_verified, author_kind, model, created_at)
