@@ -5,6 +5,7 @@ import type { Db, Queryable } from './db.ts';
 import { DAY_MS, isValidDate, utcDate } from './game.ts';
 import { HttpError } from './validation.ts';
 import type { EntryInput } from './validation.ts';
+import type { SourceVerifier } from './verify-client.ts';
 
 // ---- limits ----
 
@@ -185,7 +186,8 @@ const MEDALS: Record<Medal, { where: string; value: string; keys: (a: string) =>
     atOrAhead: (a, k) => ({ sql: `${a}.net_worth >= ?`, args: [k.net_worth] }) },
   speed: { where: 'e.par_tick IS NOT NULL', value: 'par_tick', keys: (a) => `${a}.par_tick ASC, ${a}.net_worth DESC`,
     atOrAhead: (a, k) => ({ sql: `(${a}.par_tick < ? OR (${a}.par_tick = ? AND ${a}.net_worth >= ?))`, args: [k.par_tick!, k.par_tick!, k.net_worth] }) },
-  brevity: { where: 'e.tokens IS NOT NULL', value: 'tokens', keys: (a) => `${a}.tokens ASC, ${a}.net_worth DESC`,
+  // Brevity is "fewest tokens among programs that reach par": without that gate an empty program would win it.
+  brevity: { where: 'e.tokens IS NOT NULL AND e.par_tick IS NOT NULL', value: 'tokens', keys: (a) => `${a}.tokens ASC, ${a}.net_worth DESC`,
     atOrAhead: (a, k) => ({ sql: `(${a}.tokens < ? OR (${a}.tokens = ? AND ${a}.net_worth >= ?))`, args: [k.tokens!, k.tokens!, k.net_worth] }) },
 };
 /** One player's entries, best first: the medal's keys, then earlier wins. */
@@ -257,7 +259,7 @@ export const percentileOf = (rank: number, total: number): number => Math.floor(
 export function keepIds(rows: Pick<EntryRow, 'id' | 'net_worth' | 'par_tick' | 'tokens' | 'created_at'>[]): Set<string> {
   const keep = new Set<string>();
   for (const medal of MEDAL_NAMES) {
-    const eligible = rows.filter((r) => (medal === 'speed' ? r.par_tick !== null : medal === 'brevity' ? r.tokens !== null : true));
+    const eligible = rows.filter((r) => (medal === 'speed' ? r.par_tick !== null : medal === 'brevity' ? r.tokens !== null && r.par_tick !== null : true));
     if (eligible.length === 0) continue;
     const key = (r: typeof rows[number]): number[] => (medal === 'wealth' ? [-r.net_worth] : medal === 'speed' ? [r.par_tick!, -r.net_worth] : [r.tokens!, -r.net_worth]);
     eligible.sort((a, b) => {
@@ -281,6 +283,25 @@ async function standing(q: Queryable, challengeId: string, userId: string): Prom
 export interface SubmitOptions {
   /** Extra time after closing during which submissions are still taken (legacy alias only). */ graceMs?: number;
   /** Answer a repeat of your own log with the existing entry instead of 409 (legacy alias only). */ repeatOk?: boolean;
+  /** The source check. Required only when the body carries a program. */ verify?: SourceVerifier;
+}
+
+export const SOURCE_UNAVAILABLE = 'The source check is unavailable. Submit without your program or try again later.';
+export const SOURCE_MISMATCH = 'Source does not produce this run';
+
+/** Runs the program in the verify function and requires it to produce exactly `hash`. Returns the token count. */
+async function checkSource(c: ChallengeRow, source: string, hash: string, verify: SourceVerifier | undefined): Promise<number> {
+  if (!verify) throw new HttpError(503, SOURCE_UNAVAILABLE);
+  let verdict;
+  try { verdict = await verify({ source, challengeId: c.id, kind: c.kind, seed: c.seed, ticks: c.ticks, rulesVersion: c.rules_version }); }
+  catch { throw new HttpError(503, SOURCE_UNAVAILABLE); }
+  if (!verdict.ok) {
+    if (verdict.reason === 'rules') throw new HttpError(409, 'Rules version mismatch');
+    throw new HttpError(422, verdict.reason === 'timeout' ? 'Source took too long to check' : `Source cannot be checked: ${verdict.message}`);
+  }
+  if (verdict.logHash !== hash) throw new HttpError(422, SOURCE_MISMATCH);
+  if (!Number.isSafeInteger(verdict.tokens) || verdict.tokens < 0) throw new HttpError(503, SOURCE_UNAVAILABLE);
+  return verdict.tokens;
 }
 
 export async function submitEntry(db: Db, userId: string, c: ChallengeRow, input: EntryInput, actions: LogEntry[], now: number, options: SubmitOptions = {}): Promise<SubmitResult> {
@@ -288,22 +309,30 @@ export async function submitEntry(db: Db, userId: string, c: ChallengeRow, input
   if (now < c.opens_at || (c.closes_at !== null && now >= c.closes_at + (options.graceMs ?? 0))) throw new HttpError(409, 'Challenge is not open');
   const replayed = replayLog(c, actions);
   const hash = logHash(actions);
+  // The program, if sent, is run by the separate verify function and must reproduce this exact log.
+  const tokens = input.source !== null ? await checkSource(c, input.source, hash, options.verify) : null;
   const id = newEntryId();
   return db.transaction(async (tx) => {
     let entryId = id;
     let improved = false;
-    const mineAlready = await tx.query<{ id: string }>('SELECT id FROM entries WHERE challenge_id = ? AND user_id = ? AND log_hash = ? AND actions_count > 0', [c.id, userId, hash]);
-    if (mineAlready[0]) {
+    const mineAlready = await tx.query<{ id: string; source_verified: number }>('SELECT id, source_verified FROM entries WHERE challenge_id = ? AND user_id = ? AND log_hash = ? AND actions_count > 0', [c.id, userId, hash]);
+    const attach = mineAlready[0] !== undefined && tokens !== null && mineAlready[0].source_verified === 0;
+    if (mineAlready[0] && !attach) {
       // Your own log again. New clients get 409; the old daily route retries blindly, so it gets the existing entry back.
       if (!options.repeatOk) throw new HttpError(409, 'You already submitted this log');
       entryId = mineAlready[0].id;
     } else {
-      // Source text and tokens belong to the source check (C3): stored as unverified nothing for now.
-      await tx.execute(
-        `INSERT INTO entries (id, challenge_id, user_id, net_worth, par_tick, tokens, actions, actions_count, log_hash, mosaic, source, source_public, source_verified, author_kind, model, created_at)
-         VALUES (?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, NULL, 0, 0, ?, ?, ?)`,
-        [id, c.id, userId, replayed.netWorth, replayed.parTick, JSON.stringify(actions), actions.length, hash, replayed.mosaic, input.authorKind, input.model, now],
-      );
+      if (attach) {
+        // Same log, now with its program: add the verified source to the existing entry instead of refusing it.
+        entryId = mineAlready[0]!.id;
+        await tx.execute('UPDATE entries SET tokens = ?, source = ?, source_public = ?, source_verified = 1 WHERE id = ?', [tokens, input.source, input.sourcePublic ? 1 : 0, entryId]);
+      } else {
+        await tx.execute(
+          `INSERT INTO entries (id, challenge_id, user_id, net_worth, par_tick, tokens, actions, actions_count, log_hash, mosaic, source, source_public, source_verified, author_kind, model, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [id, c.id, userId, replayed.netWorth, replayed.parTick, tokens, JSON.stringify(actions), actions.length, hash, replayed.mosaic, tokens === null ? null : input.source, tokens === null ? 0 : input.sourcePublic ? 1 : 0, tokens === null ? 0 : 1, input.authorKind, input.model, now],
+        );
+      }
       const mine = await tx.query<EntryRow>('SELECT * FROM entries WHERE challenge_id = ? AND user_id = ?', [c.id, userId]);
       // Players per medal: this player joins a medal's board the first time they hold an entry that qualifies for it.
       const prior = mine.filter((r) => r.id !== id);
@@ -313,14 +342,14 @@ export async function submitEntry(db: Db, userId: string, c: ChallengeRow, input
       }
       const keep = keepIds(mine);
       for (const row of mine) if (!keep.has(row.id)) await tx.execute('DELETE FROM entries WHERE id = ?', [row.id]);
-      improved = keep.has(id);
+      improved = keep.has(entryId);
       if (!improved) {
         const [top] = await tx.query<{ id: string }>(`SELECT e.id FROM entries e WHERE e.challenge_id = ? AND e.user_id = ? ORDER BY ${playerOrder('wealth', 'e')} LIMIT 1`, [c.id, userId]);
         entryId = top!.id;
       }
     }
     const { ranks, percentile, total } = await standing(tx, c.id, userId);
-    return { entryId, netWorth: replayed.netWorth, parTick: replayed.parTick, tokens: null, mosaic: replayed.mosaic, ranks, percentile, improved, total };
+    return { entryId, netWorth: replayed.netWorth, parTick: replayed.parTick, tokens, mosaic: replayed.mosaic, ranks, percentile, improved, total };
   });
 }
 
@@ -485,6 +514,44 @@ export async function entryReplay(db: Db, id: string, viewerId: string | undefin
   if (!(await replayVisible(db, c!, e, viewerId, now))) throw new HttpError(403, 'Sealed until the challenge closes');
   if (e.actions === null) throw new HttpError(404, 'No replay stored for this entry');
   return { seed: c!.seed, ticks: c!.ticks, rulesVersion: c!.rules_version, actions: JSON.parse(e.actions) as LogEntry[] };
+}
+
+/**
+ * GET /entries/:id/source. Only programs that passed the source check are stored. The author always sees their own;
+ * everyone else needs the author's "publish" tick and the same sealing rule as the replay (closed challenge, or for
+ * duels, an entry of your own).
+ */
+export async function entrySource(db: Db, id: string, viewerId: string | undefined, now: number) {
+  const e = await loadEntry(db, id);
+  const [c] = await db.query<ChallengeRow>('SELECT * FROM challenges WHERE id = ?', [e.challenge_id]);
+  const [row] = await db.query<{ source: string | null }>('SELECT source FROM entries WHERE id = ?', [id]);
+  if (row?.source == null || e.source_verified !== 1) throw new HttpError(404, 'No program stored for this entry');
+  if (viewerId !== e.user_id) {
+    if (!(await replayVisible(db, c!, e, viewerId, now))) throw new HttpError(403, 'Sealed until the challenge closes');
+    if (e.source_public !== 1) throw new HttpError(403, 'The author has not published this program');
+  }
+  return {
+    entryId: e.id, source: row.source, tokens: e.tokens, netWorth: e.net_worth, parTick: e.par_tick, sourcePublic: e.source_public === 1,
+    player: { login: e.login, displayName: e.display_name, avatarUrl: e.avatar_url }, authorKind: e.author_kind, model: e.model,
+    challenge: { id: c!.id, kind: c!.kind, number: c!.number },
+  };
+}
+
+/** GET /challenges/:id/sources: programs authors chose to publish, best net worth first. Closed challenges only. */
+export async function publishedSources(db: Db, c: ChallengeRow, limit: number, now: number) {
+  if (!isClosed(c, now)) throw new HttpError(403, 'Sealed until the challenge closes');
+  const rows = await db.query<{ id: string; net_worth: number; par_tick: number | null; tokens: number | null; mosaic: string | null; author_kind: AuthorKind; model: string | null; login: string; display_name: string; avatar_url: string | null }>(
+    `SELECT e.id, e.net_worth, e.par_tick, e.tokens, e.mosaic, e.author_kind, e.model, u.login, u.display_name, u.avatar_url
+     FROM entries e JOIN users u ON u.id = e.user_id
+     WHERE e.challenge_id = ? AND e.source_public = 1 AND e.source_verified = 1 AND e.source IS NOT NULL
+     ORDER BY e.net_worth DESC, e.created_at ASC, e.id ASC LIMIT ?`, [c.id, limit]);
+  return {
+    challenge: { id: c.id, kind: c.kind, number: c.number },
+    entries: rows.map((r) => ({
+      entryId: r.id, login: r.login, displayName: r.display_name, avatarUrl: r.avatar_url, netWorth: r.net_worth, parTick: r.par_tick,
+      tokens: r.tokens, mosaic: r.mosaic, authorKind: r.author_kind, model: r.model,
+    })),
+  };
 }
 
 // ---- old /api/daily* routes ----

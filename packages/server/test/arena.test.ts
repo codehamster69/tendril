@@ -252,11 +252,13 @@ describe('POST /challenges/:id/entries', () => {
 describe('medal selection keeps at most three entries per player', () => {
   const row = (id: string, net_worth: number, par_tick: number | null, tokens: number | null, created_at = 1) => ({ id, net_worth, par_tick, tokens, created_at });
   it('keeps the best for each medal and drops the rest', () => {
-    const rows = [row('rich', 500, 2000, 90), row('fast', 400, 1000, 80), row('short', 300, null, 20), row('dull', 100, 2900, 95)];
+    const rows = [row('rich', 500, 2000, 90), row('fast', 400, 1000, 80), row('short', 300, 2800, 20), row('dull', 100, 2900, 95), row('empty', 50, null, 0)];
     expect([...keepIds(rows)].sort()).toEqual(['fast', 'rich', 'short']);
     expect([...keepIds([row('a', 5, null, null), row('b', 6, null, null)])]).toEqual(['b']);
     expect([...keepIds([row('late', 5, null, null, 9), row('early', 5, null, null, 1)])]).toEqual(['early']);
     expect([...keepIds([row('only', 5, 10, 3)])]).toEqual(['only']);
+    // Brevity needs par: a short program that never reached it holds no medal, so a longer one that did is kept.
+    expect([...keepIds([row('never', 5, null, 1), row('got-there', 5, 100, 9)])].sort()).toEqual(['got-there']);
   });
   it('computes percentile as the share of players at or below your rank', () => {
     expect(percentileOf(1, 1)).toBe(100);

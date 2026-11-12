@@ -6,6 +6,8 @@ import { Readable } from 'node:stream';
 import { fileURLToPath } from 'node:url';
 import { createApp } from './app.ts';
 import { createDb } from './db.ts';
+// Dev only: the local server runs the source check in-process. Production uses the separate verify function.
+import { verifySource } from '../../lang/src/verify.ts';
 
 const PORT = 8787;
 const hosts = new Set([`127.0.0.1:${PORT}`, `localhost:${PORT}`, `[::1]:${PORT}`]);
@@ -53,7 +55,7 @@ function startDev(): void {
   const db = createDb({ url: process.env.TURSO_DATABASE_URL || `file:${resolve(dataDir, 'tendril.db')}`, authToken: process.env.TURSO_AUTH_TOKEN });
   // Local defaults; real variables from the shell win. Dev login stays off when VERCEL_ENV=production.
   const env = { TENDRIL_DEV_AUTH: '1', PUBLIC_ORIGIN: 'http://localhost:5173', ...process.env };
-  const server = createServer(createListener(createApp({ db, env })));
+  const server = createServer(createListener(createApp({ db, env, verifySource: async (request) => verifySource(request) })));
   server.requestTimeout = 15000;
   server.headersTimeout = 10000;
   server.on('error', () => { console.error('Unable to start local server'); db.close(); process.exitCode = 1; });

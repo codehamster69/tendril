@@ -3,13 +3,14 @@ import { authenticate, clearSessionCookie, devAuthEnabled, devLogin, finishGithu
 import type { Ctx, Env, FetchFn, Identity } from './auth.ts';
 import type { Db } from './db.ts';
 import { acceptDuel, duelCounts, duelPage } from './duels.ts';
-import { board, challengeInfo, createDuel, entryReplay, entrySummary, hallOfFame, KIND_LIMITS, legacyLeaderboard, legacySubmit, loadChallenge, MAX_SOURCE_BYTES, moveLegacyDaily, stats, submitEntry } from './arena.ts';
+import { board, challengeInfo, createDuel, entryReplay, entrySource, entrySummary, hallOfFame, publishedSources, KIND_LIMITS, legacyLeaderboard, legacySubmit, loadChallenge, MAX_SOURCE_BYTES, moveLegacyDaily, stats, submitEntry } from './arena.ts';
 import type { AuthorKind, Medal } from './arena.ts';
 import { createFarm, dailyInfo, getFarm, getReplay, isValidDate, leaderboard, reserveAttempt, utcDate, verifyChunk } from './game.ts';
 import type { Board } from './game.ts';
 import { badgeFor, follow, listFollowing, playerPage, unfollow } from './players.ts';
 import { handleShare } from './share.ts';
 import { createGuard, dropReplaysOutsideTop, pruneOncePerDay, rateScale, refreshGuard, prune, syncScale, withCacheHeaders } from './housekeeping.ts';
+import type { SourceVerifier } from './verify-client.ts';
 import { migrate } from './migrations.ts';
 import type { Migration } from './migrations.ts';
 import { chunkInput, displayName, duelInput, entryIdParam, entryInput, HttpError, objectWithKeys, readJson, rejectQuery, validateActions, uuid } from './validation.ts';
@@ -24,6 +25,8 @@ export interface AppOptions {
   migrations?: Migration[];
   /** Chunk attempts per user per rolling hour. Defaults to CHUNK_ATTEMPTS_PER_HOUR; tests pass a small number. */
   chunkAttemptsPerHour?: number;
+  /** Source check (C3). Absent: submissions that carry a program answer 503. Production wires the remote verify function. */
+  verifySource?: SourceVerifier;
 }
 
 const DESKTOP_ORIGIN = 'app://tendril';
@@ -255,7 +258,7 @@ function createInnerApp(options: AppOptions): (request: Request) => Promise<Resp
 
       // ---- arena: challenges, entries, duels ----
       const viewerId = async (): Promise<string | undefined> => (await authenticate(ctx, request, allowCookie))?.userId;
-      const challengeRoute = /^\/challenges\/([^/]+)(?:\/(entries|board))?$/.exec(route);
+      const challengeRoute = /^\/challenges\/([^/]+)(?:\/(entries|board|sources))?$/.exec(route);
       if (challengeRoute) {
         const [, ref, sub] = challengeRoute;
         if (!sub && method === 'GET') {
@@ -270,9 +273,13 @@ function createInnerApp(options: AppOptions): (request: Request) => Promise<Resp
           const input = entryInput(await readJson(request), MAX_SOURCE_BYTES);
           const limits = KIND_LIMITS[challenge.kind];
           const actions = validateActions(input.actions, 0, challenge.ticks, limits.maxActions);
-          const result = await submitEntry(db, identity.userId, challenge, input, actions, now());
+          const result = await submitEntry(db, identity.userId, challenge, input, actions, now(), { verify: options.verifySource });
           if (mode !== 'normal' && result.improved) await dropReplaysOutsideTop(db, challenge.id, result.entryId); // lean and tighter: only top entries keep a log
           return json(result);
+        }
+        if (sub === 'sources' && method === 'GET') {
+          rejectQuery(url, ['limit']);
+          return json(await publishedSources(db, await loadChallenge(db, ref!, now()), limitParam(url), now()));
         }
         if (sub === 'board' && method === 'GET') {
           rejectQuery(url, ['medal', 'scope', 'author', 'limit']);
@@ -292,11 +299,12 @@ function createInnerApp(options: AppOptions): (request: Request) => Promise<Resp
         rejectQuery(url, ['limit']);
         return json(await hallOfFame(db, now(), limitParam(url)));
       }
-      const entryRoute = /^\/entries\/([^/]+)(?:\/(replay))?$/.exec(route);
+      const entryRoute = /^\/entries\/([^/]+)(?:\/(replay|source))?$/.exec(route);
       if (entryRoute && method === 'GET') {
         rejectQuery(url);
         const id = entryIdParam(entryRoute[1]!);
-        return json(entryRoute[2] ? await entryReplay(db, id, await viewerId(), now()) : await entrySummary(db, id, await viewerId(), now()));
+        const part = entryRoute[2];
+        return json(part === 'replay' ? await entryReplay(db, id, await viewerId(), now()) : part === 'source' ? await entrySource(db, id, await viewerId(), now()) : await entrySummary(db, id, await viewerId(), now()));
       }
       if (route === '/duels' && method === 'POST') {
         const identity = await requireUser();
