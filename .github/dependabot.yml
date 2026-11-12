@@ -1,0 +1,31 @@
+version: 2
+updates:
+  # JavaScript dependencies for the whole pnpm workspace (root and every package).
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: '05:00'
+      timezone: UTC
+    open-pull-requests-limit: 5
+    groups:
+      # One pull request for all patch and minor updates. Majors stay separate and wait for a person.
+      minor-and-patch:
+        update-types: [minor, patch]
+    # Electron changes the desktop runtime and updater: never merged automatically.
+    ignore:
+      - dependency-name: electron
+        update-types: [version-update:semver-major]
+    labels: [dependencies]
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: '05:00'
+      timezone: UTC
+    groups:
+      actions:
+        update-types: [minor, patch]
+    labels: [dependencies]

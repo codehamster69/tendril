@@ -1,0 +1,81 @@
+name: Monthly release
+
+# On the 1st of each month, if the app changed since the last release, bump the
+# patch version, tag it and publish unsigned installers (release.yml).
+# Run it by hand with dry_run to see what it would do and build installers
+# without committing, tagging or publishing.
+
+on:
+  schedule:
+    - cron: '30 6 1 * *'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Only report and build installers; no commit, tag or release'
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: monthly-release
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    name: Decide and tag
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    outputs:
+      changed: ${{ steps.decide.outputs.changed }}
+      tag: ${{ steps.tag.outputs.tag }}
+    env:
+      DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run || 'false' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Did the app change since the last release?
+        id: decide
+        run: |
+          set -euo pipefail
+          last=$(git describe --tags --abbrev=0 --match 'v*' 2>/dev/null || true)
+          if [ -z "$last" ]; then echo "No release tag yet; nothing to do."; echo changed=false >> "$GITHUB_OUTPUT"; exit 0; fi
+          # Only what ships in the installers counts. Site, server, docs and brain changes deploy on their own.
+          if git diff --quiet "$last" HEAD -- packages/client packages/sim packages/lang assets/export pnpm-lock.yaml; then
+            echo "Nothing in the app changed since $last."; echo changed=false >> "$GITHUB_OUTPUT"
+          else
+            echo "App changed since $last."; echo changed=true >> "$GITHUB_OUTPUT"
+          fi
+      - name: Bump the patch version, commit and tag
+        id: tag
+        if: steps.decide.outputs.changed == 'true'
+        run: |
+          set -euo pipefail
+          cd packages/client
+          cur=$(node -p "require('./package.json').version")
+          next=$(node -e "const [a,b,c]='$cur'.split('.').map(Number);console.log([a,b,c+1].join('.'))")
+          echo "Next version: $next (from $cur)"
+          if [ "$DRY_RUN" = "true" ]; then echo "Dry run: stopping before commit, tag and release."; echo tag= >> "$GITHUB_OUTPUT"; exit 0; fi
+          npm pkg set version="$next"
+          cd ../..
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -am "Release v$next"
+          git tag "v$next"
+          git push origin HEAD:main "v$next"
+          echo "tag=v$next" >> "$GITHUB_OUTPUT"
+
+  release:
+    name: Build and publish installers
+    needs: prepare
+    if: needs.prepare.outputs.changed == 'true'
+    permissions:
+      contents: write
+    uses: ./.github/workflows/release.yml
+    with:
+      tag: ${{ needs.prepare.outputs.tag }}
+      publish: ${{ needs.prepare.outputs.tag != '' }}

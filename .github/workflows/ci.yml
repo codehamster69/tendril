@@ -1,0 +1,109 @@
+name: Gate
+
+# The full gate on every pull request and every push to main. Dependabot pull
+# requests that pass it are merged by the `auto-merge` job at the bottom.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: gate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gate:
+    name: Lint, types, unit and golden tests, build
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    env:
+      CI: 'true'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+      - run: pnpm typecheck
+      # Includes the golden replay hashes in packages/lang and packages/sim.
+      - run: pnpm test
+      - run: pnpm assets:copy
+      - run: pnpm build
+
+  e2e:
+    name: Playwright
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    env:
+      CI: 'true'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @tendril/client exec playwright install --with-deps chromium
+      # No retries: a pass that needs a second try is a fail (brain/DECISIONS.md D-002).
+      - run: pnpm test:e2e
+
+  auto-merge:
+    name: Merge safe dependency updates
+    needs: [gate, e2e]
+    if: github.event_name == 'pull_request' && github.actor == 'dependabot[bot]'
+    runs-on: ubuntu-22.04
+    timeout-minutes: 5
+    permissions:
+      contents: write
+      pull-requests: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      PR: ${{ github.event.pull_request.number }}
+      REPO: ${{ github.repository }}
+    steps:
+      - name: Read what the update changes
+        id: meta
+        uses: dependabot/fetch-metadata@v2
+        with:
+          github-token: ${{ github.token }}
+      - name: Decide
+        id: decide
+        env:
+          UPDATE_TYPE: ${{ steps.meta.outputs.update-type }}
+          NAMES: ${{ steps.meta.outputs.dependency-names }}
+        run: |
+          set -euo pipefail
+          # Group pull requests report the highest type; GitHub Actions bumps report none of these.
+          case "$UPDATE_TYPE" in
+            version-update:semver-patch|version-update:semver-minor) ;;
+            *) echo "skip=Not a patch or minor update ($UPDATE_TYPE)" >> "$GITHUB_OUTPUT"; exit 0 ;;
+          esac
+          if echo "$NAMES" | tr ',' '\n' | grep -qix 'electron\|electron-builder\|electron-updater'; then
+            echo "skip=Touches Electron" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          files=$(gh api "repos/$REPO/pulls/$PR/files" --paginate --jq '.[].filename')
+          # Anything that can change a replay (the rules engine and the language) waits for a person.
+          if echo "$files" | grep -qE '^packages/(sim|lang)/'; then
+            echo "skip=Touches the sim or the language packages" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          if echo "$files" | grep -qvE '(^|/)package\.json$|^pnpm-lock\.yaml$|^\.github/workflows/'; then
+            echo "skip=Changes files other than manifests, the lockfile or workflows" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          echo "skip=" >> "$GITHUB_OUTPUT"
+      - name: Merge (the gate above already passed)
+        if: steps.decide.outputs.skip == ''
+        run: gh pr merge "$PR" --repo "$REPO" --squash
+      - name: Leave it for a person
+        if: steps.decide.outputs.skip != ''
+        run: |
+          echo "::notice::Not auto-merged: ${{ steps.decide.outputs.skip }}"
+          gh pr edit "$PR" --repo "$REPO" --add-label needs-human || true
