@@ -17,16 +17,38 @@ function entryURL({ devURL, packaged, smoke }) {
   return entry.href;
 }
 
+const MODES = ['live', 'sandbox', 'campaign', 'daily'];
+const QUERY_KEYS = ['mode', 'ranked', 'lesson'];
+
+/** mode once, from MODES; ranked=1 only with mode=live; lesson=<slug> only with mode=campaign. */
+function allowedQuery(params) {
+  const single = (key) => {
+    const values = params.getAll(key);
+    if (values.length > 1) return false;
+    return values.length === 1 ? values[0] : null;
+  };
+  const mode = single('mode');
+  const ranked = single('ranked');
+  const lesson = single('lesson');
+  if (mode === false || ranked === false || lesson === false) return false;
+  if (mode !== null && !MODES.includes(mode)) return false;
+  if (ranked !== null && (ranked !== '1' || mode !== 'live')) return false;
+  if (lesson !== null && (mode !== 'campaign' || !/^[a-z0-9-]{1,40}$/.test(lesson))) return false;
+  return true;
+}
+
 function allowsNavigation(destination, entry) {
   try {
     const url = new URL(destination);
     const allowed = new URL(entry);
-    // Preserve the app's live/sandbox link on the same entry document. No
-    // arbitrary query parameters, pages, schemes or neighboring files qualify.
-    const modes = url.searchParams.getAll('mode');
-    if (modes.length > 1 || (modes.length === 1 && !['live', 'sandbox'].includes(modes[0]))) return false;
-    url.searchParams.delete('mode');
-    allowed.searchParams.delete('mode');
+    // Preserve the app's in-page links (mode tabs, the ranked farm, campaign
+    // lessons) on the same entry document. No other query parameters, pages,
+    // schemes or neighboring files qualify.
+    if (!allowedQuery(url.searchParams)) return false;
+    for (const key of QUERY_KEYS) {
+      url.searchParams.delete(key);
+      allowed.searchParams.delete(key);
+    }
     url.hash = '';
     allowed.hash = '';
     return url.href === allowed.href;
