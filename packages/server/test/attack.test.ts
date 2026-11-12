@@ -941,7 +941,7 @@ describe('10. daily challenge', () => {
     expect(best).toBeGreaterThan(0);
     const rival = await login('Rival');
     time += 60_000;
-    // A byte-identical log is a copy and gets 409 now (see arena.test.ts); one extra idle action keeps the same score.
+    // A byte-identical log would share rank 1 (see arena.test.ts); one extra idle action keeps the score and tests the tie-break.
     const rivalRun = await daily({ date: TODAY, rulesVersion: RULES_VERSION, actions: [...GOOD, [2999, 0, 3]] }, rival.token);
     expect((rivalRun.json as { rank: number }).rank).toBe(2); // tie broken by earlier achievement
     const lower = await daily({ date: TODAY, rulesVersion: RULES_VERSION, actions: [] });

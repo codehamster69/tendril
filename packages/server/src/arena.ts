@@ -174,11 +174,13 @@ export const logHash = (actions: LogEntry[]): string => createHash('sha256').upd
 const newEntryId = (): string => randomBytes(9).toString('base64url');
 
 // Ordering for each medal, best first. `value` is the board value; later keys break ties deterministically.
-const MEDALS: Record<Medal, { where: string; value: string; order: (a: string) => string }> = {
-  wealth: { where: '1 = 1', value: 'net_worth', order: (a) => `${a}.net_worth DESC, ${a}.created_at ASC, ${a}.id ASC` },
-  speed: { where: 'e.par_tick IS NOT NULL', value: 'par_tick', order: (a) => `${a}.par_tick ASC, ${a}.net_worth DESC, ${a}.created_at ASC, ${a}.id ASC` },
-  brevity: { where: 'e.tokens IS NOT NULL', value: 'tokens', order: (a) => `${a}.tokens ASC, ${a}.net_worth DESC, ${a}.created_at ASC, ${a}.id ASC` },
+const MEDALS: Record<Medal, { where: string; value: string; keys: (a: string) => string }> = {
+  wealth: { where: '1 = 1', value: 'net_worth', keys: (a) => `${a}.net_worth DESC` },
+  speed: { where: 'e.par_tick IS NOT NULL', value: 'par_tick', keys: (a) => `${a}.par_tick ASC, ${a}.net_worth DESC` },
+  brevity: { where: 'e.tokens IS NOT NULL', value: 'tokens', keys: (a) => `${a}.tokens ASC, ${a}.net_worth DESC` },
 };
+/** One player's entries, best first: the medal's keys, then earlier wins. */
+const playerOrder = (medal: Medal, a: string): string => `${MEDALS[medal].keys(a)}, ${a}.created_at ASC, ${a}.id ASC`;
 const MEDAL_NAMES = Object.keys(MEDALS) as Medal[];
 
 interface Filters { viewerId?: string; friends?: boolean; author?: AuthorKind }
@@ -196,12 +198,19 @@ function rankedCte(medal: Medal, challengeId: string, filters: Filters = {}): { 
     args.push(filters.viewerId!, filters.viewerId!);
   }
   if (filters.author) { extra += ' AND e.author_kind = ?'; args.push(filters.author); }
+  // Identical non-empty logs (same grp) are the same run: they sit together, ordered by when the log first appeared,
+  // and share the rank of the first. Everyone else ranks by the medal's keys, then earlier first.
   const sql = `WITH best AS (
       SELECT e.id, e.user_id, e.net_worth, e.par_tick, e.tokens, e.created_at, e.${m.value} AS value, e.mosaic, e.author_kind, e.model,
-        ROW_NUMBER() OVER (PARTITION BY e.user_id ORDER BY ${m.order('e')}) AS pick
+        CASE WHEN e.actions_count > 0 THEN e.log_hash ELSE e.id END AS grp,
+        ROW_NUMBER() OVER (PARTITION BY e.user_id ORDER BY ${playerOrder(medal, 'e')}) AS pick
       FROM entries e WHERE e.challenge_id = ? AND ${m.where}${extra}
+    ), grouped AS (
+      SELECT b.*, MIN(b.created_at) OVER (PARTITION BY b.grp) AS gfirst FROM best b WHERE b.pick = 1
+    ), numbered AS (
+      SELECT g.*, ROW_NUMBER() OVER (ORDER BY ${m.keys('g')}, g.gfirst ASC, g.grp ASC, g.created_at ASC, g.id ASC) AS rn FROM grouped g
     ), ranked AS (
-      SELECT b.*, ROW_NUMBER() OVER (ORDER BY ${m.order('b')}) AS rank FROM best b WHERE b.pick = 1
+      SELECT n.*, MIN(n.rn) OVER (PARTITION BY n.grp) AS rank FROM numbered n
     )`;
   return { sql, args };
 }
@@ -247,7 +256,10 @@ async function standing(q: Queryable, challengeId: string, userId: string): Prom
   return { ranks, percentile, total };
 }
 
-export interface SubmitOptions { /** Extra time after closing during which submissions are still taken (legacy alias only). */ graceMs?: number }
+export interface SubmitOptions {
+  /** Extra time after closing during which submissions are still taken (legacy alias only). */ graceMs?: number;
+  /** Answer a repeat of your own log with the existing entry instead of 409 (legacy alias only). */ repeatOk?: boolean;
+}
 
 export async function submitEntry(db: Db, userId: string, c: ChallengeRow, input: EntryInput, actions: LogEntry[], now: number, options: SubmitOptions = {}): Promise<SubmitResult> {
   if (input.rulesVersion !== c.rules_version || input.rulesVersion !== RULES_VERSION) throw new HttpError(409, 'Rules version mismatch');
@@ -256,13 +268,13 @@ export async function submitEntry(db: Db, userId: string, c: ChallengeRow, input
   const hash = logHash(actions);
   const id = newEntryId();
   return db.transaction(async (tx) => {
-    const [dupe] = await tx.query<{ id: string; user_id: string }>('SELECT id, user_id FROM entries WHERE challenge_id = ? AND log_hash = ? AND actions_count > 0', [c.id, hash]);
     let entryId = id;
     let improved = false;
-    if (dupe) {
-      // Someone else's log is a copy; your own log again is a harmless repeat.
-      if (dupe.user_id !== userId) throw new HttpError(409, 'This log was already submitted');
-      entryId = dupe.id;
+    const mineAlready = await tx.query<{ id: string }>('SELECT id FROM entries WHERE challenge_id = ? AND user_id = ? AND log_hash = ? AND actions_count > 0', [c.id, userId, hash]);
+    if (mineAlready[0]) {
+      // Your own log again. New clients get 409; the old daily route retries blindly, so it gets the existing entry back.
+      if (!options.repeatOk) throw new HttpError(409, 'You already submitted this log');
+      entryId = mineAlready[0].id;
     } else {
       // Source text and tokens belong to the source check (C3): stored as unverified nothing for now.
       await tx.execute(
@@ -275,7 +287,7 @@ export async function submitEntry(db: Db, userId: string, c: ChallengeRow, input
       for (const row of mine) if (!keep.has(row.id)) await tx.execute('DELETE FROM entries WHERE id = ?', [row.id]);
       improved = keep.has(id);
       if (!improved) {
-        const [top] = await tx.query<{ id: string }>(`SELECT e.id FROM entries e WHERE e.challenge_id = ? AND e.user_id = ? ORDER BY ${MEDALS.wealth.order('e')} LIMIT 1`, [c.id, userId]);
+        const [top] = await tx.query<{ id: string }>(`SELECT e.id FROM entries e WHERE e.challenge_id = ? AND e.user_id = ? ORDER BY ${playerOrder('wealth', 'e')} LIMIT 1`, [c.id, userId]);
         entryId = top!.id;
       }
     }
@@ -371,7 +383,7 @@ export async function legacySubmit(db: Db, userId: string, date: string, actions
   if (date !== utcDate(now) && date !== utcDate(now - DAY_MS)) throw new HttpError(422, 'Only today or yesterday (UTC) can be submitted');
   const c = await loadChallenge(db, dailyId(date), now);
   const input: EntryInput = { rulesVersion: RULES_VERSION, actions, source: null, sourcePublic: false, authorKind: 'human', model: null };
-  const result = await submitEntry(db, userId, c, input, actions, now, { graceMs: LEGACY_GRACE_MS });
+  const result = await submitEntry(db, userId, c, input, actions, now, { graceMs: LEGACY_GRACE_MS, repeatOk: true });
   const [best] = await db.query<{ best: number }>('SELECT MAX(net_worth) AS best FROM entries WHERE challenge_id = ? AND user_id = ?', [c.id, userId]);
   return { netWorth: result.netWorth, rank: result.ranks.wealth!, best: best!.best };
 }

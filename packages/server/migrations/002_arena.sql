@@ -35,8 +35,8 @@ CREATE TABLE IF NOT EXISTS entries (
   created_at      INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS entries_by_user ON entries (challenge_id, user_id);
--- Copying someone's log is refused with 409; an empty log carries no information and is exempt.
-CREATE UNIQUE INDEX IF NOT EXISTS entries_log_once ON entries (challenge_id, log_hash) WHERE actions_count > 0;
+-- Identical logs from different players are allowed and share a rank; the same player repeating one is refused (409).
+CREATE INDEX IF NOT EXISTS entries_by_log ON entries (challenge_id, log_hash);
 CREATE INDEX IF NOT EXISTS entries_wealth ON entries (challenge_id, net_worth DESC, created_at ASC);
 CREATE INDEX IF NOT EXISTS entries_speed ON entries (challenge_id, par_tick ASC) WHERE par_tick IS NOT NULL;
 CREATE INDEX IF NOT EXISTS entries_brevity ON entries (challenge_id, tokens ASC) WHERE tokens IS NOT NULL;

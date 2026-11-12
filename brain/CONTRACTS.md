@@ -124,7 +124,8 @@ Worlds are always built with `challengeSetup(kind, seed)` from the sim (F1 varie
 **entries**(id, challenge_id, user_id, net_worth, par_tick, tokens, actions, actions_count, log_hash, mosaic, source,
 source_public, source_verified, author_kind, model, created_at). Id = 12 base64url chars. `log_hash` = SHA-256 of
 `JSON.stringify(actions)`. At most three per player per challenge: their best for each medal (wealth: highest net worth;
-speed: lowest par_tick; brevity: lowest tokens, needs tokens). Ties go to the earlier entry. Rows moved from the old
+speed: lowest par_tick; brevity: lowest tokens, needs tokens). Ties go to the earlier entry. Identical non-empty logs from different players are accepted and share a rank (the first
+submitter is listed first; the next distinct run takes rank = rows before it + 1, like 1, 1, 3). Rows moved from the old
 `daily_entries` have no log, mosaic or par tick (replay is 404). **follows**(follower_id, followee_id, created_at) exists;
 B5 owns the routes. `daily_entries` stays as a read-only archive. `arena_meta` marks one-off data moves.
 
@@ -148,8 +149,8 @@ Not in A2: `/entries/:id/source` (C3), `/players`, `/follows`, `/badge` (B5), `/
 On a non-improving submit, `entryId` is the player's current best-wealth entry, `improved` false, and the other fields
 describe the submitted run. `source`, `sourcePublic` are validated (source <= 32 KB) but not stored until C3.
 
-**Status codes.** 401 no session; 403 sealed; 404 unknown challenge/entry; 409 rules mismatch, challenge not open, or copied
-log (same log_hash as another player's entry; empty logs exempt); 413 body over 2 MB or more actions than the kind's cap; 422
+**Status codes.** 401 no session; 403 sealed; 404 unknown challenge/entry; 409 rules mismatch, challenge not open, or a repeat of
+your own log (you already submitted this exact log; empty logs exempt, and the old /daily/submit returns the existing entry instead); 413 body over 2 MB or more actions than the kind's cap; 422
 bad body or illegal log; 429 over 60 entries or 20 duels per user per UTC day. Cookie sessions need `X-Tendril-Client: 1` on POST.
 
 **Sealing.** A replay is readable once its challenge has closed. Before that: its owner always; for duels, anyone who has
@@ -159,4 +160,4 @@ submitted their own entry on the same duel. Everything else is 403.
 about 1 MB, under both our 2 MB limit and Vercel's 4.5 MB (a test asserts it). C2 may lower a kind's cap.
 
 **Old clients.** `/daily`, `/daily/submit`, `/daily/leaderboard` keep their shapes and now read and write the Arena tables
-(so the copied-log rule applies). They also keep the one-day-late grace (`LEGACY_GRACE_MS`); set it to 0 when 0.1.x is gone.
+(a repeat of your own log is answered with the existing entry, not 409). They also keep the one-day-late grace (`LEGACY_GRACE_MS`); set it to 0 when 0.1.x is gone.

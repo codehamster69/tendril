@@ -163,11 +163,10 @@ describe('POST /challenges/:id/entries', () => {
     expect(ms).toBeLessThan(1000);
   });
 
-  it('keeps the best, treats a repeat as harmless and a tie as not improved', async () => {
+  it('keeps the best and refuses a repeat of your own log with 409', async () => {
     const id = await duel();
     const first = await enter(id, FULL);
-    const again = await enter(id, FULL);
-    expect(again.json).toMatchObject({ entryId: first.json.entryId, improved: false, netWorth: first.json.netWorth });
+    expect((await enter(id, FULL)).status).toBe(409); // your own log again
     const worse = await enter(id, []);
     expect(worse.json).toMatchObject({ entryId: first.json.entryId, improved: false, netWorth: 0, ranks: { wealth: 1 } });
     expect(await db.query('SELECT id FROM entries')).toHaveLength(1);
@@ -175,15 +174,23 @@ describe('POST /challenges/:id/entries', () => {
     expect(better.json.improved).toBe(false);
   });
 
-  it('refuses another player\'s log with 409 but lets an empty log through', async () => {
+  it('accepts another player\'s identical log and ranks both equally', async () => {
     const id = await duel();
-    await enter(id, FULL);
+    const first = await enter(id, FULL);
     const rival = await login('Rival');
-    const copy = await enter(id, FULL, rival.token);
-    expect(copy.status).toBe(409);
-    expect(await db.query('SELECT id FROM entries')).toHaveLength(1);
+    time += 1000;
+    const second = await enter(id, FULL, rival.token);
+    expect(second.status).toBe(200);
+    expect(second.json).toMatchObject({ improved: true, netWorth: first.json.netWorth, ranks: { wealth: 1, speed: 1 }, total: 2 });
+    expect(second.json.entryId).not.toBe(first.json.entryId);
+    const third = await login('Third');
+    await enter(id, SMALL, third.token);
+    const board = (await call(`/challenges/${id}/board`)).json;
+    expect(board.entries.map((e: Json) => [e.rank, e.displayName])).toEqual([[1, 'Farmer'], [1, 'Rival'], [3, 'Third']]);
+    expect((await call(`/challenges/${id}/board`, { token: rival.token })).json.me).toMatchObject({ rank: 1 });
+    expect((await enter(id, FULL, rival.token)).status).toBe(409); // but the same player repeating it is still refused
+    // Empty logs carry no information: they are never treated as the same run.
     expect((await enter(id, [], user.token)).status).toBe(200);
-    expect((await enter(id, [], rival.token)).status).toBe(200);
   });
 
   it('refuses oversized bodies and logs with 413 and malformed ones with 4xx', async () => {
@@ -439,11 +446,14 @@ describe('old /api/daily routes', () => {
     expect(old.json.entries[0]).toMatchObject({ rank: 1, userId: user.profile.id, netWorth: r.json.netWorth });
     expect((await call('/daily')).json).toEqual({ date: TODAY, seed: dailySeed(TODAY), ticks: DAILY_TICKS, rulesVersion: RULES_VERSION });
   });
-  it('apply the copied-log rule to old clients too', async () => {
-    await call('/daily/submit', { token: user.token, body: { date: TODAY, rulesVersion: RULES_VERSION, actions: SMALL } });
+  it('treat a repeat of your own log as a harmless retry, and share rank for identical logs', async () => {
+    const body = { date: TODAY, rulesVersion: RULES_VERSION, actions: SMALL };
+    const first = await call('/daily/submit', { token: user.token, body });
+    expect((await call('/daily/submit', { token: user.token, body })).json).toEqual(first.json);
     const rival = await login('Rival');
-    const copy = await call('/daily/submit', { token: rival.token, body: { date: TODAY, rulesVersion: RULES_VERSION, actions: SMALL } });
-    expect(copy.status).toBe(409);
+    const same = await call('/daily/submit', { token: rival.token, body });
+    expect(same.json).toEqual({ netWorth: first.json.netWorth, rank: 1, best: first.json.netWorth });
+    expect(await db.query('SELECT id FROM entries')).toHaveLength(2);
   });
 });
 
