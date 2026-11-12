@@ -29,10 +29,10 @@ import Base from '../layouts/Base.astro';
 <script>
   import { api, arenaCss, el, fmt, mosaicEl } from '../scripts/arena';
 
-  interface Recent { entryId?: string; id?: string; challengeId?: string; challenge?: string; number?: number; netWorth?: number; mosaic?: string | null; createdAt?: string | number; date?: string }
+  interface Recent { entryId: string; challengeId: string; kind: 'daily' | 'season' | 'duel'; number: number | null; netWorth: number; parTick: number | null; tokens: number | null; mosaic: string | null; createdAt: string | number }
   interface Profile {
-    login: string; displayName?: string; avatarUrl?: string; streak?: number; bestStreak?: number;
-    medals?: Partial<Record<'wealth' | 'speed' | 'brevity', number>>; recent?: Recent[];
+    login: string; displayName?: string; avatarUrl?: string; streak?: { current: number; best: number; lastDay: string | null };
+    medals?: Partial<Record<'wealth' | 'speed' | 'brevity', number>>; topPercent?: number | null; followers?: number; following?: number; recent?: Recent[];
   }
 
   const $ = <T extends HTMLElement>(s: string) => document.querySelector<T>(s)!;
@@ -50,25 +50,28 @@ import Base from '../layouts/Base.astro';
     state.hidden = true;
     $('[data-profile]').hidden = false;
     $('[data-name]').textContent = p.displayName || p.login;
-    $('[data-login]').textContent = `@${p.login}`;
+    $('[data-login]').textContent = `@${p.login} · ${fmt.format(p.followers ?? 0)} followers · following ${fmt.format(p.following ?? 0)}${p.topPercent != null ? ` · best top ${p.topPercent}%` : ''}`;
     if (p.avatarUrl && /^https:\/\//.test(p.avatarUrl)) { const a = $<HTMLImageElement>('[data-avatar]'); a.src = p.avatarUrl; a.hidden = false; }
-    $('[data-streak]').textContent = fmt.format(p.streak ?? 0);
-    $('[data-best]').textContent = fmt.format(p.bestStreak ?? 0);
+    $('[data-streak]').textContent = fmt.format(p.streak?.current ?? 0);
+    $('[data-best]').textContent = fmt.format(p.streak?.best ?? 0);
     for (const m of ['wealth', 'speed', 'brevity'] as const) $(`[data-m-${m}]`).textContent = fmt.format(p.medals?.[m] ?? 0);
     const list = $('[data-recent]');
     const recent = p.recent ?? [];
     $('[data-empty]').hidden = recent.length > 0;
     for (const r of recent) {
-      const id = r.entryId ?? r.id;
+      const id = r.entryId;
       const li = el('li', 'entry');
       const pic = mosaicEl(r.mosaic, '3.5rem');
       if (pic) li.append(pic);
-      const label = r.number != null ? `Daily #${r.number}` : r.challengeId ?? r.challenge ?? r.date ?? 'Entry';
+      const label = r.kind === 'duel' ? 'Duel' : `${r.kind === 'season' ? 'Season week' : 'Daily'} #${r.number ?? '?'}`;
       const t = el('div');
-      t.append(el('strong', undefined, label));
-      if (r.netWorth != null) t.append(el('br'), el('span', 'dim', `${fmt.format(r.netWorth)} net worth`));
+      t.append(el('strong', undefined, label), el('br'));
+      const bits = [`${fmt.format(r.netWorth)} net worth`];
+      if (r.parTick != null) bits.push(`par at tick ${fmt.format(r.parTick)}`);
+      if (r.tokens != null) bits.push(`${fmt.format(r.tokens)} tokens`);
+      t.append(el('span', 'dim', bits.join(' · ')));
       li.append(t);
-      if (id) { const a = el('a', undefined, 'Replay'); a.href = `/r/${encodeURIComponent(id)}`; li.append(a); }
+      { const a = el('a', undefined, 'Replay'); a.href = `/r/${encodeURIComponent(id)}`; li.append(a); }
       list.append(li);
     }
   }
