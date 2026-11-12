@@ -92,9 +92,11 @@ export async function logout(ctx: Ctx, request: Request, identity: Identity | nu
   if (token) await ctx.db.execute('DELETE FROM sessions WHERE token_hash = ?', [sha256(token)]);
 }
 
-export async function devLogin(ctx: Ctx, displayName: string): Promise<{ token: string; profile: Profile }> {
+/** Dev only. The name given becomes the login (spaces become '-'), so it is also the only name ever shown. */
+export async function devLogin(ctx: Ctx, name: string): Promise<{ token: string; profile: Profile }> {
   const id = randomUUID();
-  await ctx.db.execute('INSERT INTO users (id, github_id, login, display_name, avatar_url, created_at) VALUES (?, NULL, ?, ?, NULL, ?)', [id, `dev-${id.slice(0, 8)}`, displayName, ctx.now()]);
+  const login = name.trim().replace(/\s+/g, '-');
+  await ctx.db.execute('INSERT INTO users (id, github_id, login, display_name, avatar_url, created_at) VALUES (?, NULL, ?, ?, NULL, ?)', [id, login, login, ctx.now()]);
   const token = await createSession(ctx, id);
   return { token, profile: (await getProfile(ctx.db, id))! };
 }
@@ -163,10 +165,6 @@ async function fetchGithubUser(ctx: Ctx, config: { clientId: string; clientSecre
   return { id: u.id as number, login: u.login, name: typeof u.name === 'string' ? u.name : null, avatar_url: typeof u.avatar_url === 'string' && u.avatar_url.startsWith('https://') && u.avatar_url.length <= 512 ? u.avatar_url : null };
 }
 
-function githubDisplayName(user: GithubUser): string {
-  const cleaned = [...(user.name ?? '').replace(/[\p{C}\p{Zl}\p{Zp}]/gu, '').trim()].slice(0, 32).join('').trim();
-  return [...cleaned].length >= 2 ? cleaned : user.login;
-}
 
 export type CallbackResult =
   | { kind: 'web'; redirect: Redirect }
@@ -190,8 +188,8 @@ export async function finishGithub(ctx: Ctx, request: Request, url: URL): Promis
   const github = await fetchGithubUser(ctx, config, code);
   const users = await ctx.db.query<{ id: string }>(
     `INSERT INTO users (id, github_id, login, display_name, avatar_url, created_at) VALUES (?, ?, ?, ?, ?, ?)
-     ON CONFLICT (github_id) DO UPDATE SET login = excluded.login, avatar_url = excluded.avatar_url RETURNING id`,
-    [randomUUID(), github.id, github.login, githubDisplayName(github), github.avatar_url, ctx.now()],
+     ON CONFLICT (github_id) DO UPDATE SET login = excluded.login, display_name = excluded.display_name, avatar_url = excluded.avatar_url RETURNING id`,
+    [randomUUID(), github.id, github.login, github.login, github.avatar_url, ctx.now()],
   );
   const userId = users[0]!.id;
   if (row.desktop_nonce_hash !== null) {

@@ -3,6 +3,7 @@ import { challengeSetup, createWorld, dailyNumber, dailySeed, DAILY_PAR, DAILY_T
 import type { ChallengeKind, LogEntry } from '@tendril/sim/src/index.ts';
 import type { Db, Queryable } from './db.ts';
 import { DAY_MS, isValidDate, utcDate } from './game.ts';
+import { hiddenSql, isHidden } from './moderation.ts';
 import { HttpError } from './validation.ts';
 import type { EntryInput } from './validation.ts';
 import type { SourceVerifier } from './verify-client.ts';
@@ -527,6 +528,7 @@ export async function entrySource(db: Db, id: string, viewerId: string | undefin
   const [row] = await db.query<{ source: string | null }>('SELECT source FROM entries WHERE id = ?', [id]);
   if (row?.source == null || e.source_verified !== 1) throw new HttpError(404, 'No program stored for this entry');
   if (viewerId !== e.user_id) {
+    if (await isHidden(db, id)) throw new HttpError(404, 'No program stored for this entry');
     if (!(await replayVisible(db, c!, e, viewerId, now))) throw new HttpError(403, 'Sealed until the challenge closes');
     if (e.source_public !== 1) throw new HttpError(403, 'The author has not published this program');
   }
@@ -543,7 +545,7 @@ export async function publishedSources(db: Db, c: ChallengeRow, limit: number, n
   const rows = await db.query<{ id: string; net_worth: number; par_tick: number | null; tokens: number | null; mosaic: string | null; author_kind: AuthorKind; model: string | null; login: string; display_name: string; avatar_url: string | null }>(
     `SELECT e.id, e.net_worth, e.par_tick, e.tokens, e.mosaic, e.author_kind, e.model, u.login, u.display_name, u.avatar_url
      FROM entries e JOIN users u ON u.id = e.user_id
-     WHERE e.challenge_id = ? AND e.source_public = 1 AND e.source_verified = 1 AND e.source IS NOT NULL
+     WHERE e.challenge_id = ? AND e.source_public = 1 AND e.source_verified = 1 AND e.source IS NOT NULL AND NOT ${hiddenSql('e.id')}
      ORDER BY e.net_worth DESC, e.created_at ASC, e.id ASC LIMIT ?`, [c.id, limit]);
   return {
     challenge: { id: c.id, kind: c.kind, number: c.number },
