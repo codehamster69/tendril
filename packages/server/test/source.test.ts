@@ -163,7 +163,7 @@ describe('submitting a program', () => {
 
 describe('reading programs', () => {
   const put = async (who: Login, source: string, sourcePublic: boolean) => (await enter(who.token, { actions: logOf(source), source, sourcePublic })).json.entryId as string;
-  const closeIt = () => { time = BASE + DAY_MS; };
+  const closeIt = () => { time = BASE + 2 * DAY_MS; }; // closed and past the legacy grace (D2 F1)
 
   it('keeps every program hidden from others while the challenge is open', async () => {
     const id = await put(ann, daily, true);

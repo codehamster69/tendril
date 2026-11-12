@@ -110,11 +110,11 @@ export async function getFarm(db: Db, userId: string): Promise<FarmResponse> {
  * Records an attempt and enforces the limit atomically. Attempts commit even when the submission is later
  * rejected, so invalid submissions cannot evade the cap. kind 'chunk': `chunkLimit` per rolling hour; 'daily': 20 per UTC day.
  */
-export type AttemptKind = 'chunk' | 'daily' | 'entry' | 'duel' | 'report';
+export type AttemptKind = 'chunk' | 'daily' | 'entry' | 'duel' | 'report' | 'follow';
 /** Per UTC day, except 'chunk' (per rolling hour, set by the caller). */
-export const ATTEMPT_LIMITS: Record<Exclude<AttemptKind, 'chunk'>, number> = { daily: DAILY_SUBMISSIONS_PER_DAY, entry: 60, duel: 20, report: 10 };
+export const ATTEMPT_LIMITS: Record<Exclude<AttemptKind, 'chunk'>, number> = { daily: DAILY_SUBMISSIONS_PER_DAY, entry: 60, duel: 20, report: 10, follow: 200 };
 const ATTEMPT_MESSAGES: Record<AttemptKind, string> = {
-  chunk: 'Too many chunk attempts', daily: 'Too many daily submissions', entry: 'Too many entry submissions', duel: 'Too many duels created', report: 'Too many reports today',
+  chunk: 'Too many chunk attempts', daily: 'Too many daily submissions', entry: 'Too many entry submissions', duel: 'Too many duels created', report: 'Too many reports today', follow: 'Too many follow changes today',
 };
 
 export async function reserveAttempt(db: Db, userId: string, kind: AttemptKind, time: number, chunkLimit = CHUNK_ATTEMPTS_PER_HOUR, scale = 1): Promise<void> {

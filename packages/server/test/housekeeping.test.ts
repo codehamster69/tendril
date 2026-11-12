@@ -155,7 +155,7 @@ describe('prune', () => {
       for (let i = 0; i < TOP_KEEP + 30; i++) {
         // the last 30 players are poor on wealth; two of them are best at brevity and speed
         const speedy = i === TOP_KEEP + 5, terse = i === TOP_KEEP + 6;
-        await addEntry(`${c}:${i}`, c, users[i]!, 10000 - i, { par: speedy ? 5 : null, tokens: terse ? 1 : null });
+        await addEntry(`${c}:${i}`, c, users[i]!, 10000 - i, { par: speedy ? 5 : terse ? 9000 : null, tokens: terse ? 1 : null } /* Brevity needs par, so the terse one reaches it */);
       }
     }
     const report = await prune(db, time);

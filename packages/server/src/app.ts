@@ -84,7 +84,7 @@ function createInnerApp(options: AppOptions): (request: Request) => Promise<Resp
       if (/^(\/api)?\/(r\/[^/]+|og\/[^/]+\.png)$/.test(url.pathname)) {
         await ensureMigrated();
         const shareOrigin = publicOriginOf(env, url);
-        const res = await handleShare(url.pathname, request.method, { db, now: now(), origin: shareOrigin, host: new URL(shareOrigin).host });
+        const res = await handleShare(url.pathname, request.method, { db, now: now(), origin: shareOrigin, host: new URL(shareOrigin).host, search: url.search, count: (await guard.mode()) === 'normal' });
         if (res) return res;
       }
       const origin = request.headers.get('origin');
@@ -346,6 +346,7 @@ function createInnerApp(options: AppOptions): (request: Request) => Promise<Resp
         }
         if (action && method === 'POST') {
           const identity = await requireUser();
+          await reserveAttempt(db, identity.userId, 'follow', now(), undefined, scale);
           rejectQuery(url);
           objectWithKeys(await readJson(request), []);
           return json(action === 'follow' ? await follow(db, identity.userId, login!, now()) : await unfollow(db, identity.userId, login!));

@@ -364,6 +364,8 @@ describe('entries and sealing', () => {
     expect(mine.status).toBe(200);
     expect(mine.json).toEqual({ seed: dailySeed(TODAY), ticks: DAILY_TICKS, rulesVersion: RULES_VERSION, actions: SMALL });
     time += DAY_MS;
+    expect((await call(path)).status).toBe(403); // closed, but the legacy alias still takes yesterday (D2 F1)
+    time += DAY_MS;
     const open = await call(path);
     expect(open.status).toBe(200);
     expect(open.json.actions).toEqual(SMALL);

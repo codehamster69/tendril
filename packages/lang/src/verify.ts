@@ -17,6 +17,8 @@ export const hashLog = (actions: LogEntry[]): string => createHash('sha256').upd
 
 export const MAX_VERIFY_SOURCE_BYTES = 32 * 1024;
 export const VERIFY_DEADLINE_MS = 8000;
+/** Elements and characters a checked program may allocate in total. Small programs use thousands; a memory bomb reaches this in well under a second and stops with an error instead of exhausting the function. */
+export const VERIFY_ALLOCATION_BUDGET = 5_000_000;
 /** Ticks run between clock checks. One tick is bounded by the interpreter's 5,000-step budget per bot. */
 const SLICE = 4;
 
@@ -35,7 +37,7 @@ export function verifySource(req: VerifyRequest, options: VerifyOptions = {}): V
   }
   const { setup } = challengeSetup(req.kind, req.seed);
   const world = createWorld({ id: req.challengeId, seed: req.seed }, setup);
-  const run = createRun(world, req.source);
+  const run = createRun(world, req.source, { allocationBudget: VERIFY_ALLOCATION_BUDGET });
   while (world.tick < req.ticks) {
     run.step(Math.min(SLICE, req.ticks - world.tick));
     if (world.tick < req.ticks && now() > deadline) { run.close(); return { ok: false, reason: 'timeout', message: 'The program took too long to check' }; }
