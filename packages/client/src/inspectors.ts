@@ -13,7 +13,7 @@ export function mountInspectors(view: FarmView, seed: () => number): void {
   const frame = el('button', { id: 'btn-focus-farm', type: 'button', text: 'Frame farm' });
   frame.addEventListener('click', () => view.focusFarm());
   const tile = el('p', { id: 'tile-inspector', text: 'Click a tile to read its soil.' });
-  tools.append(el('label', {}, 'Soil lens', lens), frame, tile);
+  tools.append(el('div', { id: 'farm-inspector' }, el('label', {}, 'Soil lens', lens), frame, tile));
 
   const deck = document.getElementById('deck-farm')!;
   const soil = el('section', { class: 'card' });

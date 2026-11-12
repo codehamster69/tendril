@@ -10,6 +10,8 @@ let world: World | null = null;
 let run: ScriptRun | null = null;
 let scenario: Scenario = { kind: 'live' };
 let breakpoints: number[] = [];
+/** Where a breakpoint or line step stopped the world. Kept until a command runs ticks again. */
+let paused: { bot: number; line: number } | null = null;
 let chain: Promise<void> = Promise.resolve();
 const post = (m: FromWorker): void => (self as unknown as Worker).postMessage(m);
 
@@ -30,11 +32,11 @@ function startRun(source: string): Diagnostic[] {
 
 async function handle(m: ToWorker): Promise<void> {
   let diagnostics: Diagnostic[] = [];
-  let paused: { bot: number; line: number } | null = null;
   if (m.type === 'init' || m.type === 'reset') {
     scenario = m.scenario;
     run?.close();
     run = null;
+    paused = null;
     world = m.type === 'init' && m.saved
       ? deserialize(m.saved)
       : createWorld({ id: scenario.farmId ?? 'farm', seed: m.seed }, scenario.setup);
@@ -42,7 +44,10 @@ async function handle(m: ToWorker): Promise<void> {
   if (!world) throw new Error('Farm is not initialized. Reload to try again.');
   const fromTick = world.tick;
   const fromHash = hashWorld(world);
-  if (m.type === 'init' || m.type === 'reset' || m.type === 'setSource') diagnostics = startRun(m.source);
+  if (m.type === 'init' || m.type === 'reset' || m.type === 'setSource') {
+    diagnostics = startRun(m.source);
+    if (run && !diagnostics.some((d) => d.severity === 'error')) paused = null;
+  }
   if (m.type === 'setBreakpoints') { breakpoints = m.lines; run?.setBreakpoints(m.lines); }
 
   if (m.type === 'step' && run) {
@@ -50,6 +55,7 @@ async function handle(m: ToWorker): Promise<void> {
       throw new Error('Step must be an integer from 0 to 20,000 ticks.');
     }
     let total = m.ticks;
+    if (total > 0) paused = null;
     if (scenario.tickLimit !== undefined) total = Math.min(total, Math.max(0, scenario.tickLimit - world.tick));
     try {
       for (let done = 0; done < total;) {
@@ -73,12 +79,14 @@ async function handle(m: ToWorker): Promise<void> {
     for (let i = 0; i < total; i++) tickWorld(world);
   }
   if (m.type === 'stepLine' && run) paused = run.stepLine().paused;
+  // Finish the tick a breakpoint interrupted (or stop at the next breakpoint inside it).
+  if (m.type === 'resume' && run) paused = run.step(1).paused;
 
   post({
     type: 'state', id: m.id, fromTick, fromHash, hash: hashWorld(world),
     snapshot: snapshot(world),
     output: run ? run.output.splice(0) : [],
-    errors: run ? run.errors.splice(0).map((e) => ({ ...e, kind: 'script' as const })) : [],
+    errors: run ? run.errors.splice(0) : [],
     diagnostics,
     log: run ? run.takeLog() : [],
     saved: serialize(world),

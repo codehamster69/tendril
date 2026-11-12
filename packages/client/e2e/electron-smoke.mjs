@@ -59,7 +59,7 @@ try {
   watchPage(page);
   page.setDefaultTimeout(30_000);
   await page.waitForLoadState('domcontentloaded');
-  assert.equal(new URL(page.url()).protocol, 'file:', 'Smoke must exercise the production file entry');
+  assert.match(page.url(), /^app:\/\/tendril\//, 'Smoke must exercise the production app:// entry');
   assert.equal(new URL(page.url()).searchParams.get('mode'), 'sandbox');
   await expect(page.locator('#farm-canvas')).toBeVisible();
   await expect(page.locator('#editor .monaco-editor')).toBeVisible();
@@ -82,11 +82,12 @@ try {
   assert.deepEqual(await page.evaluate(() => [typeof window.require, typeof window.process]),
     ['undefined', 'undefined'], 'Renderer must not have Node access');
   assert.equal(await page.evaluate(() => 'tendril' in window), false,
-    'Packaged file entry must not expose the localhost-only E2E bridge');
+    'Packaged app entry must not expose the localhost-only E2E bridge');
 
   // Use real DOM/editor controls, never a mock or a privileged renderer bridge.
-  const marker = 'TENDRIL_ELECTRON_LUA_SMOKE';
-  const source = `log("${marker}")\nwhile true do\n  bot.wait(1)\nend`;
+  const marker = 'TENDRIL_ELECTRON_SPROUT_SMOKE';
+  // No indentation: Monaco would auto-indent typed blocks, and this proves the interpreter without it.
+  const source = `say "${marker}"\nwait 5\nsay "second line"`;
   await page.locator('#editor .view-lines').click();
   await page.keyboard.press(process.platform === 'darwin' ? 'Meta+A' : 'Control+A');
   await page.keyboard.insertText(source);
@@ -147,7 +148,7 @@ try {
   assert.equal(await application.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().length), 1);
   assert.deepEqual(rendererErrors, [], 'Renderer errors must be empty');
   assert.deepEqual(failedRequests, [], 'No worker, wasm, model or renderer requests may fail');
-  console.log(`Electron smoke passed: sandboxed file entry, canvas/editor, real Lua worker, tick ${before} -> ${await tick()}, navigation blocked.`);
+  console.log(`Electron smoke passed: sandboxed app:// entry, canvas/editor, real Sprout worker, tick ${before} -> ${await tick()}, navigation blocked.`);
 } catch (error) {
   console.error('Electron smoke diagnostics:', {
     rendererErrors,

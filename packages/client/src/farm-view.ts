@@ -2,23 +2,15 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { AssetLoader, disposeModels, type AssetModel, type AssetPart, type AssetStatus } from './asset-loader';
 import type { Snapshot } from './sim-types';
+import { BUILDING_MODELS, CROPS, fallbackModel, ITEM_NAMES, matte } from './fallback-models';
 
-export type FarmOverlay = 'none' | 'moisture' | 'nitrogen' | 'fatigue';
+import { OverlayLayer, unit, type FarmOverlay } from './farm-overlay';
+import { sceneryPlacements, tileBounds, type Bounds, type Placement } from './farm-scenery';
+export type { FarmOverlay };
 type Tile = Snapshot['tiles'][number];
 type Batch = { model: AssetModel; meshes: THREE.InstancedMesh[]; capacity: number; count: number };
-type Placement = { x: number; z: number; rotation?: number; scale?: number; depth?: number };
-const CROPS = ['', 'carrot', 'wheat', 'clover', 'pumpkin'];
-const CROP_COLORS = [0, 0xf08a24, 0xe6c34a, 0x8fbf6a, 0xd2601a];
 const SKY = { clear: 0xb9d5de, rain: 0x80969e, frost: 0xdce8ec };
-const OVERLAYS = {
-  moisture: [new THREE.Color('#e0bb79'), new THREE.Color('#287caf')],
-  nitrogen: [new THREE.Color('#e0c898'), new THREE.Color('#468653')],
-  fatigue: [new THREE.Color('#8fc3a4'), new THREE.Color('#bf6650')],
-};
 const key = (x: number, y: number): string => `${x},${y}`;
-const unit = (value: number): number => THREE.MathUtils.clamp(value / 100, 0, 1);
-const matte = (color: number): THREE.MeshStandardMaterial => new THREE.MeshStandardMaterial({ color, roughness: 0.9 });
-const part = (geometry: THREE.BufferGeometry, color: number): AssetPart => ({ geometry, material: matte(color) });
 
 export class FarmView {
   private renderer: THREE.WebGLRenderer;
@@ -33,13 +25,14 @@ export class FarmView {
   private tileLookup = new Map<string, Tile>();
   private terrainSignature = '';
   private scenery = new Map<string, Placement[]>();
+  private carriedNames: string[] = [];
   private botPositions: THREE.Vector3[] = [];
   private botTargets: THREE.Vector3[] = [];
   private botAngles: number[] = [];
   private overlay: FarmOverlay = 'none';
-  private overlayMesh: THREE.InstancedMesh | null = null;
-  private tileGuides: THREE.InstancedMesh | null = null;
-  private overlayCapacity = 0;
+  private overlayLayer: OverlayLayer;
+  /** Read by the renderer tests. */
+  get overlayMesh(): THREE.InstancedMesh | null { return this.overlayLayer.mesh; }
   private selectedTile: { x: number; y: number } | null = null;
   private selectedBot: number | null = null;
   private tileRing = new THREE.Mesh(new THREE.RingGeometry(0.47 * Math.SQRT2, 0.51 * Math.SQRT2, 4).rotateZ(Math.PI / 4).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0xffedb4, depthWrite: false }));
@@ -47,6 +40,11 @@ export class FarmView {
   private meadow = new THREE.Mesh(new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2), matte(0x759464));
   private sky = new THREE.Color(SKY.clear);
   private framed = false;
+  /** Plot count at the last update, to notice when land is bought. */
+  private plotCount = 0;
+  /** Camera pose right after the last automatic framing; any difference later means the user moved the camera. */
+  private autoPose: { position: THREE.Vector3; target: THREE.Vector3 } | null = null;
+  private reframe: { from: { position: THREE.Vector3; target: THREE.Vector3 }; to: { position: THREE.Vector3; target: THREE.Vector3 }; start: number } | null = null;
   private disposed = false;
   private raf = 0;
   private previousTime = 0;
@@ -86,6 +84,7 @@ export class FarmView {
     this.controls.maxPolarAngle = Math.PI / 2 - 0.15;
     this.controls.target.set(3.5, 0, 3.5);
     this.controls.addEventListener('change', this.cameraStatus);
+    this.controls.addEventListener('start', this.cancelReframe);
     this.ro = new ResizeObserver(this.resize);
     this.ro.observe(canvas.parentElement ?? canvas);
     window.addEventListener('resize', this.resize);
@@ -95,6 +94,7 @@ export class FarmView {
     canvas.dataset.overlay = 'none';
     canvas.dataset.modelsLoaded = '0';
     canvas.dataset.sceneReady = 'false';
+    this.overlayLayer = new OverlayLayer(this.scene);
     this.loader = new AssetLoader(this.assetsChanged);
     this.resize();
     void this.loader.load();
@@ -112,58 +112,21 @@ export class FarmView {
   };
 
   private fallback(name: string): AssetModel {
-    const existing = this.fallbacks.get(name);
-    if (existing) return existing;
-    let parts: AssetPart[];
-    if (name.startsWith('tile_') && name !== 'tile_terrace_wall') {
-      const color = name === 'tile_soil' ? 0x7a5230 : name === 'tile_wet' ? 0x59402d : name === 'tile_path' ? 0xc5ae82 : 0x5a9e4b;
-      parts = [part(new THREE.BoxGeometry(0.98, 0.2, 0.98).translate(0, -0.1, 0), color)];
-    } else if (name.startsWith('crop_')) {
-      const crop = CROPS.findIndex((id) => id && name.startsWith(`crop_${id}_`));
-      const stage = Number(name.slice(-1));
-      const size = 0.22 + stage * 0.22;
-      const geometry = crop === 4 ? new THREE.IcosahedronGeometry(0.36 * size, 1)
-        : crop === 3 ? new THREE.IcosahedronGeometry(0.3 * size, 0)
-        : new THREE.ConeGeometry(0.24 * size, 0.75 * size, 5);
-      geometry.computeBoundingBox();
-      geometry.translate(0, -geometry.boundingBox!.min.y, 0);
-      parts = [part(geometry, CROP_COLORS[crop] ?? 0x8fbf6a)];
-    } else if (name === 'bot_tender') {
-      // A tiny enamel helper with a cream face and paired dark eyes while the GLB loads.
-      parts = [
-        part(new THREE.BoxGeometry(0.4, 0.3, 0.36).translate(0, 0.3, 0), 0x4a90d9),
-        part(new THREE.IcosahedronGeometry(0.23, 1).translate(0, 0.58, 0), 0xdfe6ee),
-        part(new THREE.BoxGeometry(0.05, 0.07, 0.025).translate(-0.08, 0.6, 0.21), 0x2e3848),
-        part(new THREE.BoxGeometry(0.05, 0.07, 0.025).translate(0.08, 0.6, 0.21), 0x2e3848),
-        part(new THREE.CylinderGeometry(0.025, 0.025, 0.12, 5).translate(0, 0.84, 0), 0xf8cb3c),
-      ];
-    } else if (name === 'prop_barn') {
-      parts = [part(new THREE.BoxGeometry(0.84, 0.64, 0.84).translate(0, 0.32, 0), 0xb0302a),
-        part(new THREE.CylinderGeometry(0.64, 0.64, 0.92, 3).rotateY(Math.PI / 2).rotateX(Math.PI / 2).translate(0, 0.8, 0), 0x6e1a16),
-        part(new THREE.BoxGeometry(0.28, 0.42, 0.025).translate(0, 0.21, 0.43), 0x664428)];
-    } else if (name === 'prop_tree') {
-      parts = [part(new THREE.CylinderGeometry(0.1, 0.15, 0.8, 5).translate(0, 0.4, 0), 0x664428),
-        part(new THREE.IcosahedronGeometry(0.7, 0).scale(1, 1.25, 1).translate(0, 1.25, 0), 0x3e7a33)];
-    } else if (name === 'prop_rocks') {
-      parts = [part(new THREE.IcosahedronGeometry(0.4, 0).scale(1.2, 0.6, 0.8).translate(0, 0.18, 0), 0x8f8d87)];
-    } else {
-      parts = [part(new THREE.BoxGeometry(0.98, 0.2, 1).translate(0, -0.1, 0), 0x77766c)];
-    }
-    const model = { parts };
-    this.fallbacks.set(name, model);
+    let model = this.fallbacks.get(name);
+    if (!model) { model = fallbackModel(name); this.fallbacks.set(name, model); }
     return model;
   }
 
-  private batch(name: string, capacity: number): Batch {
+  private batch(name: string, capacity: number, id = name): Batch {
     const model = this.loader.models.get(name) ?? this.fallback(name);
-    let batch = this.batches.get(name);
+    let batch = this.batches.get(id);
     if (batch && (batch.model !== model || capacity > batch.capacity)) {
       for (const mesh of batch.meshes) { this.scene.remove(mesh); mesh.dispose(); }
       if (batch.model !== model && this.fallbacks.get(name) === batch.model) {
         disposeModels([batch.model]);
         this.fallbacks.delete(name);
       }
-      this.batches.delete(name);
+      this.batches.delete(id);
       batch = undefined;
     }
     if (!batch) {
@@ -179,7 +142,7 @@ export class FarmView {
         return mesh;
       });
       batch = { model, meshes, capacity: cap, count: 0 };
-      this.batches.set(name, batch);
+      this.batches.set(id, batch);
     }
     return batch;
   }
@@ -218,10 +181,13 @@ export class FarmView {
     for (const tile of snapshot.tiles) {
       const terrain = tile.x === 0 && tile.y === 0 ? 'tile_path' : tile.tilled ? 'tile_soil' : 'tile_grass';
       required.set(terrain, (required.get(terrain) ?? 0) + 1);
-      if (tile.crop >= 1 && tile.crop <= 4) {
+      if (tile.crop >= 1 && tile.crop < CROPS.length) {
         const crop = `crop_${CROPS[tile.crop]}_s${THREE.MathUtils.clamp(Math.trunc(tile.stage), 0, 3)}`;
         required.set(crop, (required.get(crop) ?? 0) + 1);
       }
+      const building = BUILDING_MODELS[tile.building];
+      if (building) required.set(building, (required.get(building) ?? 0) + 1);
+      if (tile.building === 1 && tile.honey > 0) required.set('item_honey', (required.get('item_honey') ?? 0) + 1);
     }
     const colors: { x: number; y: number; color: string }[] = [];
     for (const tile of snapshot.tiles) {
@@ -230,11 +196,15 @@ export class FarmView {
       this.color.setScalar(1 - 0.32 * unit(tile.moisture));
       this.place(this.batch(terrain, required.get(terrain)!), { x: tile.x, z: tile.y }, this.color);
       if (colors.length < 16) colors.push({ x: tile.x, y: tile.y, color: this.color.getHexString() });
-      if (tile.crop >= 1 && tile.crop <= 4) {
+      if (tile.crop >= 1 && tile.crop < CROPS.length) {
         const stage = THREE.MathUtils.clamp(Math.trunc(tile.stage), 0, 3);
         const crop = `crop_${CROPS[tile.crop]}_s${stage}`;
         this.place(this.batch(crop, required.get(crop)!), { x: tile.x, z: tile.y });
       }
+      const building = BUILDING_MODELS[tile.building];
+      if (building) this.place(this.batch(building, required.get(building)!), { x: tile.x, z: tile.y, rotation: (tile.x * 7 + tile.y * 3) % 4 * (Math.PI / 2) });
+      // Honey waiting in a hive sits on top of it.
+      if (tile.building === 1 && tile.honey > 0) this.place(this.batch('item_honey', required.get('item_honey')!), { x: tile.x + 0.18, z: tile.y + 0.18 }, undefined, 0.46);
     }
     if (this.tileLookup.has('0,0')) this.place(this.batch('prop_barn', 1), { x: 0, z: 0 });
     for (const [name, positions] of this.scenery) {
@@ -254,6 +224,7 @@ export class FarmView {
       target.set(bot.x, 0, bot.y);
     });
     if (snapshot.bots.length) this.batch('bot_tender', snapshot.bots.length);
+    this.prepareCarried(snapshot);
     this.updateBots(0, 0);
     for (const batch of this.batches.values()) this.finish(batch);
     this.updateOverlay();
@@ -262,40 +233,67 @@ export class FarmView {
     this.canvas.dataset.tileColors = JSON.stringify(colors);
     this.canvas.dataset.modelInstances = JSON.stringify(Object.fromEntries([...this.batches].map(([name, batch]) => [name, batch.count])));
     if (!this.framed && snapshot.tiles.length) { this.focusFarm(); this.framed = true; }
+    else if (snapshot.plots.length > this.plotCount && this.autoFramingArmed()) this.startReframe();
+    this.plotCount = snapshot.plots.length;
   }
 
-  private bounds(snapshot: Snapshot): { x0: number; x1: number; z0: number; z1: number } | null {
-    if (!snapshot.tiles.length) return null;
-    let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity;
-    for (const tile of snapshot.tiles) { x0 = Math.min(x0, tile.x - 0.5); x1 = Math.max(x1, tile.x + 0.5); z0 = Math.min(z0, tile.y - 0.5); z1 = Math.max(z1, tile.y + 0.5); }
-    return { x0, x1, z0, z1 };
+  /** True while the camera is where automatic framing last left it (or is still easing there). */
+  private autoFramingArmed(): boolean {
+    if (this.reframe) return true;
+    const pose = this.autoPose;
+    return !!pose && this.camera.position.distanceTo(pose.position) < 0.05 && this.controls.target.distanceTo(pose.target) < 0.05;
   }
+
+  /** Camera pose that shows every owned tile, looking along `direction` (from the target towards the camera). */
+  private framingPose(direction: THREE.Vector3): { position: THREE.Vector3; target: THREE.Vector3 } | null {
+    const bounds = this.latest ? this.bounds(this.latest) : null;
+    if (!bounds) return null;
+    const { x0, x1, z0, z1 } = bounds;
+    const radius = Math.hypot(x1 - x0, z1 - z0) / 2 + 0.8;
+    const fov = THREE.MathUtils.degToRad(this.camera.fov) / 2;
+    const angle = Math.min(fov, Math.atan(Math.tan(fov) * this.camera.aspect));
+    const distance = radius / Math.sin(angle) * 1.08;
+    const target = new THREE.Vector3((x0 + x1) / 2, 0, (z0 + z1) / 2);
+    return { target, position: target.clone().add(direction.clone().normalize().multiplyScalar(distance)) };
+  }
+
+  private startReframe(): void {
+    const to = this.framingPose(this.camera.position.clone().sub(this.controls.target));
+    if (!to) return;
+    if (this.reducedMotion.matches) { this.applyPose(to); return; }
+    this.clearCameraDamping();
+    this.reframe = { from: { position: this.camera.position.clone(), target: this.controls.target.clone() }, to, start: performance.now() };
+  }
+
+  private cancelReframe = (): void => { this.reframe = null; };
+
+  private applyPose(pose: { position: THREE.Vector3; target: THREE.Vector3 }): void {
+    this.clearCameraDamping();
+    this.controls.target.copy(pose.target);
+    this.camera.position.copy(pose.position);
+    this.controls.update();
+    this.autoPose = { position: this.camera.position.clone(), target: this.controls.target.clone() };
+    this.cameraStatus();
+  }
+
+  private stepReframe(time: number): void {
+    const move = this.reframe;
+    if (!move) return;
+    const t = Math.min(1, (time - move.start) / 600);
+    const e = t * t * (3 - 2 * t);
+    if (t >= 1) { this.reframe = null; this.applyPose(move.to); return; }
+    this.controls.target.lerpVectors(move.from.target, move.to.target, e);
+    this.camera.position.lerpVectors(move.from.position, move.to.position, e);
+  }
+
+  private bounds(snapshot: Snapshot): Bounds | null { return tileBounds(snapshot.tiles); }
 
   private buildScenery(snapshot: Snapshot): void {
     this.scenery.clear();
     const bounds = this.bounds(snapshot);
     if (!bounds) return;
     const { x0, x1, z0, z1 } = bounds;
-    const walls: Placement[] = [];
-    for (const tile of snapshot.tiles) {
-      for (const [dx, dz] of [[0, -1], [0, 1], [-1, 0], [1, 0]]) {
-        if (!this.tileLookup.has(key(tile.x + dx, tile.y + dz))) {
-          // AT's riser is a full 1x1 tile, so narrow its depth and place it
-          // wholly outside the playable edge, below the unchanged ground plane.
-          walls.push({ x: tile.x + dx * 0.54, z: tile.y + dz * 0.54, rotation: dx ? Math.PI / 2 : 0, depth: 0.08 });
-        }
-      }
-    }
-    this.scenery.set('tile_terrace_wall', walls);
-    const trees: Placement[] = [], rocks: Placement[] = [];
-    // Sparse deterministic clusters remain outside the entire owned bounding rectangle.
-    for (const fraction of [0.18, 0.76]) {
-      trees.push({ x: x0 - 3, z: z0 + (z1 - z0) * fraction, scale: 0.9 }, { x: x1 + 3.2, z: z0 + (z1 - z0) * fraction, scale: 1.1 },
-        { x: x0 + (x1 - x0) * fraction, z: z0 - 3, scale: 0.8 });
-      rocks.push({ x: x0 - 2, z: z1 + fraction, rotation: fraction * 4 }, { x: x1 + 2, z: z1 - fraction, scale: 0.8 });
-    }
-    this.scenery.set('prop_tree', trees);
-    this.scenery.set('prop_rocks', rocks);
+    for (const [name, placements] of sceneryPlacements(snapshot.tiles, bounds, (x, y) => this.tileLookup.has(key(x, y)))) this.scenery.set(name, placements);
     const extent = Math.max(x1 - x0, z1 - z0);
     this.meadow.position.set((x0 + x1) / 2, -0.48, (z0 + z1) / 2);
     this.meadow.scale.set(extent + 150, 1, extent + 150);
@@ -324,71 +322,20 @@ export class FarmView {
 
   private updateOverlay(): void {
     if (!this.latest) return;
-    if (this.latest.tiles.length > this.overlayCapacity) {
-      if (this.overlayMesh) { this.scene.remove(this.overlayMesh); this.overlayMesh.geometry.dispose(); (this.overlayMesh.material as THREE.Material).dispose(); this.overlayMesh.dispose(); }
-      if (this.tileGuides) { this.scene.remove(this.tileGuides); this.tileGuides.geometry.dispose(); (this.tileGuides.material as THREE.Material).dispose(); this.tileGuides.dispose(); }
-      this.overlayCapacity = Math.max(64, this.latest.tiles.length * 2);
-      this.tileGuides = new THREE.InstancedMesh(
-        new THREE.RingGeometry(0.475 * Math.SQRT2, 0.495 * Math.SQRT2, 4).rotateZ(Math.PI / 4).rotateX(-Math.PI / 2),
-        new THREE.MeshBasicMaterial({ color: 0x36462f, transparent: true, opacity: 0.16, depthWrite: false }), this.overlayCapacity);
-      this.scene.add(this.tileGuides);
-      this.overlayMesh = new THREE.InstancedMesh(new THREE.BoxGeometry(0.95, 0.012, 0.95), matte(0xffffff), this.overlayCapacity);
-      this.overlayMesh.receiveShadow = true;
-      this.scene.add(this.overlayMesh);
-    }
-    const mesh = this.overlayMesh;
-    if (!mesh) return;
-    const guides = this.tileGuides;
-    if (guides) {
-      guides.count = this.latest.tiles.length;
-      this.latest.tiles.forEach((tile, index) => {
-        this.dummy.position.set(tile.x, 0.003, tile.y);
-        this.dummy.rotation.set(0, 0, 0); this.dummy.scale.setScalar(1); this.dummy.updateMatrix();
-        guides.setMatrixAt(index, this.dummy.matrix);
-      });
-      guides.instanceMatrix.needsUpdate = true;
-      guides.computeBoundingSphere();
-    }
-    mesh.visible = this.overlay !== 'none';
-    const colors: { x: number; y: number; color: string }[] = [];
-    if (this.overlay !== 'none') {
-      const [low, high] = OVERLAYS[this.overlay];
-      const overlay = this.overlay;
-      this.latest.tiles.forEach((tile, index) => {
-        this.dummy.position.set(tile.x, 0.01, tile.y);
-        this.dummy.rotation.set(0, 0, 0); this.dummy.scale.setScalar(1); this.dummy.updateMatrix();
-        mesh.setMatrixAt(index, this.dummy.matrix);
-        this.color.copy(low).lerp(high, unit(tile[overlay]));
-        mesh.setColorAt(index, this.color);
-        if (index < 16) colors.push({ x: tile.x, y: tile.y, color: this.color.getHexString() });
-      });
-      mesh.count = this.latest.tiles.length;
-      mesh.instanceMatrix.needsUpdate = true;
-      if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
-      mesh.computeBoundingSphere();
-    }
-    this.canvas.dataset.overlayColors = JSON.stringify(colors);
+    this.canvas.dataset.overlayColors = JSON.stringify(this.overlayLayer.update(this.latest.tiles, this.overlay));
   }
 
+  /** Re-frame the whole farm at the default angle and re-arm automatic framing. */
   focusFarm(): void {
     if (this.disposed || !this.latest) return;
-    const bounds = this.bounds(this.latest);
-    if (!bounds) return;
-    const { x0, x1, z0, z1 } = bounds;
-    const radius = Math.hypot(x1 - x0, z1 - z0) / 2 + 0.8;
-    const fov = THREE.MathUtils.degToRad(this.camera.fov) / 2;
-    const angle = Math.min(fov, Math.atan(Math.tan(fov) * this.camera.aspect));
-    const distance = radius / Math.sin(angle) * 1.08;
-    this.clearCameraDamping();
-    this.controls.target.set((x0 + x1) / 2, 0, (z0 + z1) / 2);
-    this.camera.position.copy(this.controls.target).add(new THREE.Vector3(0.35, 1.2, 1).normalize().multiplyScalar(distance));
-    this.controls.update();
-    this.cameraStatus();
+    this.reframe = null;
+    const pose = this.framingPose(new THREE.Vector3(0.35, 1.2, 1));
+    if (pose) this.applyPose(pose);
   }
 
   selectBot(id: number): void {
     if (this.disposed || !Number.isInteger(id) || !this.latest?.bots[id]) return;
-    this.selectedBot = id; // Snapshot and Lua bot IDs are zero-based.
+    this.selectedBot = id; // Snapshot and Sprout bot IDs are zero-based.
     const bot = this.latest.bots[id];
     this.clearCameraDamping();
     this.controls.target.set(bot.x, 0, bot.y);
@@ -438,6 +385,7 @@ export class FarmView {
 
   private cameraStatus = (): void => {
     this.canvas.dataset.cameraTarget = JSON.stringify(this.controls.target.toArray());
+    this.canvas.dataset.cameraPosition = JSON.stringify(this.camera.position.toArray());
   };
   private resize = (): void => {
     if (this.disposed) return;
@@ -458,13 +406,41 @@ export class FarmView {
       this.place(batch, { x: position.x, z: position.z, rotation: this.botAngles[id] }, undefined, this.reducedMotion.matches ? 0 : 0.015 + Math.sin(time / 350 + id) * 0.012);
     }
     this.finish(batch);
+    this.placeCarried();
     this.updateSelection();
+  }
+
+  /** Make sure a batch exists for every kind of item any bot carries (placeholders until the GLB arrives). */
+  private prepareCarried(snapshot: Snapshot): void {
+    const counts = new Map<string, number>();
+    for (const bot of snapshot.bots) bot.items.forEach((n, id) => { if (id > 0 && n > 0 && ITEM_NAMES[id]) counts.set(`item_${ITEM_NAMES[id]}`, (counts.get(`item_${ITEM_NAMES[id]}`) ?? 0) + 1); });
+    for (const [name, n] of counts) this.batch(name, n, `carry:${name}`);
+    this.carriedNames = [...counts.keys()].map((name) => `carry:${name}`);
+  }
+
+  /** One small marker per kind of item a bot carries, stacked above it and following its animation. */
+  private placeCarried(): void {
+    const snapshot = this.latest;
+    if (!snapshot) return;
+    for (const name of this.carriedNames) { const batch = this.batches.get(name); if (batch) batch.count = 0; }
+    snapshot.bots.forEach((bot, id) => {
+      const position = this.botPositions[id];
+      if (!position) return;
+      let level = 0;
+      bot.items.forEach((n, item) => {
+        const batch = n > 0 && item > 0 && ITEM_NAMES[item] ? this.batches.get(`carry:item_${ITEM_NAMES[item]}`) : undefined;
+        if (!batch || batch.count >= batch.capacity) return;
+        this.place(batch, { x: position.x, z: position.z, rotation: item }, undefined, 0.78 + level++ * 0.17);
+      });
+    });
+    for (const name of this.carriedNames) { const batch = this.batches.get(name); if (batch) this.finish(batch); }
   }
   private loop = (time: number): void => {
     if (this.disposed) return;
     const delta = this.previousTime ? Math.min((time - this.previousTime) / 1000, 0.1) : 0;
     this.previousTime = time;
     this.updateBots(delta, time);
+    this.stepReframe(time);
     this.controls.update();
     this.renderer.render(this.scene, this.camera);
     this.canvas.dataset.sceneReady = String(!!this.latest?.tiles.length);
@@ -481,14 +457,14 @@ export class FarmView {
     this.canvas.removeEventListener('pointerup', this.pointerUp);
     this.canvas.removeEventListener('pointercancel', this.pointerCancel);
     this.controls.removeEventListener('change', this.cameraStatus);
+    this.controls.removeEventListener('start', this.cancelReframe);
     this.controls.dispose();
     for (const batch of this.batches.values()) for (const mesh of batch.meshes) { this.scene.remove(mesh); mesh.dispose(); }
     this.batches.clear();
     this.loader.dispose();
     disposeModels(this.fallbacks.values());
     this.fallbacks.clear();
-    if (this.overlayMesh) this.overlayMesh.dispose();
-    if (this.tileGuides) this.tileGuides.dispose();
+    this.overlayLayer.dispose();
     const remaining: AssetPart[] = [];
     this.scene.traverse((object) => { if (object instanceof THREE.Mesh) remaining.push({ geometry: object.geometry, material: object.material }); });
     disposeModels([{ parts: remaining }]);
@@ -502,7 +478,6 @@ export class FarmView {
     this.canvas.dataset.modelsLoaded = '0';
     this.canvas.dataset.modelsAssets = '[]';
     this.canvas.dataset.modelInstances = '{}';
-    this.overlayMesh = this.tileGuides = null;
     this.latest = null;
     this.tileLookup.clear();
     this.scenery.clear();

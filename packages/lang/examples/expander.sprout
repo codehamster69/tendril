@@ -1,30 +1,42 @@
-# Every bot farms a different column group.
+# A growing farm that looks after its soil. Every bot works its own columns.
+define best_crop(s):
+    # Clover feeds the soil and rests it, so use it when the tile is tired.
+    if unlocked(clover) and (s.nitrogen < 35 or s.fatigue > 45):
+        return clover
+    if unlocked(pumpkin):
+        return pumpkin
+    return carrot
+
+define sell_everything():
+    go_to barn
+    deposit
+    sell carrot, all
+    sell clover, all
+    sell pumpkin, all
+
 repeat forever:
     for each tile in tiles():
         if tile.x % bots() == my_id():
             go_to tile
             if scan().ripe:
                 harvest
+                if carried() > capacity() - 10:
+                    sell_everything()
             if scan().empty:
+                s = scan()
+                if s.moisture < 45:
+                    water
                 till
-                if unlocked(wheat):
-                    plant wheat
-                else:
-                    plant carrot
-            if carried() >= capacity():
-                go_to barn
-                deposit
-                sell carrot, all
-                sell wheat, all
-    go_to barn
-    deposit
-    sell carrot, all
-    sell wheat, all
+                plant best_crop(s)
+    sell_everything()
+    # Only the first bot spends: research, then more bots and land.
     if my_id() == 0:
-        if coins() >= unlock_cost(wheat) and not unlocked(wheat):
-            unlock wheat
-        if coins() >= bot_cost() and bots() < 4:
+        if not unlocked(clover) and coins() >= unlock_cost(clover):
+            unlock clover
+        elif not unlocked(pumpkin) and coins() >= unlock_cost(pumpkin):
+            unlock pumpkin
+        elif bots() < 3 * len(plots()) and coins() >= bot_cost():
             buy_bot
-        if coins() >= plot_cost() and len(plots()) < 4:
+        elif coins() >= plot_cost():
             buy_plot len(plots()), 0
-    wait 100
+    wait 20

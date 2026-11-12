@@ -74,6 +74,11 @@ export class FarmApi {
   }
 }
 
+const HINT_KEY = 'tendril.signedin';
+/** A sign-in marker, so a visitor who never signed in does not trigger a /api/me request (and a console 401) on every load. */
+export function signedInHint(): boolean { try { return localStorage.getItem(HINT_KEY) === '1'; } catch { return false; } }
+export function setSignedInHint(on: boolean): void { try { if (on) localStorage.setItem(HINT_KEY, '1'); else localStorage.removeItem(HINT_KEY); } catch { /* private mode */ } }
+
 export function readToken(): string | null { try { return localStorage.getItem(TOKEN_KEY); } catch { return null; } }
 export function writeToken(token: string | null): void {
   try { if (token) localStorage.setItem(TOKEN_KEY, token); else localStorage.removeItem(TOKEN_KEY); } catch { /* private mode */ }
@@ -82,6 +87,7 @@ export function writeToken(token: string | null): void {
 /** Web: full-page redirect through GitHub. Desktop: system browser plus a one-time nonce poll. */
 export async function signIn(): Promise<Profile | null> {
   if (!DESKTOP) {
+    setSignedInHint(true);
     location.href = `/api/auth/github?return=${encodeURIComponent(location.pathname + location.search)}`;
     return null;
   }
@@ -94,7 +100,7 @@ export async function signIn(): Promise<Profile | null> {
     await new Promise((r) => setTimeout(r, 2000));
     try {
       const res = await api.pollDesktop(nonce);
-      if (res?.token) { writeToken(res.token); return res.profile; }
+      if (res?.token) { writeToken(res.token); setSignedInHint(true); return res.profile; }
     } catch (e) {
       if (!(e instanceof ApiError) || (e.status !== 404 && e.status !== 0)) throw e;
     }

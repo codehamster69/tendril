@@ -1,15 +1,12 @@
 const assert = require('node:assert/strict');
 const { EventEmitter } = require('node:events');
-const path = require('node:path');
 const { test } = require('node:test');
-const { pathToFileURL } = require('node:url');
 const { entryURL, allowsNavigation, hardenContents } = require('./navigation.cjs');
 
-const indexPath = path.resolve(__dirname, '../dist/index.html');
-const file = pathToFileURL(indexPath).href;
+const file = 'app://tendril/index.html';
 
 function entry(options = {}) {
-  return entryURL({ indexPath, packaged: false, smoke: false, ...options });
+  return entryURL({ packaged: false, smoke: false, ...options });
 }
 
 test('production uses only the local entry, ignoring development environment', () => {
@@ -41,7 +38,7 @@ test('navigation allows only the entry and anchors, not neighboring local files 
   }
   for (const destination of [
     `${file}?mode=evil`, `${file}?mode=sandbox&mode=live`, `${file}?arbitrary=true`,
-    pathToFileURL(path.resolve(__dirname, '../package.json')).href,
+    'app://tendril/package.json', 'app://other/index.html', 'file:///index.html',
     'https://example.com', 'file://remote/index.html', 'javascript:alert(1)',
     'data:text/html,test', 'about:blank', 'not a URL',
   ]) {
@@ -76,5 +73,16 @@ test('navigation, frames, redirects, webviews and all new windows are guarded', 
   assert.equal(blocked, true);
   for (const url of [file, 'https://example.com', 'javascript:alert(1)']) {
     assert.deepEqual(openWindow({ url }), { action: 'deny' });
+  }
+});
+
+test('the app scheme serves only files inside the built client', () => {
+  const { resolveRequest } = require('./app-protocol.cjs');
+  const dist = '/srv/dist';
+  assert.equal(resolveRequest(dist, 'app://tendril/'), '/srv/dist/index.html');
+  assert.equal(resolveRequest(dist, 'app://tendril/assets/a.js'), '/srv/dist/assets/a.js');
+  assert.equal(resolveRequest(dist, 'app://tendril/../secret'), '/srv/dist/secret'); // The URL parser already clamps dot segments.
+  for (const url of ['app://tendril/..%2f..%2fetc/passwd', 'app://tendril/%2e%2e%2fsecret', 'app://other/index.html', 'file:///etc/passwd', 'nonsense']) {
+    assert.equal(resolveRequest(dist, url), null, url);
   }
 });

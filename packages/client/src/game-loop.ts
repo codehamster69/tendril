@@ -1,17 +1,25 @@
 import type { Snapshot } from './sim-types';
 import { targetTick, TICKS_PER_SECOND } from './clock';
 import type { RealSim } from './real-sim';
-import type { FarmView } from './farm-view';
-import { BOT_COLORS, type Editor } from './editor';
-import type { OutputLine, SimError } from './sim-protocol';
+import type { BotDebug, Diagnostic, Scenario, SimError } from './sim-protocol';
 
 const MAX_TICKS_PER_FRAME = 2000;
-const MAX_LINES = 600;
 const emit = (name: string, detail: unknown): void => { window.dispatchEvent(new CustomEvent(`tendril:${name}`, { detail })); };
 
+/** Human-facing messages for the console. `clear` empties it (new farm). */
+export interface Notice { kind: 'info' | 'err' | 'clear'; text: string; tick: number; bot?: number; line?: number }
+export interface LoopStatus {
+  running: boolean; mode: string; tick: number; durableTick: number | null; message: string; state: string;
+  save: string; canRun: boolean; canPause: boolean; canStep: boolean; canReset: boolean; paused: { bot: number; line: number } | null;
+}
+
+/** DOM-free game clock. It talks to the worker through RealSim and to the UI through `tendril:*` window events. */
 export class GameLoop {
   running = false;
   speed = 1;
+  /** The editor registers itself here so Run, Step and Reset always use the text on screen. */
+  sourceProvider: (() => string) | null = null;
+  private source = '';
   private acc = 0;
   private last = 0;
   private loaded = false;
@@ -22,53 +30,30 @@ export class GameLoop {
   private rendered: Snapshot | null = null;
   private compiled = '';
   private compileFailed = false;
+  private scriptErrored = false;
+  private hasProgram = false;
+  private breakpoints: number[] = [];
   private ended = false;
   private error: string | null = null;
   private progress: { done: number; total: number } | null = null;
+  private lastStatus = '';
+  private pauseKey = '';
   private raf = 0;
-  private el = {
-    tick: document.getElementById('hud-tick')!,
-    coins: document.getElementById('hud-coins')!,
-    net: document.getElementById('hud-networth')!,
-    weather: document.getElementById('hud-weather')!,
-    console: document.getElementById('console')!,
-    status: document.getElementById('status')!,
-    saved: document.getElementById('save-status')!,
-    run: document.getElementById('btn-run') as HTMLButtonElement,
-    pause: document.getElementById('btn-pause') as HTMLButtonElement,
-    reset: document.getElementById('btn-reset') as HTMLButtonElement,
-    step: document.getElementById('btn-step') as HTMLButtonElement,
-    stepLine: document.getElementById('btn-step-line') as HTMLButtonElement,
-  };
 
-  constructor(readonly sim: RealSim, private view: FarmView, private editor: Editor) {
-    this.el.run.addEventListener('click', () => this.run());
-    this.el.pause.addEventListener('click', () => { void this.pause().catch((e: unknown) => this.showError(e)); });
-    this.el.reset.addEventListener('click', () => this.action(() => this.reset()));
-    this.el.step.addEventListener('click', () => this.action(() => this.step()));
-    this.el.stepLine.addEventListener('click', () => this.action(() => this.stepLine()));
-    editor.onRun(() => this.run());
-    editor.onStepLine(() => this.action(() => this.stepLine()));
-    editor.onBreakpointsChange((lines) => { void this.sim.setBreakpoints(lines).catch(() => {}); });
-    const speed = document.getElementById('speed') as HTMLSelectElement;
-    speed.addEventListener('change', () => this.setSpeed(Number(speed.value)));
-    this.setSpeed(Number(speed.value));
-    const clocked = sim.mode === 'live';
-    this.el.step.hidden = clocked;
-    this.el.stepLine.hidden = clocked;
+  constructor(readonly sim: RealSim) {
     this.sim.onProgress = (done, total) => { this.progress = { done, total }; this.updateStatus(); };
-    this.updateStatus();
   }
 
   get mode(): string { return this.sim.mode; }
 
-  setSpeed(n: number): void { this.speed = Number.isFinite(n) ? Math.min(64, Math.max(1, n)) : 1; }
+  setSpeed(n: number): void { this.speed = Number.isFinite(n) ? Math.min(64, Math.max(1, Math.trunc(n))) : 1; }
 
-  async init(): Promise<void> {
+  async init(scenario?: Scenario, source?: string): Promise<void> {
     try {
-      this.compiled = this.editor.getSource();
+      if (scenario) this.sim.scenario = scenario;
+      this.compiled = this.source = source ?? this.current();
       await this.sim.init(this.compiled);
-      await this.sim.setBreakpoints(this.editor.breakpoints());
+      await this.sim.setBreakpoints(this.breakpoints);
       this.loaded = true;
       this.afterCompile();
       this.render();
@@ -85,13 +70,17 @@ export class GameLoop {
   }
 
   snapshot(): Snapshot | null { return this.sim.latest(); }
-  debug() { return this.sim.debug; }
+  debug(): BotDebug[] { return this.sim.debug; }
   logChunks() { return this.sim.logChunks(); }
+  get busy(): boolean { return this.actionBusy || this.changing; }
+
+  private current(): string { return this.sourceProvider ? this.sourceProvider() : this.source; }
+  private stale(): boolean { return this.current() !== this.compiled || this.compileFailed || this.scriptErrored; }
 
   run(): void {
     this.action(async () => {
       const version = ++this.intent;
-      if (this.editor.getSource() !== this.compiled || this.compileFailed) await this.compile(this.editor.getSource());
+      if (this.stale()) await this.compile(this.current());
       if (version === this.intent && !this.compileFailed) this.resume();
     });
   }
@@ -126,26 +115,38 @@ export class GameLoop {
     this.updateStatus();
   }
 
-  /** Compile against the current world; this never creates a new farm. A broken program never replaces a working one. */
-  async setSource(source: string) {
+  /** Compile against the current world; never creates a new farm. Errors are returned and the old program keeps running. */
+  async setSource(source: string): Promise<Diagnostic[]> {
+    const wasRunning = this.running;
     ++this.intent;
+    this.source = source;
     await this.compile(source);
+    if (wasRunning && this.compileFailed && this.hasProgram) this.resume();
     return this.sim.diagnostics;
   }
 
+  setBreakpoints(lines: number[]): Promise<void> {
+    this.breakpoints = [...lines];
+    return this.loaded ? this.sim.setBreakpoints(this.breakpoints).catch(() => {}) : Promise.resolve();
+  }
+
   private async compile(source: string): Promise<void> {
+    const wasRunning = this.running;
     await this.halt();
     this.changing = true;
     this.error = null;
     this.updateStatus();
     try {
-      this.editor.setSource(source);
-      this.editor.setErrors([]);
+      emit('source', source);
       await this.sim.setSource(source);
-      this.afterCompile();
+      this.afterCompile(wasRunning);
       if (!this.compileFailed) {
         this.compiled = source;
-        this.append({ bot: -1, tick: this.snapshot()?.tick ?? 0, text: `Program loaded at tick ${this.snapshot()?.tick ?? 0}. Every bot restarts from the top; the farm is kept.` }, 'info');
+        this.scriptErrored = false;
+        this.hasProgram = true;
+        this.notice('info', `Program loaded at tick ${this.snapshot()?.tick ?? 0} · every bot restarts from the top · farm kept.`);
+      } else if (wasRunning && this.hasProgram) {
+        this.notice('info', 'Your previous program is still running. Fix the marked lines to apply your changes.');
       }
       this.render();
     } finally {
@@ -154,52 +155,67 @@ export class GameLoop {
     }
   }
 
-  private afterCompile(): void {
+  private afterCompile(keepRunning = false): void {
     const d = this.sim.diagnostics;
-    this.editor.setDiagnostics(d);
     emit('diagnostics', d);
     const errors = d.filter((x) => x.severity === 'error');
     this.compileFailed = errors.length > 0;
-    for (const x of errors) {
-      this.append({ bot: -1, tick: this.snapshot()?.tick ?? 0, text: `Line ${x.line}: ${x.message}` }, 'err', x.line);
-    }
-    if (this.compileFailed) this.append({ bot: -1, tick: this.snapshot()?.tick ?? 0, text: 'Your program was not started. Fix the marked lines and press Run.' }, 'err');
+    if (!this.compileFailed && this.loaded) this.hasProgram = true;
+    for (const x of errors) this.notice('err', `Line ${x.line}: ${x.message}`, { line: x.line });
+    if (this.compileFailed && !keepRunning) this.notice('err', 'Your program was not started. Fix the marked lines and press Run.');
   }
 
-  async step(): Promise<void> {
-    if (this.sim.mode === 'live') return;
-    await this.pause();
-    if (this.editor.getSource() !== this.compiled || this.compileFailed) await this.compile(this.editor.getSource());
-    if (this.compileFailed) return;
-    this.sim.requestStep(100);
-    await this.sim.flush();
-    this.render();
+  /** Advance exactly `ticks` ticks (sandbox, campaign, daily). The live farm follows the clock only. */
+  step(ticks = 100): Promise<void> {
+    return this.guarded(async () => {
+      if (this.sim.mode === 'live') return;
+      await this.pause();
+      if (this.stale()) await this.compile(this.current());
+      if (this.compileFailed) return;
+      this.sim.requestStep(ticks);
+      await this.sim.flush();
+      this.render();
+    });
   }
 
-  async stepLine(): Promise<void> {
-    if (this.sim.mode === 'live') return;
-    await this.pause();
-    if (this.editor.getSource() !== this.compiled || this.compileFailed) await this.compile(this.editor.getSource());
-    if (this.compileFailed) return;
-    await this.sim.stepLine();
-    this.render();
+  stepLine(): Promise<void> {
+    return this.guarded(async () => {
+      if (this.sim.mode === 'live') return;
+      await this.pause();
+      if (this.stale()) await this.compile(this.current());
+      if (this.compileFailed) return;
+      await this.sim.stepLine();
+      this.render();
+    });
   }
 
-  async reset(): Promise<void> {
-    if (this.sim.mode === 'live' && !window.confirm('Reset this live farm? This permanently replaces its saved farm and action history. Your program stays in the editor.')) return;
+  /** The caller confirms in live mode. The program stays in the editor. */
+  reset(): Promise<void> {
+    return this.guarded(() => this.fresh(this.current()));
+  }
+
+  startScenario(s: Scenario & { seed: number; source: string }): Promise<void> {
+    const { seed, source, ...scenario } = s;
+    return this.guarded(() => this.fresh(source, scenario, seed));
+  }
+
+  private async fresh(source: string, scenario?: Scenario, seed?: number): Promise<void> {
     ++this.intent;
     await this.pause();
     this.changing = true;
     this.error = null;
     this.ended = false;
+    this.scriptErrored = false;
     this.updateStatus();
     try {
-      this.compiled = this.editor.getSource();
-      await this.sim.reset(this.compiled);
+      this.compiled = this.source = source;
+      emit('source', source);
+      await this.sim.reset(source, { scenario, seed });
       this.loaded = true;
-      this.el.console.replaceChildren();
+      this.rendered = null;
+      this.notice('clear', '');
       this.afterCompile();
-      this.append({ bot: -1, tick: 0, text: 'Fresh farm ready. Press Run when you are.' }, 'info');
+      this.notice('info', 'Fresh farm ready. Press Run when you are.', { tick: 0 });
       this.render();
     } finally {
       this.changing = false;
@@ -209,15 +225,17 @@ export class GameLoop {
 
   dispose(): void { this.running = false; cancelAnimationFrame(this.raf); }
 
-  private action(job: () => Promise<void>): void {
-    if (this.actionBusy) return;
+  private guarded(job: () => Promise<void>): Promise<void> {
+    if (this.actionBusy) return Promise.resolve();
     this.actionBusy = true;
-    void job().catch((e: unknown) => this.showError(e)).finally(() => {
+    this.updateStatus();
+    return job().catch((e: unknown) => this.showError(e)).finally(() => {
       this.actionBusy = false;
       this.updateStatus();
     });
-    this.updateStatus();
   }
+
+  private action(job: () => Promise<void>): void { void this.guarded(job); }
 
   private showError(e: unknown): void {
     this.running = false;
@@ -226,19 +244,27 @@ export class GameLoop {
     this.updateStatus();
   }
 
+  private notice(kind: Notice['kind'], text: string, extra: { line?: number; tick?: number; bot?: number } = {}): void {
+    emit('notice', { kind, text, tick: extra.tick ?? this.snapshot()?.tick ?? 0, ...extra } satisfies Notice);
+  }
+
   private frame = (now: number): void => {
     const elapsed = Math.max(0, now - this.last) / 1000;
     this.last = now;
-    if (this.running && !this.changing) {
-      const rate = this.sim.mode === 'live' ? 200 : TICKS_PER_SECOND;
-      this.acc = Math.min(MAX_TICKS_PER_FRAME, this.acc + elapsed * rate * this.speed);
-      if (!this.sim.busy) {
-        let n = Math.floor(this.acc);
-        if (this.sim.mode === 'live') n = Math.min(n, Math.max(0, targetTick(this.sim.meta, Date.now()) - (this.snapshot()?.tick ?? 0)));
-        if (n > 0) { this.acc -= n; this.sim.requestStep(n); }
+    this.render(); // First: a breakpoint reply must stop the clock before another step is requested.
+    if (this.running && !this.changing && !this.sim.busy) {
+      const tick = this.snapshot()?.tick ?? 0;
+      let n: number;
+      if (this.sim.mode === 'live') {
+        // Speed cannot mint ticks: the clock is the only source. Behind it, catch up as fast as the worker allows.
+        n = Math.min(MAX_TICKS_PER_FRAME, Math.max(0, targetTick(this.sim.meta, Date.now()) - tick));
+      } else {
+        this.acc = Math.min(MAX_TICKS_PER_FRAME, this.acc + elapsed * TICKS_PER_SECOND * this.speed);
+        n = Math.floor(this.acc);
+        this.acc -= n;
       }
+      if (n > 0) this.sim.requestStep(n);
     }
-    this.render();
     this.updateStatus();
     this.raf = requestAnimationFrame(this.frame);
   };
@@ -248,21 +274,15 @@ export class GameLoop {
     if (s && s !== this.rendered) {
       this.rendered = s;
       this.progress = null;
-      this.view.update(s);
-      this.el.tick.textContent = s.tick.toLocaleString();
-      this.el.coins.textContent = s.coins.toLocaleString();
-      this.el.net.textContent = s.netWorth.toLocaleString();
-      this.el.weather.textContent = s.weather;
-      this.el.weather.dataset.weather = s.weather;
       emit('snapshot', s);
-      if (this.sim.paused) {
+      const p = this.sim.paused;
+      const key = p ? `${p.bot}:${p.line}:${s.tick}` : '';
+      if (p) {
         this.running = false;
-        const p = this.sim.paused;
-        this.append({ bot: p.bot, tick: s.tick, text: `Paused at breakpoint, line ${p.line}. Step line (F10) or Run to continue.` }, 'info', p.line);
+        if (key !== this.pauseKey) this.notice('info', `Paused · bot ${p.bot} is at line ${p.line}. Step line (F10) or Run to continue.`, { line: p.line, bot: p.bot });
       }
-      this.editor.showBotLines(this.sim.debug, this.sim.paused);
-      this.editor.showHeat(this.sim.heat);
-      emit('debug', { bots: this.sim.debug, paused: this.sim.paused });
+      this.pauseKey = key;
+      emit('debug', { bots: this.sim.debug, paused: p });
       emit('heat', this.sim.heat);
       const limit = this.sim.scenario.tickLimit;
       if (limit !== undefined && s.tick >= limit && !this.ended) {
@@ -272,76 +292,52 @@ export class GameLoop {
       }
     }
     const lines = this.sim.drainOutput();
-    const errors = this.sim.drainErrors();
     if (lines.length) emit('output', lines);
-    for (const line of lines) this.append(line, 'out');
-    if (errors.length) {
-      emit('errors', errors);
-      const script = errors.filter((e) => !e.kind || e.kind === 'script');
-      if (script.length) this.editor.setErrors(script);
-      for (const e of errors) {
-        if (e.kind && e.kind !== 'script') { this.error = e.message; this.running = false; }
-        this.appendError(e);
-      }
+    const errors: SimError[] = this.sim.drainErrors();
+    if (!errors.length) return;
+    const script = errors.filter((e) => !e.kind || e.kind === 'script');
+    if (script.length) {
+      emit('errors', script);
+      const first = script[0]!;
+      this.scriptErrored = true;
+      this.running = false;
+      this.error = `Bot ${first.bot} stopped on line ${first.line}: ${first.message}`;
+    }
+    for (const e of errors) {
+      if (e.kind && e.kind !== 'script') { this.error = e.message; this.running = false; this.notice('err', `${e.kind === 'storage' ? 'Save' : 'Engine'}: ${e.message}`); }
     }
   }
 
   private updateStatus(): void {
+    const sim = this.sim;
     let state = 'paused';
-    let text = this.sim.mode === 'live' ? 'Paused · the farm clock keeps counting. Run to catch up.' : 'Paused · edit your program, run, or step.';
-    if (this.error || this.sim.persistenceError) { state = 'error'; text = this.error ?? this.sim.persistenceError!; }
-    else if (this.compileFailed) { state = 'error'; text = 'Program has errors. Fix the marked lines, then Run.'; }
+    let text = sim.mode === 'live' ? 'Paused · the farm clock keeps counting. Run to catch up.' : 'Paused · edit your program, run, or step.';
+    if (this.error || sim.persistenceError) { state = 'error'; text = this.error ?? sim.persistenceError!; }
+    else if (this.compileFailed && !this.running) { state = 'error'; text = 'Program has errors. Fix the marked lines, then Run.'; }
     else if (this.ended) { state = 'paused'; text = 'Challenge finished · see your results.'; }
-    else if (this.sim.paused && !this.running) { state = 'paused'; text = `Breakpoint · bot ${this.sim.paused.bot} on line ${this.sim.paused.line}`; }
+    else if (sim.paused && !this.running) { state = 'paused'; text = `Paused · bot ${sim.paused.bot} on line ${sim.paused.line}`; }
     else if (this.pausing > 0) { state = 'pausing'; text = 'Pausing · finishing the current batch and saving…'; }
     else if (this.changing) { state = 'compiling'; text = 'Loading your program onto the bots…'; }
     else if (!this.loaded) { state = 'loading'; text = 'Loading your farm…'; }
     else if (this.running) {
-      const debt = this.sim.mode === 'live' ? Math.max(0, targetTick(this.sim.meta, Date.now()) - (this.snapshot()?.tick ?? 0)) : 0;
+      const debt = sim.mode === 'live' ? Math.max(0, targetTick(sim.meta, Date.now()) - (this.snapshot()?.tick ?? 0)) : 0;
       state = debt > 10 ? 'catching-up' : 'running';
-      text = debt > 10 ? `Catching up · ${debt.toLocaleString()} ticks behind` : this.sim.mode === 'live' ? 'Live · 10 ticks per second' : `Running · ${this.speed}× speed`;
+      text = debt > 10 ? `Catching up · ${debt.toLocaleString()} ticks behind` : sim.mode === 'live' ? 'Live · 10 ticks per second' : `Running · ${this.speed}× speed`;
+      if (this.compileFailed) text += ' · previous program (fix the marked lines)';
       if (this.progress) text += ` · ${this.progress.done}/${this.progress.total}`;
-    } else if (this.sim.busy) { state = 'pausing'; text = 'Saving…'; }
-    this.el.status.dataset.state = state;
-    this.el.status.textContent = text;
-    this.el.saved.textContent = this.sim.persistenceError ? 'Save failed · keep window open' : this.sim.busy ? 'Saving on this device…' : this.sim.durableTick !== null ? `Saved · tick ${this.sim.durableTick.toLocaleString()}` : 'Not saved yet';
-    this.el.run.disabled = !this.loaded || this.changing || this.actionBusy || this.ended;
-    this.el.run.classList.toggle('is-running', this.running);
-    this.el.pause.disabled = !this.loaded;
-    this.el.reset.disabled = this.changing || this.actionBusy || (!this.loaded && !this.error);
-    this.el.step.disabled = !this.loaded || this.changing || this.sim.busy || this.actionBusy || this.ended;
-    this.el.stepLine.disabled = this.el.step.disabled;
-    this.el.pause.setAttribute('aria-pressed', String(!this.running));
-    emit('status', { running: this.running, mode: this.sim.mode, tick: this.snapshot()?.tick ?? 0, durableTick: this.sim.durableTick, message: text, state });
-  }
-
-  private appendError(e: SimError): void {
-    const who = e.kind === 'storage' ? 'Save' : e.kind === 'worker' ? 'Engine' : e.bot < 0 ? 'Program' : `Bot ${e.bot}`;
-    this.append({ bot: e.bot, tick: e.tick ?? this.snapshot()?.tick ?? 0, text: `${who}${e.line ? ` · line ${e.line}` : ''}: ${e.message}` }, 'err', e.line);
-  }
-
-  private append(line: OutputLine, kind: 'out' | 'err' | 'info', jump?: number): void {
-    const row = document.createElement('div');
-    row.className = `line ${kind}`;
-    const tick = document.createElement('span');
-    tick.className = 'tick';
-    tick.textContent = line.tick.toLocaleString();
-    const who = document.createElement('span');
-    who.className = 'who';
-    who.textContent = line.bot >= 0 ? `bot ${line.bot}` : '·';
-    if (line.bot >= 0) who.style.color = BOT_COLORS[line.bot % BOT_COLORS.length]!;
-    const text = document.createElement('span');
-    text.className = 'text';
-    text.textContent = line.text;
-    row.append(tick, who, text);
-    if (jump) {
-      row.classList.add('jump');
-      row.title = `Go to line ${jump}`;
-      row.addEventListener('click', () => this.editor.revealLine(jump));
-    }
-    const atBottom = this.el.console.scrollTop + this.el.console.clientHeight >= this.el.console.scrollHeight - 8;
-    this.el.console.appendChild(row);
-    while (this.el.console.childElementCount > MAX_LINES) this.el.console.firstElementChild!.remove();
-    if (atBottom) this.el.console.scrollTop = this.el.console.scrollHeight;
+    } else if (sim.busy) { state = 'pausing'; text = 'Saving…'; }
+    const free = !this.changing && !this.actionBusy;
+    const detail: LoopStatus = {
+      running: this.running, mode: sim.mode, tick: this.snapshot()?.tick ?? 0, durableTick: sim.durableTick, message: text, state,
+      save: sim.persistenceError ? 'Save failed · keep window open' : sim.busy ? 'Saving on this device…'
+        : sim.durableTick !== null ? `Saved locally · tick ${sim.durableTick.toLocaleString()}` : 'Not saved yet',
+      canRun: this.loaded && free && !this.ended,
+      canPause: this.loaded,
+      canStep: this.loaded && free && !sim.busy && !this.ended,
+      canReset: free && (this.loaded || !!this.error),
+      paused: sim.paused,
+    };
+    const signature = JSON.stringify(detail);
+    if (signature !== this.lastStatus) { this.lastStatus = signature; emit('status', detail); }
   }
 }

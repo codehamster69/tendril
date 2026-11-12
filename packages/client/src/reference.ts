@@ -30,9 +30,14 @@ export function mountReference(insert: (code: string) => void): void {
     }
     content.append(group);
   }
+  search.addEventListener('keydown', (event) => { if (event.key === 'Escape') { event.preventDefault(); dialog.close(); } });
   search.addEventListener('input', () => {
-    const q = search.value.toLowerCase();
-    for (const a of content.querySelectorAll<HTMLElement>('.api-entry')) a.hidden = !a.textContent!.toLowerCase().includes(q);
+    const q = search.value.trim().toLowerCase();
+    const entries = [...content.querySelectorAll<HTMLElement>('.api-entry')];
+    // An exact name wins ("move" must not also list "remove"); otherwise search names, signatures and docs.
+    const exact = entries.filter((a) => a.dataset.function === q);
+    const hits = exact.length ? exact : entries.filter((a) => a.textContent!.toLowerCase().includes(q));
+    for (const a of entries) a.hidden = !hits.includes(a);
     for (const g of content.querySelectorAll<HTMLElement>('.ref-group')) g.hidden = ![...g.querySelectorAll<HTMLElement>('.api-entry')].some((a) => !a.hidden);
   });
   dialog.append(el('header', { class: 'ref-head' }, el('div', {},

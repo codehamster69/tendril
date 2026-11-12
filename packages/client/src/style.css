@@ -72,7 +72,8 @@ h1, h2, h3 { margin: 0; }
 }
 .farm-caption > span { background: rgba(11,34,38,.78); padding: 5px 10px; border-radius: 8px; font-size: 12px; backdrop-filter: blur(4px); }
 #stage-tools { position: absolute; top: 12px; left: 12px; right: 12px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-#stage-tools > * { background: rgba(11,34,38,.82); backdrop-filter: blur(4px); }
+#farm-inspector { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; width: 100%; }
+#stage-tools > * > *, #stage-tools > button { background: rgba(11,34,38,.82); backdrop-filter: blur(4px); }
 #stage-tools label { display: flex; gap: 6px; align-items: center; padding: 3px 4px 3px 10px; border-radius: 9px; font-size: 12px; border: 1px solid var(--line); }
 #stage-tools select { border: 0; background: transparent; }
 #tile-inspector { margin-left: auto; padding: 6px 10px; border-radius: 9px; font: 12px var(--mono); border: 1px solid var(--line); max-width: 52%; }
