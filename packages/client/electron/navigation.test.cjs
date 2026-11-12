@@ -37,7 +37,7 @@ test('navigation allows only the entry and anchors, not neighboring local files 
   const sandbox = entry({ smoke: true });
   assert.equal(allowsNavigation(`${sandbox}#help`, sandbox), true);
   for (const destination of [file, `${file}?mode=live`, `${file}?mode=sandbox`, `${file}?mode=campaign`,
-    `${file}?mode=daily`, `${file}?mode=live&ranked=1`, `${file}?mode=campaign&lesson=first-crop`]) {
+    `${file}?mode=daily`, `${file}?mode=live&ranked=1`, `${file}?mode=live&ranked=0`, `${file}?mode=campaign&lesson=first-crop`]) {
     assert.equal(allowsNavigation(destination, sandbox), true);
   }
   for (const destination of [

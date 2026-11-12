@@ -163,9 +163,16 @@ export class RealSim implements SimSource {
     return this.enqueue(() => this.command({ type: 'step', ticks: 0 }, this.meta, this.source));
   }
 
-  prepareChunk(): Submission | null {
-    if (!this.accepted || !this.snap || this.busy || this.persistenceError || this.fatal) throw new Error('Pause and save the server farm before syncing.');
-    return planSubmission(this.accepted.farm, this.pendingLog, this.snap.tick);
+  /**
+   * Plans the next chunk from inside the command queue, so it reads a consistent durable state without
+   * pausing the program. Steps queued after it simply become part of a later chunk.
+   */
+  planChunk(): Promise<Submission | null> {
+    let plan: Submission | null = null;
+    return this.enqueue(async () => {
+      if (!this.accepted || !this.snap || this.persistenceError || this.fatal) throw new Error('The server farm is not ready to sync.');
+      plan = planSubmission(this.accepted.farm, this.pendingLog, this.snap.tick);
+    }).then(() => plan);
   }
   acknowledge(plan: Submission, response: ChunkResponse): Promise<void> {
     return this.enqueue(async () => {

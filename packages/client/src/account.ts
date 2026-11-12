@@ -1,17 +1,19 @@
 import { ApiError, FarmApi, isDesktop, setSignedInHint, signedInHint, signIn, readToken, writeToken } from './api-client';
 import type { FarmResponse, Profile } from './api-client';
-import type { GameLoop } from './game-loop';
 import type { RealSim } from './real-sim';
 import { el, toast } from './palette';
+import { syncOnce } from './autosync';
 
 /** Connects the ranked farm, if requested. Falls back to local play with a toast. */
 /** Starts the same sign-in flow as the account dialog's GitHub button. Set by mountAccount. */
 let signInStarter: () => void = () => {};
 export const startSignIn = (): void => signInStarter();
 
-export async function connectRanked(api: FarmApi): Promise<FarmResponse | undefined> {
+/** `implicit`: opened because the player is signed in, not because they asked; a stale sign-in then falls back quietly. */
+export async function connectRanked(api: FarmApi, implicit = false): Promise<FarmResponse | undefined> {
   try { return await api.farm(); } catch (e) {
     if (e instanceof ApiError && e.status === 404) return api.createFarm();
+    if (implicit && e instanceof ApiError && e.status === 401) { setSignedInHint(false); return undefined; }
     toast('Could not connect ranked farm', e instanceof Error ? e.message : 'Sign in first.');
     return undefined;
   }
@@ -22,7 +24,7 @@ export interface AccountEvent { profile: Profile | null; fresh: boolean }
 const announce = (detail: AccountEvent): void => { window.dispatchEvent(new CustomEvent<AccountEvent>('tendril:account', { detail })); };
 
 /** The account button and its dialog. Local play never needs an account. */
-export function mountAccount(api: FarmApi, sim: RealSim, loop: GameLoop): void {
+export function mountAccount(api: FarmApi, sim: RealSim): void {
   const account = document.getElementById('btn-account') as HTMLButtonElement;
   let attempt: AbortController | null = null;
   const beginSignIn = (): void => {
@@ -47,6 +49,8 @@ export function mountAccount(api: FarmApi, sim: RealSim, loop: GameLoop): void {
       account.textContent = profile.login;
       announce({ profile, fresh: true });
       toast('Signed in', `Welcome, ${profile.login}.`);
+      // Signed-in live play is ranked by default, unless the player chose their local farm.
+      if (sim.mode === 'live' && !sim.ranked && new URLSearchParams(location.search).get('ranked') !== '0') location.href = '?mode=live';
     }).catch(() => { toast("Sign-in didn't complete.", 'Try again.'); }).finally(() => {
       attempt = null; account.disabled = false; dialog.close(); dialog.remove();
       if (!signedIn) account.textContent = 'Sign in';
@@ -61,23 +65,19 @@ export function mountAccount(api: FarmApi, sim: RealSim, loop: GameLoop): void {
     try {
       const { profile } = await api.me();
       dialog.append(el('p', { text: `Signed in as ${profile.displayName}` }));
-      dialog.append(el('a', { href: '?mode=live&ranked=1', class: 'next-lesson', text: 'Open your server-verified farm' }));
       if (sim.ranked) {
-        const sync = el('button', { text: 'Pause and sync one chunk', class: 'primary' });
+        dialog.append(el('p', { text: 'Your ranked farm syncs to the server by itself every few minutes while it runs.' }));
+        const sync = el('button', { text: 'Sync now', class: 'primary' });
         sync.addEventListener('click', async () => {
           sync.disabled = true;
           try {
-            await loop.pause();
-            const plan = sim.prepareChunk();
-            if (plan) {
-              const response = await api.submit(sim.accepted!.farm.id, plan.request);
-              await sim.acknowledge(plan, response);
-              toast('Farm verified', `Tick ${response.tick}, rank ${response.rank}.`);
-            } else toast('Already synced', 'No new ticks need verifying.');
+            const result = await syncOnce(api, sim);
+            if (result) toast('Farm verified', `Tick ${result.tick}, rank ${result.rank}.`);
+            else toast('Already synced', 'No new ticks need verifying.');
           } catch (e) { toast('Sync stopped', e instanceof Error ? e.message : 'Your local logs are kept.'); } finally { sync.disabled = false; }
         });
-        dialog.append(sync);
-      }
+        dialog.append(sync, el('a', { href: '?mode=live&ranked=0', class: 'next-lesson', text: 'Open your local farm instead' }));
+      } else dialog.append(el('a', { href: '?mode=live&ranked=1', class: 'next-lesson', text: 'Open your server-verified farm' }));
       const logout = el('button', { text: 'Sign out', class: 'quiet' });
       logout.addEventListener('click', async () => { await api.logout(); writeToken(null); setSignedInHint(false); location.href = '?mode=live'; });
       dialog.append(logout);
