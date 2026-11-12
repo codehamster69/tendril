@@ -1,4 +1,5 @@
 import { FarmView } from './farm-view';
+import { clipSupport, downloadClip, exportClip, UNSUPPORTED_MESSAGE } from './clip';
 import { paneHeader, Timeline } from './replay-view';
 import type { ReplayData, ReplayEntry } from './replay-view';
 
@@ -83,6 +84,31 @@ async function main(): Promise<void> {
   };
   $('btn-play').addEventListener('click', () => { if (!playing && tick >= total) show(0); setPlaying(!playing); });
   scrub.addEventListener('input', () => { show(Number(scrub.value)); if (tick >= total) setPlaying(false); });
+  const clipBtn = $<HTMLButtonElement>('btn-clip');
+  const clipStatus = $('clip-status');
+  const names = runs.map((r) => r.entry.player.displayName || r.entry.player.login);
+  clipBtn.addEventListener('click', () => {
+    if (!clipSupport()) { clipStatus.textContent = UNSUPPORTED_MESSAGE; return; }
+    setPlaying(false);
+    const resume = tick;
+    clipBtn.disabled = true;
+    const label = c.kind === 'daily' && c.number != null ? `Daily #${c.number}` : c.id;
+    const worth = Math.max(...runs.map((r) => r.timeline.finalNetWorth));
+    exportClip({
+      canvases: panes.map((p) => p.querySelector('canvas')!),
+      names,
+      total,
+      seek: (t) => show(t),
+      caption: `${label} · ${names.join(' vs ')} · ${worth.toLocaleString('en-US')}`,
+      onProgress: (f) => { clipStatus.textContent = `Recording… ${Math.round(f * 100)}%`; },
+    }).then((res) => {
+      downloadClip(res, `tendril-${c.id}-${runs[0]!.entry.id}`);
+      clipStatus.textContent = 'Clip saved.';
+      document.body.dataset.clip = String(res.blob.size);
+    }).catch((e: unknown) => {
+      clipStatus.textContent = e instanceof Error ? e.message : 'Could not export the clip.';
+    }).finally(() => { clipBtn.disabled = false; show(resume); });
+  });
   show(0);
   setPlaying(false);
   requestAnimationFrame(frame);
