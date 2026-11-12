@@ -1,15 +1,21 @@
 // Background sync of the ranked farm: plans a chunk inside the sim queue, sends it, acknowledges it.
+// Small chunks every few seconds keep the leaderboard close to live; a backlog is sent back to back.
 import { ApiError, type ChunkResponse, type FarmApi } from './api-client';
 import type { RealSim } from './real-sim';
 import { toast } from './palette';
 
-/** Normal spacing. The server allows 10 chunk attempts per rolling hour, so this leaves room for "Sync now". */
-export const SYNC_INTERVAL_MS = 10 * 60_000;
-/** A chunk covers at most 20,000 ticks, so a farm well behind syncs again soon after each success. */
-export const BACKLOG_INTERVAL_MS = 45_000;
-/** After a rate limit, a clock skew or a network blip. */
-export const RETRY_INTERVAL_MS = 15 * 60_000;
-const MIN_GAP_MS = 60_000;
+/** Normal spacing. The server allows 360 chunk attempts per rolling hour (one per 10 s); this uses about 240. */
+export const SYNC_INTERVAL_MS = 15_000;
+/** A chunk carries at most 20,000 ticks; while further behind than this, the next chunk goes straight away. */
+const BACKLOG_TICKS = 300;
+const BACKLOG_INTERVAL_MS = 1_000;
+/** Retry after offline, 5xx or a fast device clock: doubles from 15 s up to 5 minutes. */
+const RETRY_MIN_MS = 15_000;
+const RETRY_MAX_MS = 5 * 60_000;
+/** After a 429 the hourly budget needs time to refill. */
+const RATE_LIMITED_MS = 2 * 60_000;
+/** Focus, visibility and online events never send more often than this. */
+const MIN_GAP_MS = 3_000;
 
 let inFlight: Promise<ChunkResponse | null> | null = null;
 
@@ -25,7 +31,7 @@ export function syncOnce(api: FarmApi, sim: RealSim): Promise<ChunkResponse | nu
   return inFlight;
 }
 
-/** What to do after a failed sync: try again later, or stop until the player acts. */
+/** Errors worth retrying on their own; anything else stops auto-sync until a reload. */
 export function retryable(error: unknown): boolean {
   if (!(error instanceof ApiError)) return false;
   // 0: offline. 429: hourly limit. 422 "ahead of server clock": this device's clock runs fast. 5xx: server trouble.
@@ -33,11 +39,15 @@ export function retryable(error: unknown): boolean {
     || (error.status === 422 && error.message.includes('ahead of server clock'));
 }
 
-export function mountAutoSync(api: FarmApi, sim: RealSim): void {
+const fmt = new Intl.NumberFormat();
+
+export function mountAutoSync(api: FarmApi, sim: RealSim, status: HTMLElement | null): void {
   let timer: ReturnType<typeof setTimeout> | null = null;
   let stopped = false;
   let lastAttempt = 0;
+  let retryMs = RETRY_MIN_MS;
   let announced = false;
+  const show = (text: string): void => { if (status) status.textContent = text; };
   const schedule = (ms: number): void => {
     if (stopped) return;
     if (timer !== null) clearTimeout(timer);
@@ -45,22 +55,35 @@ export function mountAutoSync(api: FarmApi, sim: RealSim): void {
   };
   const run = async (): Promise<void> => {
     if (stopped) return;
-    if (Date.now() - lastAttempt < MIN_GAP_MS) { schedule(MIN_GAP_MS); return; }
+    if (inFlight) { schedule(BACKLOG_INTERVAL_MS); return; }
     lastAttempt = Date.now();
     try {
       const response = await syncOnce(api, sim);
-      if (response && !announced) { announced = true; toast('Farm verified', `On the leaderboard at rank ${response.rank}.`); }
-      // More unverified ticks than one chunk carries: keep going.
-      const behind = response !== null && (sim.latest()?.tick ?? 0) - response.tick > 6_000;
+      retryMs = RETRY_MIN_MS;
+      if (response) {
+        show(`On the leaderboard · rank ${fmt.format(response.rank)} · verified to tick ${fmt.format(response.tick)}`);
+        if (!announced) { announced = true; toast('Farm verified', `On the leaderboard at rank ${response.rank}.`); }
+      }
+      const behind = response !== null && (sim.latest()?.tick ?? 0) - response.tick > BACKLOG_TICKS;
       schedule(behind ? BACKLOG_INTERVAL_MS : SYNC_INTERVAL_MS);
     } catch (e) {
-      if (retryable(e)) { schedule(RETRY_INTERVAL_MS); return; }
+      if (retryable(e)) {
+        const rateLimited = e instanceof ApiError && e.status === 429;
+        show(rateLimited ? 'Leaderboard sync is waiting for the hourly limit · your farm keeps running' : 'Leaderboard sync paused · retrying · your farm keeps running');
+        schedule(rateLimited ? RATE_LIMITED_MS : retryMs);
+        retryMs = Math.min(retryMs * 2, RETRY_MAX_MS);
+        return;
+      }
       stopped = true;
+      show('Leaderboard sync stopped · reload to try again');
       toast('Auto-sync stopped', `${e instanceof Error ? e.message : 'Unknown error'} Your local logs are kept. Reload to try again.`);
     }
   };
-  // Give the farm a moment to load and catch up before the first attempt.
-  schedule(BACKLOG_INTERVAL_MS);
-  // Leaving the tab: a last sync while the page is still alive.
-  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden' && Date.now() - lastAttempt >= MIN_GAP_MS) void run(); });
+  const soon = (): void => { if (Date.now() - lastAttempt >= MIN_GAP_MS) void run(); };
+  // First attempt once the farm has loaded.
+  schedule(2_000);
+  // Phones pause background tabs and their timers: sync as the tab leaves and again the moment it returns.
+  document.addEventListener('visibilitychange', soon);
+  window.addEventListener('focus', soon);
+  window.addEventListener('online', () => { retryMs = RETRY_MIN_MS; soon(); });
 }

@@ -23,7 +23,7 @@ From then on the game sends your farm's progress to the server in the background
 ## How a farm is checked
 
 Your program runs on your computer, never on the server. As it runs, the game writes down each move: which bot,
-which action, on which tick. Every so often it sends that list to the server.
+which action, on which tick. Every few seconds while the game is open, it sends that list to the server.
 
 The server keeps a checkpoint of your farm. It loads the checkpoint, plays your moves on it with exactly the same
 rules as the game, and checks it reaches the same farm. If it does, the result becomes your new checkpoint and your

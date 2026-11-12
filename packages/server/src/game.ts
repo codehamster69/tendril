@@ -21,7 +21,8 @@ export interface DailyEntry { rank: number; userId: string; displayName: string;
 export type Board = 'networth' | 'growth';
 export const HOUR_MS = 3600000;
 export const DAY_MS = 24 * HOUR_MS;
-export const CHUNK_ATTEMPTS_PER_HOUR = 10;
+/** One every 10 seconds on average: the client syncs small chunks every few seconds, so the board stays close to live. */
+export const CHUNK_ATTEMPTS_PER_HOUR = 360;
 export const DAILY_SUBMISSIONS_PER_DAY = 20;
 
 function farmResponse(farm: FarmRow): FarmResponse {
@@ -86,10 +87,10 @@ export async function getFarm(db: Db, userId: string): Promise<FarmResponse> {
 
 /**
  * Records an attempt and enforces the limit atomically. Attempts commit even when the submission is later
- * rejected, so invalid submissions cannot evade the cap. kind 'chunk': 10 per rolling hour; 'daily': 20 per UTC day.
+ * rejected, so invalid submissions cannot evade the cap. kind 'chunk': `chunkLimit` per rolling hour; 'daily': 20 per UTC day.
  */
-export async function reserveAttempt(db: Db, userId: string, kind: 'chunk' | 'daily', time: number): Promise<void> {
-  const limit = kind === 'chunk' ? CHUNK_ATTEMPTS_PER_HOUR : DAILY_SUBMISSIONS_PER_DAY;
+export async function reserveAttempt(db: Db, userId: string, kind: 'chunk' | 'daily', time: number, chunkLimit = CHUNK_ATTEMPTS_PER_HOUR): Promise<void> {
+  const limit = kind === 'chunk' ? chunkLimit : DAILY_SUBMISSIONS_PER_DAY;
   const since = kind === 'chunk' ? time - HOUR_MS : time - (time % DAY_MS);
   const allowed = await db.transaction(async (tx) => {
     await tx.execute('DELETE FROM submission_attempts WHERE user_id = ? AND kind = ? AND at_ms <= ?', [userId, kind, kind === 'chunk' ? time - HOUR_MS : time - 2 * DAY_MS]);

@@ -5,27 +5,33 @@ const KEY = 'tendril.unrankedNotice.dismissedUntil';
 const profile = { id: 'u1', login: 'octo', displayName: 'Octo Cat', avatarUrl: null };
 const WRAP = 'This farm is saved only on this computer and is not ranked. Sign in to join the leaderboard.';
 
+let farmAgeMs = 1000;
 function farm() {
   const world = createWorld({ id: 'farm-1', seed: 7 });
   return {
-    id: 'farm-1', seed: 7, startedAtMs: Date.now() - 1000, tick: world.tick, checkpoint: serialize(world),
+    id: 'farm-1', seed: 7, startedAtMs: Date.now() - farmAgeMs, tick: world.tick, checkpoint: serialize(world),
     checkpointHash: hashWorld(world), rulesVersion: RULES_VERSION, coins: world.coins, netWorth: netWorth(world),
   };
 }
 
 const chunks: { toTick: number }[] = [];
+const server = { world: deserialize(farm().checkpoint) };
 
 /** Every /api request is answered here; nothing reaches a network. */
 async function mockApi(page: Page, signedIn: boolean): Promise<void> {
+  chunks.length = 0;
+  farmAgeMs = 1000;
+  server.world = deserialize(farm().checkpoint);
   await page.route('**/api/**', async (route) => {
     const path = new URL(route.request().url()).pathname;
     const json = (status: number, body: unknown) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
     if (path === '/api/me') return signedIn ? json(200, { profile }) : json(401, { error: 'Sign in first.' });
     if (path === '/api/farms/me') return signedIn ? json(200, farm()) : json(401, { error: 'Sign in first.' });
     if (path === '/api/farms/farm-1/chunks' && signedIn) {
-      // The verifier: replay the chunk from the starting checkpoint (tests sync once, from tick 0).
-      const body = route.request().postDataJSON() as { toTick: number; actions: never[] };
-      const world = deserialize(farm().checkpoint);
+      // The verifier: replay the chunk onto the server's checkpoint, as the real server does.
+      const body = route.request().postDataJSON() as { fromTick: number; toTick: number; actions: never[] };
+      const world = server.world;
+      if (body.fromTick !== world.tick) return json(409, { error: 'Stale checkpoint' });
       replayChunk(world, body.actions, body.toTick);
       chunks.push(body);
       return json(200, { tick: world.tick, checkpointHash: hashWorld(world), netWorth: netWorth(world), rank: 1 });
@@ -114,15 +120,31 @@ test('a stale sign-in falls back to the local farm quietly', async ({ page }) =>
 });
 
 test('Sync now verifies the ranked farm without pausing it', async ({ page }) => {
-  chunks.length = 0;
   await mockApi(page, true);
   await page.goto('/?mode=live');
   await expect(page.locator('#mode-label')).toContainText('Ranked');
   await expect.poll(() => page.evaluate(() => window.tendril?.sim.latest()?.tick ?? 0)).toBeGreaterThan(5);
+  const before = chunks.length;
   await page.locator('#btn-account').click();
   await page.getByRole('button', { name: 'Sync now' }).click();
   await expect(page.getByText('Farm verified').first()).toBeVisible();
-  expect(chunks).toHaveLength(1);
-  expect(chunks[0]!.toTick).toBeGreaterThan(5);
-  await expect.poll(() => page.evaluate(() => window.tendril?.sim.accepted?.farm.tick ?? 0)).toBe(chunks[0]!.toTick);
+  await expect.poll(() => chunks.length).toBeGreaterThan(before);
+  await expect.poll(() => page.evaluate(() => window.tendril?.sim.accepted?.farm.tick ?? 0)).toBe(chunks.at(-1)!.toTick);
+});
+
+test('auto-sync reaches the leaderboard by itself and shows the rank', async ({ page }) => {
+  await mockApi(page, true);
+  await page.goto('/?mode=live');
+  await expect(page.locator('#mode-note')).toContainText('On the leaderboard · rank 1', { timeout: 15_000 });
+  expect(chunks.length).toBeGreaterThan(0);
+  await expect.poll(() => page.evaluate(() => window.tendril?.sim.accepted?.farm.tick ?? 0)).toBe(server.world.tick);
+});
+
+test('a farm far behind catches up with chunks sent back to back', async ({ page }) => {
+  await mockApi(page, true);
+  farmAgeMs = 4_500_000; // 45,000 ticks: three chunks of at most 20,000.
+  await page.goto('/?mode=live');
+  await expect(page.locator('#mode-note')).toContainText('On the leaderboard', { timeout: 30_000 });
+  await expect.poll(() => server.world.tick, { timeout: 30_000 }).toBeGreaterThan(44_000);
+  expect(chunks.length).toBeGreaterThanOrEqual(3);
 });
