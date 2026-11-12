@@ -57,9 +57,9 @@ export interface ChunkInput {
 }
 
 /** Shape-checks an action log whose entries must fall in [fromTick, toTick). Throws 413/422. */
-export function validateActions(actions: unknown, fromTick: number, toTick: number): LogEntry[] {
+export function validateActions(actions: unknown, fromTick: number, toTick: number, maxActions = 20000): LogEntry[] {
   if (!Array.isArray(actions)) throw new HttpError(422, 'Invalid actions');
-  if (actions.length > 20000) throw new HttpError(413, 'Chunk too large');
+  if (actions.length > maxActions) throw new HttpError(413, 'Chunk too large');
   for (const action of actions) {
     if (!Array.isArray(action) || !isInteger(action[0]) || action[0] < fromTick || action[0] >= toTick || !isInteger(action[1], -1) || !isInteger(action[2], 0, 15)) throw new HttpError(422, 'Invalid action');
     const op = action[2];
@@ -92,5 +92,49 @@ export function rejectQuery(url: URL, allowed: string[] = []): void {
 
 export function uuid(value: string): string {
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value)) throw new HttpError(400, 'Invalid farm id');
+  return value;
+}
+
+export interface EntryInput {
+  rulesVersion: number; actions: unknown; source: string | null; sourcePublic: boolean;
+  authorKind: 'human' | 'model'; model: string | null;
+}
+
+const ENTRY_KEYS = ['rulesVersion', 'actions', 'source', 'sourcePublic', 'authorKind', 'model'];
+
+/**
+ * Shape of POST /challenges/:id/entries. The action log is checked later against the challenge's own tick range
+ * and per-kind cap. `source` and `sourcePublic` are validated but not stored yet (the source check is C3's).
+ */
+export function entryInput(value: unknown, maxSourceBytes: number): EntryInput {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new HttpError(422, 'Invalid request');
+  const body = value as Record<string, unknown>;
+  if (Object.keys(body).some((key) => !ENTRY_KEYS.includes(key))) throw new HttpError(422, 'Invalid request fields');
+  if (!isInteger(body.rulesVersion, 1)) throw new HttpError(422, 'Invalid rulesVersion');
+  if (!Array.isArray(body.actions)) throw new HttpError(422, 'Invalid actions');
+  const source = body.source ?? null;
+  if (source !== null && (typeof source !== 'string' || new TextEncoder().encode(source).length > maxSourceBytes)) throw new HttpError(source !== null && typeof source === 'string' ? 413 : 422, 'Invalid source');
+  const sourcePublic = body.sourcePublic ?? false;
+  if (typeof sourcePublic !== 'boolean') throw new HttpError(422, 'Invalid sourcePublic');
+  const authorKind = body.authorKind ?? 'human';
+  if (authorKind !== 'human' && authorKind !== 'model') throw new HttpError(422, 'Invalid authorKind');
+  const model = body.model ?? null;
+  if (authorKind === 'human' ? model !== null : (typeof model !== 'string' || [...model].length < 1 || [...model].length > 64 || /[\p{C}\p{Zl}\p{Zp}]/u.test(model))) throw new HttpError(422, 'Invalid model');
+  return { rulesVersion: body.rulesVersion, actions: body.actions, source: source as string | null, sourcePublic, authorKind, model: model as string | null };
+}
+
+/** POST /duels body: both fields optional. */
+export function duelInput(value: unknown, maxTicks: number): { seed: number | null; ticks: number | null } {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new HttpError(422, 'Invalid request');
+  const body = value as Record<string, unknown>;
+  if (Object.keys(body).some((key) => key !== 'seed' && key !== 'ticks')) throw new HttpError(422, 'Invalid request fields');
+  const seed = body.seed ?? null, ticks = body.ticks ?? null;
+  if (seed !== null && !isInteger(seed, 1, 0xFFFFFFFF)) throw new HttpError(422, 'Invalid seed');
+  if (ticks !== null && !isInteger(ticks, 100, maxTicks)) throw new HttpError(422, 'Invalid ticks');
+  return { seed, ticks };
+}
+
+export function entryIdParam(value: string): string {
+  if (!/^[A-Za-z0-9_-]{12}$/.test(value)) throw new HttpError(400, 'Invalid entry id');
   return value;
 }

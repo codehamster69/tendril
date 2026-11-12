@@ -941,7 +941,8 @@ describe('10. daily challenge', () => {
     expect(best).toBeGreaterThan(0);
     const rival = await login('Rival');
     time += 60_000;
-    const rivalRun = await daily({ date: TODAY, rulesVersion: RULES_VERSION, actions: GOOD }, rival.token);
+    // A byte-identical log would share rank 1 (see arena.test.ts); one extra idle action keeps the score and tests the tie-break.
+    const rivalRun = await daily({ date: TODAY, rulesVersion: RULES_VERSION, actions: [...GOOD, [2999, 0, 3]] }, rival.token);
     expect((rivalRun.json as { rank: number }).rank).toBe(2); // tie broken by earlier achievement
     const lower = await daily({ date: TODAY, rulesVersion: RULES_VERSION, actions: [] });
     expect(lower.status).toBe(200);
@@ -956,7 +957,7 @@ describe('10. daily challenge', () => {
     const small = await daily({ date: TODAY, rulesVersion: RULES_VERSION, actions: [[0, 0, 0, 1], [2, 0, 1], [5, 0, 2, 1], [7, 0, 3], [9, 0, 3], [300, 0, 4], [303, 0, 0, 3], [305, 0, 5], [306, 0, 8, 1, 2]] });
     const full = await daily({ date: TODAY, rulesVersion: RULES_VERSION, actions: GOOD });
     expect((full.json as { best: number }).best).toBeGreaterThanOrEqual((small.json as { netWorth: number }).netWorth);
-    const rows = await db.query<{ net_worth: number }>('SELECT net_worth FROM daily_entries WHERE user_id = ?', [user.profile.id]);
+    const rows = await db.query<{ net_worth: number }>('SELECT net_worth FROM entries WHERE user_id = ?', [user.profile.id]);
     expect(rows).toEqual([{ net_worth: dailyExpected(TODAY, GOOD) }]);
   });
 

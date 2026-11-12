@@ -17,7 +17,6 @@ export interface LeaderEntry {
   rank: number; userId: string; displayName: string; farmId: string;
   netWorth: number; growth24h: number; tick: number; verifiedAtMs: number;
 }
-export interface DailyEntry { rank: number; userId: string; displayName: string; netWorth: number; achievedAtMs: number }
 export type Board = 'networth' | 'growth';
 export const HOUR_MS = 3600000;
 export const DAY_MS = 24 * HOUR_MS;
@@ -89,8 +88,15 @@ export async function getFarm(db: Db, userId: string): Promise<FarmResponse> {
  * Records an attempt and enforces the limit atomically. Attempts commit even when the submission is later
  * rejected, so invalid submissions cannot evade the cap. kind 'chunk': `chunkLimit` per rolling hour; 'daily': 20 per UTC day.
  */
-export async function reserveAttempt(db: Db, userId: string, kind: 'chunk' | 'daily', time: number, chunkLimit = CHUNK_ATTEMPTS_PER_HOUR): Promise<void> {
-  const limit = kind === 'chunk' ? chunkLimit : DAILY_SUBMISSIONS_PER_DAY;
+export type AttemptKind = 'chunk' | 'daily' | 'entry' | 'duel';
+/** Per UTC day, except 'chunk' (per rolling hour, set by the caller). */
+export const ATTEMPT_LIMITS: Record<Exclude<AttemptKind, 'chunk'>, number> = { daily: DAILY_SUBMISSIONS_PER_DAY, entry: 60, duel: 20 };
+const ATTEMPT_MESSAGES: Record<AttemptKind, string> = {
+  chunk: 'Too many chunk attempts', daily: 'Too many daily submissions', entry: 'Too many entry submissions', duel: 'Too many duels created',
+};
+
+export async function reserveAttempt(db: Db, userId: string, kind: AttemptKind, time: number, chunkLimit = CHUNK_ATTEMPTS_PER_HOUR): Promise<void> {
+  const limit = kind === 'chunk' ? chunkLimit : ATTEMPT_LIMITS[kind];
   const since = kind === 'chunk' ? time - HOUR_MS : time - (time % DAY_MS);
   const allowed = await db.transaction(async (tx) => {
     await tx.execute('DELETE FROM submission_attempts WHERE user_id = ? AND kind = ? AND at_ms <= ?', [userId, kind, kind === 'chunk' ? time - HOUR_MS : time - 2 * DAY_MS]);
@@ -99,7 +105,7 @@ export async function reserveAttempt(db: Db, userId: string, kind: 'chunk' | 'da
     await tx.execute('INSERT INTO submission_attempts (user_id, kind, at_ms) VALUES (?, ?, ?)', [userId, kind, time]);
     return true;
   });
-  if (!allowed) throw new HttpError(429, kind === 'chunk' ? 'Too many chunk attempts' : 'Too many daily submissions');
+  if (!allowed) throw new HttpError(429, ATTEMPT_MESSAGES[kind]);
 }
 
 async function farmRank(tx: Queryable, farmId: string, worth: number, verifiedAt: number): Promise<number> {
@@ -182,42 +188,4 @@ export function isValidDate(value: unknown): value is string {
 export function dailyInfo(now: number) {
   const date = utcDate(now);
   return { date, seed: dailySeed(date), ticks: DAILY_TICKS, rulesVersion: RULES_VERSION };
-}
-
-export async function submitDaily(db: Db, userId: string, date: string, actions: LogEntry[], now: number) {
-  const today = utcDate(now);
-  if (date !== today && date !== utcDate(now - DAY_MS)) throw new HttpError(422, 'Only today or yesterday (UTC) can be submitted');
-  const world = createWorld({ id: `daily-${date}`, seed: dailySeed(date) });
-  const worth = replayOrReject(world, actions, DAILY_TICKS);
-  return db.transaction(async (tx) => {
-    await tx.execute(
-      `INSERT INTO daily_entries (date, user_id, net_worth, achieved_at) VALUES (?1, ?2, ?3, ?4)
-       ON CONFLICT (date, user_id) DO UPDATE SET net_worth = excluded.net_worth, achieved_at = excluded.achieved_at
-       WHERE excluded.net_worth > daily_entries.net_worth`,
-      [date, userId, worth, now],
-    );
-    const [best] = await tx.query<{ net_worth: number; achieved_at: number }>('SELECT net_worth, achieved_at FROM daily_entries WHERE date = ? AND user_id = ?', [date, userId]);
-    const [rank] = await tx.query<{ n: number }>(
-      `SELECT COUNT(*) + 1 AS n FROM daily_entries WHERE date = ?1 AND user_id <> ?2
-         AND (net_worth > ?3 OR (net_worth = ?3 AND (achieved_at < ?4 OR (achieved_at = ?4 AND user_id < ?2))))`,
-      [date, userId, best!.net_worth, best!.achieved_at],
-    );
-    return { netWorth: worth, rank: rank!.n, best: best!.net_worth };
-  });
-}
-
-export async function dailyLeaderboard(db: Db, date: string, limit: number): Promise<DailyEntry[]> {
-  const rows = await db.query<{ user_id: string; display_name: string; net_worth: number; achieved_at: number }>(
-    `SELECT d.user_id, u.display_name, d.net_worth, d.achieved_at FROM daily_entries d JOIN users u ON u.id = d.user_id
-     WHERE d.date = ? ORDER BY d.net_worth DESC, d.achieved_at ASC, d.user_id ASC LIMIT ?`,
-    [date, limit],
-  );
-  return rows.map((row, i) => ({ rank: i + 1, userId: row.user_id, displayName: row.display_name, netWorth: row.net_worth, achievedAtMs: row.achieved_at }));
-}
-
-export async function stats(db: Db): Promise<{ players: number; farms: number; dailyEntries: number }> {
-  const [row] = await db.query<{ players: number; farms: number; daily: number }>(
-    'SELECT (SELECT COUNT(*) FROM users) AS players, (SELECT COUNT(*) FROM farms) AS farms, (SELECT COUNT(*) FROM daily_entries) AS daily',
-  );
-  return { players: row!.players, farms: row!.farms, dailyEntries: row!.daily };
 }
