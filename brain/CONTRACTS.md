@@ -85,10 +85,10 @@ GET  /api/leaderboard?board=networth|growth&limit=20
 GET  /api/daily                                        {date, seed, ticks:3000, rulesVersion}
 POST /api/daily/submit {date, rulesVersion, actions}   replays from createWorld; {netWorth, rank, best}
 GET  /api/daily/leaderboard?date=&limit=20
-GET  /api/stats                                        {players, farms, dailyEntries}
+GET  /api/stats                                        {players, farms, dailyEntries, entriesPerDay:[{date, entries}]}
 ```
 Chunk limits unchanged (2 MB, 20,000 actions, span 1..20,000, toTick <= floor((now-startedAt)/100), 360 attempts/user/hour (client syncs every ~15 s),
-CAS on checkpoint). Daily: today or yesterday (UTC) only, 20 submissions/user/day, best score kept. Errors `{error}`.
+CAS on checkpoint). Daily aliases (kept for desktop 0.1.x): today or yesterday (UTC), 20 submissions/user/day, best score kept; now served by the Arena pipeline below. Errors `{error}`.
 CORS: same-origin only for cookies; Bearer requests also allowed from `app://tendril` (Electron) without credentials.
 
 ## Desktop
@@ -109,3 +109,54 @@ Existing 39 assets stay. New (A1, `assets/scripts/farm_extras.py`): `crop_apple_
 Renders (A2, `assets/scripts/render_sprites.py`, Eevee, headless): `assets/renders/<name>.png` 512x512 transparent
 isometric for every manifest asset; `assets/renders/scenes/{hero,farm_overview,crew,buildings,growth_<crop>}.png`;
 `assets/renders/icon_1024.png`. Site copies renders at build; never edits them.
+
+## Arena (A2 owns this section; rules v3, migration 002_arena.sql)
+Threads build against these names. Ask in your notes for a change; do not invent one at a seam.
+
+**challenges**(id, kind daily|season|duel, number, seed, ticks, par, opens_at, closes_at, created_by, rules_version).
+Daily id `d-YYYY-MM-DD` (open one UTC day, number 1 = 2026-12-01, <= 0 before). Season id `s-YYYY-Www` (ISO week, Monday to
+Monday UTC, number 1 = week of 2026-11-30). Duel id `x-` + 8 random chars: no number, never closes. Daily/season rows are
+created on first request, only for today and yesterday (daily) or this and last week (season); any other unknown id is 404.
+`today` and `week` are accepted wherever an id is. Season seed = FNV-1a 32 of `tendril-season:<id>` (0 -> 1). Par is
+DAILY_PAR for daily/season and for duels of 3,000 ticks; any other duel length has par NULL (no Speed medal).
+Worlds are always built with `challengeSetup(kind, seed)` from the sim (F1 varies it later).
+
+**entries**(id, challenge_id, user_id, net_worth, par_tick, tokens, actions, actions_count, log_hash, mosaic, source,
+source_public, source_verified, author_kind, model, created_at). Id = 12 base64url chars. `log_hash` = SHA-256 of
+`JSON.stringify(actions)`. At most three per player per challenge: their best for each medal (wealth: highest net worth;
+speed: lowest par_tick; brevity: lowest tokens, needs tokens). Ties go to the earlier entry. Rows moved from the old
+`daily_entries` have no log, mosaic or par tick (replay is 404). **follows**(follower_id, followee_id, created_at) exists;
+B5 owns the routes. `daily_entries` stays as a read-only archive. `arena_meta` marks one-off data moves.
+
+**Routes** (all under /api; JSON; errors `{error}`):
+```
+GET  /challenges/today|week|:id  -> {id, kind, number, seed, ticks, par, opensAt, closesAt, rulesVersion, players, best}
+                                    best = highest net worth so far, or null
+POST /challenges/:id/entries {rulesVersion, actions, source?, sourcePublic?, authorKind?, model?}   (session required)
+       -> {entryId, netWorth, parTick, tokens, mosaic, ranks:{wealth,speed,brevity}, percentile, improved, total}
+GET  /challenges/:id/board?medal=wealth|speed|brevity&scope=global|friends&author=human|model&limit=20 (max 100)
+       -> {medal, entries:[{rank, entryId, userId, login, displayName, avatarUrl, value, mosaic, authorKind, model, createdAt}],
+           histogram:{min, max, width, counts:[10]}, total, me:{...row, percentile}|null}
+GET  /entries/:id          -> {id, player:{login, displayName, avatarUrl}, netWorth, parTick, tokens, mosaic, authorKind, model,
+                               sourceVerified, sourcePublic, createdAt, sealed, challenge:{id, kind, number, seed, ticks, par, opensAt, closesAt, rulesVersion}}
+GET  /entries/:id/replay   -> {seed, ticks, rulesVersion, actions} | 403 sealed | 404 no log stored
+POST /duels {seed?, ticks?} -> 201 {challengeId}   (session; seed 1..2^32-1; ticks 100..6000; default 3000)
+```
+Not in A2: `/entries/:id/source` (C3), `/players`, `/follows`, `/badge` (B5), `/og`, `/r/` (B4).
+`ranks.*` is 1-based among players with that medal, null if the player has none. `percentile` = floor(100 * (total - rank +
+1) / total) on the wealth board ("at or above this share of players"; 100 for first). Brevity is empty until C3 sets tokens.
+On a non-improving submit, `entryId` is the player's current best-wealth entry, `improved` false, and the other fields
+describe the submitted run. `source`, `sourcePublic` are validated (source <= 32 KB) but not stored until C3.
+
+**Status codes.** 401 no session; 403 sealed; 404 unknown challenge/entry; 409 rules mismatch, challenge not open, or copied
+log (same log_hash as another player's entry; empty logs exempt); 413 body over 2 MB or more actions than the kind's cap; 422
+bad body or illegal log; 429 over 60 entries or 20 duels per user per UTC day. Cookie sessions need `X-Tendril-Client: 1` on POST.
+
+**Sealing.** A replay is readable once its challenge has closed. Before that: its owner always; for duels, anyone who has
+submitted their own entry on the same duel. Everything else is 403.
+
+**Caps per kind** (`KIND_LIMITS` in arena.ts): 20,000 actions each; duel ticks <= 6,000. The widest legal body at the cap is
+about 1 MB, under both our 2 MB limit and Vercel's 4.5 MB (a test asserts it). C2 may lower a kind's cap.
+
+**Old clients.** `/daily`, `/daily/submit`, `/daily/leaderboard` keep their shapes and now read and write the Arena tables
+(so the copied-log rule applies). They also keep the one-day-late grace (`LEGACY_GRACE_MS`); set it to 0 when 0.1.x is gone.

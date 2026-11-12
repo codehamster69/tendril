@@ -103,13 +103,13 @@ afterEach(() => { db.close(); });
 
 describe('migrations', () => {
   it('are idempotent, recorded in schema_version, and applied lazily on the first request', async () => {
-    expect(await db.query('SELECT version FROM schema_version')).toEqual([{ version: 1 }]);
+    expect(await db.query('SELECT version FROM schema_version')).toEqual([{ version: 1 }, { version: 2 }]);
     expect(await migrate(db)).toEqual([]);
     const fresh = createDb({ url: ':memory:' });
     try {
       const lazy = createApp({ db: fresh, env, fetch: github.fetch, now: () => time });
       expect((await lazy(new Request('http://localhost:8787/api/stats'))).status).toBe(200);
-      expect(await fresh.query('SELECT version FROM schema_version')).toEqual([{ version: 1 }]);
+      expect(await fresh.query('SELECT version FROM schema_version')).toEqual([{ version: 1 }, { version: 2 }]);
     } finally { fresh.close(); }
   });
   it('persist in a file database across reopen', async () => {
@@ -622,7 +622,7 @@ describe('ranking and 24-hour history', () => {
     expect(limited.entries).toHaveLength(1);
   });
   it('excludes farms without an accepted chunk and reports public stats', async () => {
-    expect(await (await request('/stats')).json()).toEqual({ players: 1, farms: 1, dailyEntries: 0 });
+    expect(await (await request('/stats')).json()).toEqual({ players: 1, farms: 1, dailyEntries: 0, entriesPerDay: [] });
     expect((await (await request('/leaderboard')).json() as { entries: unknown[] }).entries).toHaveLength(0);
   });
 });
@@ -655,7 +655,7 @@ describe('daily challenge', () => {
     const board = await (await request(`/daily/leaderboard?date=${day()}`)).json() as { date: string; entries: { userId: string; netWorth: number; rank: number; displayName: string }[] };
     expect(board.date).toBe(day());
     expect(board.entries.map((e) => [e.rank, e.userId, e.netWorth])).toEqual([[1, user.profile.id, high.best], [2, other.profile.id, 0]]);
-    expect(await (await request('/stats')).json()).toEqual({ players: 2, farms: 1, dailyEntries: 2 });
+    expect(await (await request('/stats')).json()).toEqual({ players: 2, farms: 1, dailyEntries: 2, entriesPerDay: [{ date: day(), entries: 2 }] });
     expect((await (await request('/daily/leaderboard?limit=1')).json() as { entries: unknown[] }).entries).toHaveLength(1);
   });
   it('accepts yesterday but rejects older, future, and malformed dates', async () => {

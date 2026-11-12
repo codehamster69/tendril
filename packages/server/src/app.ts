@@ -2,11 +2,13 @@ import { DAILY_TICKS, RULES_VERSION } from '@tendril/sim/src/index.ts';
 import { authenticate, clearSessionCookie, devAuthEnabled, devLogin, finishGithub, getProfile, logout, pollDesktop, sessionCookie, startGithub } from './auth.ts';
 import type { Ctx, Env, FetchFn, Identity } from './auth.ts';
 import type { Db } from './db.ts';
-import { createFarm, dailyInfo, dailyLeaderboard, getFarm, getReplay, isValidDate, leaderboard, reserveAttempt, stats, submitDaily, utcDate, verifyChunk } from './game.ts';
+import { board, challengeInfo, createDuel, entryReplay, entrySummary, KIND_LIMITS, legacyLeaderboard, legacySubmit, loadChallenge, MAX_SOURCE_BYTES, moveLegacyDaily, stats, submitEntry } from './arena.ts';
+import type { AuthorKind, Medal } from './arena.ts';
+import { createFarm, dailyInfo, getFarm, getReplay, isValidDate, leaderboard, reserveAttempt, utcDate, verifyChunk } from './game.ts';
 import type { Board } from './game.ts';
 import { migrate } from './migrations.ts';
 import type { Migration } from './migrations.ts';
-import { chunkInput, displayName, HttpError, objectWithKeys, readJson, rejectQuery, validateActions, uuid } from './validation.ts';
+import { chunkInput, displayName, duelInput, entryIdParam, entryInput, HttpError, objectWithKeys, readJson, rejectQuery, validateActions, uuid } from './validation.ts';
 
 export interface AppOptions {
   db: Db;
@@ -43,7 +45,7 @@ export function createApp(options: AppOptions): (request: Request) => Promise<Re
   const ctx: Ctx = { db, env, fetch: options.fetch ?? ((input, init) => fetch(input, init)), now };
   let ready: Promise<unknown> | undefined;
   // Lazy migration, guarded by schema_version; a failure is retried by the next request.
-  const ensureMigrated = (): Promise<unknown> => (ready ??= migrate(db, now, [], options.migrations).catch((error: unknown) => { ready = undefined; throw error; }));
+  const ensureMigrated = (): Promise<unknown> => (ready ??= migrate(db, now, [], options.migrations).then(() => moveLegacyDaily(db)).catch((error: unknown) => { ready = undefined; throw error; }));
 
   return async (request) => {
     const headers = new Headers({
@@ -189,7 +191,7 @@ export function createApp(options: AppOptions): (request: Request) => Promise<Re
         rejectQuery(url, ['date', 'limit']);
         const date = url.searchParams.get('date') ?? utcDate(now());
         if (!isValidDate(date)) throw new HttpError(400, 'Invalid date');
-        return json({ date, entries: await dailyLeaderboard(db, date, limitParam(url)) });
+        return json({ date, entries: await legacyLeaderboard(db, date, limitParam(url)) });
       }
       if (route === '/daily/submit' && method === 'POST') {
         const identity = await requireUser();
@@ -199,7 +201,54 @@ export function createApp(options: AppOptions): (request: Request) => Promise<Re
         if (!isValidDate(body.date)) throw new HttpError(422, 'Invalid date');
         if (body.rulesVersion !== RULES_VERSION) throw new HttpError(409, 'Rules version mismatch');
         const actions = validateActions(body.actions, 0, DAILY_TICKS);
-        return json(await submitDaily(db, identity.userId, body.date, actions, now()));
+        return json(await legacySubmit(db, identity.userId, body.date, actions, now()));
+      }
+
+      // ---- arena: challenges, entries, duels ----
+      const viewerId = async (): Promise<string | undefined> => (await authenticate(ctx, request, allowCookie))?.userId;
+      const challengeRoute = /^\/challenges\/([^/]+)(?:\/(entries|board))?$/.exec(route);
+      if (challengeRoute) {
+        const [, ref, sub] = challengeRoute;
+        if (!sub && method === 'GET') {
+          rejectQuery(url);
+          return json(await challengeInfo(db, await loadChallenge(db, ref!, now())));
+        }
+        if (sub === 'entries' && method === 'POST') {
+          const identity = await requireUser();
+          await reserveAttempt(db, identity.userId, 'entry', now());
+          rejectQuery(url);
+          const challenge = await loadChallenge(db, ref!, now());
+          const input = entryInput(await readJson(request), MAX_SOURCE_BYTES);
+          const limits = KIND_LIMITS[challenge.kind];
+          const actions = validateActions(input.actions, 0, challenge.ticks, limits.maxActions);
+          return json(await submitEntry(db, identity.userId, challenge, input, actions, now()));
+        }
+        if (sub === 'board' && method === 'GET') {
+          rejectQuery(url, ['medal', 'scope', 'author', 'limit']);
+          const medal = url.searchParams.get('medal') ?? 'wealth';
+          const scope = url.searchParams.get('scope') ?? 'global';
+          const author = url.searchParams.get('author');
+          if (medal !== 'wealth' && medal !== 'speed' && medal !== 'brevity') throw new HttpError(400, 'Invalid medal');
+          if (scope !== 'global' && scope !== 'friends') throw new HttpError(400, 'Invalid scope');
+          if (author !== null && author !== 'human' && author !== 'model') throw new HttpError(400, 'Invalid author');
+          const viewer = await viewerId();
+          if (scope === 'friends' && !viewer) throw new HttpError(401, 'Authentication required');
+          const challenge = await loadChallenge(db, ref!, now());
+          return json(await board(db, challenge, { medal: medal as Medal, friends: scope === 'friends', author: (author ?? undefined) as AuthorKind | undefined, limit: limitParam(url), viewerId: viewer }));
+        }
+      }
+      const entryRoute = /^\/entries\/([^/]+)(?:\/(replay))?$/.exec(route);
+      if (entryRoute && method === 'GET') {
+        rejectQuery(url);
+        const id = entryIdParam(entryRoute[1]!);
+        return json(entryRoute[2] ? await entryReplay(db, id, await viewerId(), now()) : await entrySummary(db, id, await viewerId(), now()));
+      }
+      if (route === '/duels' && method === 'POST') {
+        const identity = await requireUser();
+        await reserveAttempt(db, identity.userId, 'duel', now());
+        rejectQuery(url);
+        const input = duelInput(await readJson(request), KIND_LIMITS.duel.maxTicks);
+        return json(await createDuel(db, identity.userId, input, now()), 201);
       }
       throw new HttpError(404, 'Not found');
     } catch (error) {
