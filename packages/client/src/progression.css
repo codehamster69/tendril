@@ -32,4 +32,14 @@
 .coach-steps li.done { color: #a7d59a; text-decoration: line-through; }
 .coach-steps code { margin-left: 4px; }
 
+#arena-market { margin: 0.25rem 0 0.5rem; font-size: 0.85rem; }
+#arena-market summary { cursor: pointer; font-weight: 600; }
+#arena-market p { margin: 0.25rem 0; }
+#arena-market table { border-collapse: collapse; width: 100%; }
+#arena-market th, #arena-market td { text-align: left; padding: 2px 8px 2px 0; font-weight: 400; font-variant-numeric: tabular-nums; }
+#arena-market thead th { opacity: 0.7; font-size: 0.78rem; }
+#arena-market tbody th { text-transform: capitalize; }
+#arena-market .m-up td:nth-child(3) { color: #2e7d32; }
+#arena-market .m-down td:nth-child(3) { color: #b3261e; }
+.market-soon { margin: 0.25rem 0 0.5rem; font-size: 0.85rem; opacity: 0.8; }
 #arena-mods { margin: 0.25rem 0 0.5rem; font-size: 0.85rem; opacity: 0.8; }

@@ -195,6 +195,34 @@ export function marketActive(date: string): boolean {
 export function dailyRulesVersion(date: string): number { return marketActive(date) ? RULES_VERSION : BASE_RULES_VERSION; }
 /** Whole UTC days from today until the market opens (0 once open). */
 export function daysUntilMarket(date: string): number { return Math.max(0, utcDay(MARKET_EPOCH) - utcDay(date)); }
+/** One line of the market board: item, price in coins, change against base, and yesterday's share of units sold. */
+export interface MarketRowView { item: number; name: string; price: string; change: string; share: string | null; trend: 'up' | 'down' | 'flat' }
+export type MarketView =
+  | { kind: 'soon'; days: number; text: string }
+  | { kind: 'open'; text: string; rows: MarketRowView[] };
+/**
+ * What the game and the site show for the daily dated `date` (text only, no rules). Before MARKET_EPOCH: "Market opens in N days".
+ * From the epoch: the day's prices and yesterday's shares. Null when `date` is on a market day but the table is missing.
+ */
+export function describeMarket(date: string, market: { prices: readonly number[]; multipliers: readonly number[]; shares: readonly number[] | null } | null | undefined): MarketView | null {
+  if (!marketActive(date)) {
+    const days = daysUntilMarket(date);
+    return { kind: 'soon', days, text: days === 1 ? 'Market opens tomorrow' : `Market opens in ${days} days` };
+  }
+  if (!market) return null;
+  const rows: MarketRowView[] = [];
+  for (let c = 1; c < ITEM_COUNT; c++) {
+    const m = market.multipliers[c] ?? NEUTRAL_MULT;
+    const pct = Math.round((m - NEUTRAL_MULT) / 10);
+    const cents = market.prices[c] ?? 0;
+    const sh = market.shares?.[c];
+    rows.push({
+      item: c, name: ITEMS[c]!.name, price: (cents / 100).toFixed(2), change: pct === 0 ? 'base' : `${pct > 0 ? '+' : '\u2212'}${Math.abs(pct)}%`,
+      share: sh == null ? null : `${Math.round(sh / 10)}%`, trend: pct > 0 ? 'up' : pct < 0 ? 'down' : 'flat',
+    });
+  }
+  return { kind: 'open', text: market.shares ? "Today's prices, and what the crowd sold yesterday" : "Today's prices (too few sales yesterday to show shares)", rows };
+}
 /** The table for a market day with no earlier data: every price at base. */
 export function baseMarket(): MarketTable {
   const m = neutral();

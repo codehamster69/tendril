@@ -80,7 +80,7 @@ start in the next 500 ticks.
 ## Selling and orders
 
 At the barn, `deposit` moves everything a bot carries into barn stock, and `sell item, n` sells it at the
-item's base price. `sell carrot, all` sells the whole stock.
+item's price for the day (the base price, until the [daily market](/docs/market/) opens on 8 December). `sell carrot, all` sells the whole stock.
 
 Every so often a buyer posts an **order**: a crop, a quantity and a deadline. Filling it with `deliver`
 pays twice the market price plus 10 coins. Orders get bigger as your farm does. `orders()` lists the open ones.
