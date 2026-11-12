@@ -96,3 +96,23 @@ test('signed in: a program the server cannot match does not cost the score', asy
   expect(submitted.map((b) => b.source !== undefined)).toEqual([true, false]);
   expect(submitted[1]!.sourcePublic).toBeUndefined();
 });
+
+test('the Season tab opens this week\'s season, runs 6,000 ticks and highlights its tab', async ({ page }) => {
+  const season = { ...challenge, id: 's-2026-W49', kind: 'season', number: 1, seed: 4242, ticks: 6000 };
+  await page.route('**/api/**', (route) => {
+    const path = new URL(route.request().url()).pathname;
+    if (path === '/api/challenges/week') return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(season) });
+    return route.fulfill({ status: 401, contentType: 'application/json', body: JSON.stringify({ error: 'Sign in first.' }) });
+  });
+  await page.goto('/');
+  await page.click('#mode-tabs a[data-mode="season"]');
+  await expect(page.locator('#arena-head')).toContainText('Weekly season #1');
+  await expect(page.locator('#mode-label')).toHaveText('Weekly season');
+  await expect(page.locator('#mode-tabs a[aria-current="page"]')).toHaveText('Season');
+  await expect(page.locator('#mode-tabs a[data-mode="live"]')).toHaveText('Endless');
+  const started = Date.now();
+  await page.click('#btn-run-end');
+  await expect(page.locator('#arena-result')).toBeVisible({ timeout: 30_000 });
+  expect(Date.now() - started).toBeLessThan(30_000); // well under a minute
+  await expect(page.locator('#hud-tick')).toHaveText('6000');
+});

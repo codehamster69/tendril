@@ -6,6 +6,8 @@ export const ITEM_COUNT = 8;
 export const BASE_CAPACITY = 20;
 export const SATCHEL_CAPACITY = 30;
 export const DAILY_TICKS = 3000;
+/** A weekly season is twice as long as a daily: room for a real strategy, still about 10 s to run to the end. */
+export const SEASON_TICKS = 6000;
 export const HONEY_INTERVAL = 400;
 export const HONEY_MAX = 6;
 

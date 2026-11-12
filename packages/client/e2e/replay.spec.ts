@@ -1,7 +1,7 @@
 import { test, expect, type Page } from '@playwright/test';
 import { challengeSetup, createWorld, netWorth, replayChunk } from '@tendril/sim/src/index.ts';
 import type { LogEntry } from '@tendril/sim/src/index.ts';
-import { readFileSync, readdirSync } from 'node:fs';
+import { readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 const SMALL: LogEntry[] = [[0, 0, 0, 1], [2, 0, 1], [5, 0, 2, 1], [7, 0, 3], [9, 0, 3], [300, 0, 4], [303, 0, 0, 3], [305, 0, 5], [306, 0, 8, 1, 4]];
@@ -57,6 +57,54 @@ test('race view shows two farms on one clock', async ({ page }) => {
   await expect(page.getByTestId('worth-a')).toHaveAttribute('data-value', String(worth(SMALL)));
   await expect(page.getByTestId('worth-b')).toHaveAttribute('data-value', String(worth(IDLE)));
   await expect(page.locator('header.bar')).toBeHidden();
+});
+
+test('export clip records a playable 8-12 second video', async ({ page }) => {
+  test.setTimeout(60_000);
+  await mock(page);
+  await page.goto('/replay.html?e=runa');
+  await expect(page.locator('body')).toHaveAttribute('data-state', 'ready');
+  const download = page.waitForEvent('download');
+  await page.locator('#btn-clip').click();
+  const file = await download;
+  expect(file.suggestedFilename()).toMatch(/\.(webm|mp4)$/);
+  const path = await file.path();
+  const bytes = readFileSync(path!);
+  expect(bytes.length).toBeGreaterThan(10_000);
+  const dataUrl = `data:${file.suggestedFilename().endsWith('mp4') ? 'video/mp4' : 'video/webm'};base64,${bytes.toString('base64')}`;
+  const duration = await page.evaluate(async (src) => {
+    const v = document.createElement('video');
+    v.muted = true;
+    v.src = src;
+    await new Promise<void>((res, rej) => { v.onloadedmetadata = () => res(); v.onerror = () => rej(new Error('not playable')); });
+    // MediaRecorder files carry no duration: seeking far forces the browser to compute it.
+    if (!Number.isFinite(v.duration)) {
+      v.currentTime = 1e6;
+      await new Promise<void>((res) => { v.ontimeupdate = () => { if (Number.isFinite(v.duration)) res(); }; });
+    }
+    // A frame from the middle must show the farm (many distinct colours), not a blank WebGL buffer.
+    const dur = v.duration;
+    v.currentTime = dur / 2;
+    await new Promise<void>((res) => { v.onseeked = () => res(); });
+    await v.play();
+    await new Promise((r) => setTimeout(r, 400));
+    v.pause();
+    const c = document.createElement('canvas');
+    c.width = 160; c.height = 90;
+    const g = c.getContext('2d')!;
+    g.drawImage(v, 0, 0, 160, 90);
+    const px = g.getImageData(0, 0, 160, 60).data;
+    const colours = new Set<number>();
+    for (let i = 0; i < px.length; i += 4) colours.add((px[i]! >> 4) << 8 | (px[i + 1]! >> 4) << 4 | (px[i + 2]! >> 4));
+    (window as unknown as { __colours: number }).__colours = colours.size;
+    (window as unknown as { __png: string }).__png = c.toDataURL();
+    return dur;
+  }, dataUrl);
+  if (process.env.CLIP_DEBUG) writeFileSync(process.env.CLIP_DEBUG, Buffer.from((await page.evaluate(() => (window as unknown as { __png: string }).__png)).split(',')[1]!, 'base64'));
+  expect(await page.evaluate(() => (window as unknown as { __colours: number }).__colours)).toBeGreaterThan(5);
+  expect(duration).toBeGreaterThanOrEqual(8);
+  expect(duration).toBeLessThanOrEqual(12);
+  await expect(page.locator('#clip-status')).toHaveText('Clip saved.');
 });
 
 test('sealed and missing runs show clear states', async ({ page }) => {

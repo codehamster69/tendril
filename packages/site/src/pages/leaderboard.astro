@@ -45,6 +45,13 @@ import Base from '../layouts/Base.astro';
       <ul class="winners" role="list" data-winners></ul>
     </section>
 
+    <section class="hall" aria-labelledby="hf" data-hall hidden>
+      <h2 id="hf">Hall of Fame</h2>
+      <p class="about" data-hall-about>Closed seasons and the farmers who took each medal.</p>
+      <ol class="seasons" role="list" data-seasons></ol>
+      <p class="state" data-hall-state>Loading…</p>
+    </section>
+
     <section id="programs" aria-labelledby="programs-title">
       <h2 id="programs-title">Published programs</h2>
       <p class="about">Players can choose to share the Sprout program behind a run. They appear here once the challenge has closed, best net worth first. The server ran each one and checked that it produces exactly the moves behind the score.</p>
@@ -67,6 +74,7 @@ import Base from '../layouts/Base.astro';
   import type { Board, Challenge, Medal, Row } from '../scripts/arena';
 
   type Scope = 'daily' | 'week' | 'endless';
+  type Season = { id: string; number: number | null; closesAt: number; players: number; winners: Record<Medal, Row | null> };
   type EndRow = { rank: number; displayName: string; netWorth: number; growth24h?: number };
 
   const $ = <T extends HTMLElement>(s: string) => document.querySelector<T>(s)!;
@@ -124,6 +132,7 @@ import Base from '../layouts/Base.astro';
     $('[data-who]').hidden = endless;
     $('[data-endless]').hidden = !endless;
     $('[data-yesterday]').hidden = true;
+    $('[data-hall]').hidden = st.scope !== 'week';
     history.replaceState(null, '', `#${st.scope}`);
     rows.replaceChildren();
     histo.replaceChildren();
@@ -131,6 +140,7 @@ import Base from '../layouts/Base.astro';
     state.textContent = 'Loading…';
     try {
       if (endless) await showEndless(mine); else await showChallenge(mine);
+      if (st.scope === 'week') void hallOfFame(mine);
     } catch {
       if (mine === token) state.textContent = "The leaderboard can't be reached right now. Your farm is safe; try again in a minute.";
     }
@@ -181,6 +191,37 @@ import Base from '../layouts/Base.astro';
     }
     fill(cells);
     void yesterday();
+  }
+
+  async function hallOfFame(mine: number) {
+    const hallState = $('[data-hall-state]'), list = $('[data-seasons]');
+    list.replaceChildren();
+    hallState.hidden = false;
+    hallState.textContent = 'Loading…';
+    const data = await api<{ seasons: Season[] }>('/seasons?limit=20');
+    if (mine !== token) return;
+    if (!data) { hallState.textContent = "The Hall of Fame can't be reached right now."; return; }
+    if (!data.seasons.length) { hallState.textContent = 'No season has closed yet. The first winners will be listed here when this week ends.'; return; }
+    hallState.hidden = true;
+    for (const s of data.seasons) {
+      const li = el('li', 'season');
+      const title = s.number !== null && s.number > 0 ? `Season #${s.number}` : `Practice week ${s.id.slice(2)}`;
+      li.append(el('h3', undefined, title), el('p', 'dim', `${s.players} player${s.players === 1 ? '' : 's'}, closed ${new Date(s.closesAt).toISOString().slice(0, 10)}`));
+      const medals = el('ul', 'winners');
+      for (const m of ['wealth', 'speed', 'brevity'] as Medal[]) {
+        const r = s.winners[m];
+        if (!r) continue;
+        const item = el('li', 'winner');
+        const pic = mosaicEl(r.mosaic, '4rem');
+        if (pic) item.append(pic);
+        const txt = el('div');
+        txt.append(el('strong', undefined, MEDALS[m].label), el('br'), playerLink(r.login, r.displayName || r.login), el('br'), el('span', 'dim', medalValue(m, r.value)));
+        item.append(txt);
+        medals.append(item);
+      }
+      li.append(medals);
+      list.append(li);
+    }
   }
 
   async function yesterday() {
@@ -337,6 +378,9 @@ import Base from '../layouts/Base.astro';
   .histo figcaption { color: var(--dim); font-size: 0.88rem; margin-top: 0.4rem; }
   .yesterday { margin-top: 3rem; }
   .winners { list-style: none; padding: 0; margin: 1rem 0 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr)); gap: 1rem; }
+  .hall { margin-top: 3rem; }
+  .seasons { list-style: none; padding: 0; margin: 1rem 0 0; display: grid; gap: 1.5rem; }
+  .season h3 { margin: 0; }
   .winner { display: flex; gap: 0.8rem; align-items: center; }
   #programs { margin-top: 3.5rem; }
   #programs h2 { margin-bottom: 0.5rem; }

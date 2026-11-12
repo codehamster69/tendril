@@ -4,7 +4,7 @@ import type { RealSim } from './real-sim';
 import { el, toast } from './palette';
 import { syncOnce } from './autosync';
 
-/** Connects the ranked farm, if requested. Falls back to local play with a toast. */
+/** Connects the Endless farm, if requested. Falls back to local play with a toast. */
 /** Starts the same sign-in flow as the account dialog's GitHub button. Set by mountAccount. */
 let signInStarter: () => void = () => {};
 export const startSignIn = (): void => signInStarter();
@@ -14,7 +14,7 @@ export async function connectRanked(api: FarmApi, implicit = false): Promise<Far
   try { return await api.farm(); } catch (e) {
     if (e instanceof ApiError && e.status === 404) return api.createFarm();
     if (implicit && e instanceof ApiError && e.status === 401) { setSignedInHint(false); return undefined; }
-    toast('Could not connect ranked farm', e instanceof Error ? e.message : 'Sign in first.');
+    toast('Could not connect Endless farm', e instanceof Error ? e.message : 'Sign in first.');
     return undefined;
   }
 }
@@ -58,7 +58,7 @@ export function mountAccount(api: FarmApi, sim: RealSim): void {
   };
   signInStarter = beginSignIn;
   account.addEventListener('click', async () => {
-    const dialog = el('dialog', { class: 'campaign-map', 'aria-label': 'Account and ranked farm' });
+    const dialog = el('dialog', { class: 'campaign-map', 'aria-label': 'Account and Endless farm' });
     const close = el('button', { text: 'Close' });
     close.addEventListener('click', () => { dialog.close(); dialog.remove(); });
     dialog.append(el('header', {}, el('h2', { text: 'A fair field for everyone' }), close));
@@ -66,13 +66,13 @@ export function mountAccount(api: FarmApi, sim: RealSim): void {
       const { profile } = await api.me();
       dialog.append(el('p', { text: `Signed in as ${profile.displayName}` }));
       if (sim.ranked) {
-        dialog.append(el('p', { text: 'Your ranked farm syncs to the leaderboard every few seconds while the game is open.' }));
+        dialog.append(el('p', { text: 'Your Endless farm syncs to the leaderboard every few seconds while the game is open.' }));
         const sync = el('button', { text: 'Sync now', class: 'primary' });
         sync.addEventListener('click', async () => {
           sync.disabled = true;
           try {
             const result = await syncOnce(api, sim);
-            if (result) toast('Farm verified', `Tick ${result.tick}, rank ${result.rank}.`);
+            if (result) toast('Farm verified', `Tick ${result.tick}, ${result.rank === null ? 'outside the top 500' : `rank ${result.rank}`}.`);
             else toast('Already synced', 'No new ticks need verifying.');
           } catch (e) { toast('Sync stopped', e instanceof Error ? e.message : 'Your local logs are kept.'); } finally { sync.disabled = false; }
         });

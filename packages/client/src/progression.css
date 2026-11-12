@@ -26,3 +26,6 @@
 @media (max-width: 640px) { .achievement-grid, .research-grid { grid-template-columns: repeat(2, 1fr); } }
 #lesson-card .publish-source { display: flex; align-items: center; gap: 6px; margin-top: 6px; color: var(--mist-2); font-size: 13px; cursor: pointer; }
 #lesson-card .publish-source input { accent-color: var(--wheat); }
+.coach-steps { margin: 8px 0 8px 18px; padding: 0; color: var(--mist-2); }
+.coach-steps li.done { color: #a7d59a; text-decoration: line-through; }
+.coach-steps code { margin-left: 4px; }

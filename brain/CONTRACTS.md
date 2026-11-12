@@ -80,7 +80,11 @@ POST /api/auth/desktop/poll {nonce}                    200 {token,profile} once 
 POST /api/auth/logout                                  204
 GET  /api/me                                           200 {profile:{id,login,displayName,avatarUrl}} | 401
 POST /api/dev/login {displayName}                      dev only
-POST /api/farms, GET /api/farms/me, POST /api/farms/:id/chunks, GET /api/farms/:id/replay   (unchanged semantics, rulesVersion 3)
+POST /api/farms, GET /api/farms/me, POST /api/farms/:id/chunks, GET /api/farms/:id/replay   (rulesVersion 3)
+   chunk response: {tick, checkpointHash, netWorth, rank, nextSyncMs}. `rank` is exact up to 500 and null beyond ("outside the top 500"),
+   refreshed at most every 5 min. `nextSyncMs` is the server's wish for the next sync (15 s top 25, 60 s up to 500, 180 s beyond; doubled/quadrupled
+   under budget pressure); clients follow it within 15 s..10 min. Replay serves a log still buffered in the farm row as its last chunk, and
+   consecutive syncs may be stored as one merged chunk (replaying it is identical). GET /api/leaderboard growth is cached on the farm, <= 5 min old.
 GET  /api/leaderboard?board=networth|growth&limit=20
 GET  /api/daily                                        {date, seed, ticks:3000, rulesVersion}
 POST /api/daily/submit {date, rulesVersion, actions}   replays from createWorld; {netWorth, rank, best}
@@ -119,6 +123,7 @@ Monday UTC, number 1 = week of 2026-11-30). Duel id `x-` + 8 random chars: no nu
 created on first request, only for today and yesterday (daily) or this and last week (season); any other unknown id is 404.
 `today` and `week` are accepted wherever an id is. Season seed = FNV-1a 32 of `tendril-season:<id>` (0 -> 1). Par is
 DAILY_PAR for daily/season and for duels of 3,000 ticks; any other duel length has par NULL (no Speed medal).
+Season length is `SEASON_TICKS` = 6,000 (sim `rules.ts`, returned by `challengeSetup('season')`); daily and duels default to `DAILY_TICKS` = 3,000. A stored row keeps the ticks it was created with.
 Worlds are always built with `challengeSetup(kind, seed)` from the sim (F1 varies it later).
 
 **entries**(id, challenge_id, user_id, net_worth, par_tick, tokens, actions, actions_count, log_hash, mosaic, source,
@@ -142,6 +147,8 @@ GET  /entries/:id          -> {id, player:{login, displayName, avatarUrl}, netWo
                                sourceVerified, sourcePublic, createdAt, sealed, challenge:{id, kind, number, seed, ticks, par, opensAt, closesAt, rulesVersion}}
 GET  /entries/:id/replay   -> {seed, ticks, rulesVersion, actions} | 403 sealed | 404 no log stored
 POST /duels {seed?, ticks?} -> 201 {challengeId}   (session; seed 1..2^32-1; ticks 100..6000; default 3000)
+GET  /seasons?limit=20     -> {seasons:[{id, number, opensAt, closesAt, players, winners:{wealth,speed,brevity}}]}   (Hall of Fame, C2)
+                                    closed seasons with at least one entry, newest first; each winner is a board row or null; limit 1..100
 ```
 Not in A2: `/entries/:id/source` (C3), `/players`, `/follows`, `/badge` (B5), `/og`, `/r/` (B4).
 `ranks.*` is 1-based among players with that medal, null if the player has none. `percentile` = floor(100 * (total - rank +

@@ -2,13 +2,13 @@ import { DAILY_TICKS, RULES_VERSION } from '@tendril/sim/src/index.ts';
 import { authenticate, clearSessionCookie, devAuthEnabled, devLogin, finishGithub, getProfile, logout, pollDesktop, sessionCookie, startGithub } from './auth.ts';
 import type { Ctx, Env, FetchFn, Identity } from './auth.ts';
 import type { Db } from './db.ts';
-import { board, challengeInfo, createDuel, entryReplay, entrySource, entrySummary, publishedSources, KIND_LIMITS, legacyLeaderboard, legacySubmit, loadChallenge, MAX_SOURCE_BYTES, moveLegacyDaily, stats, submitEntry } from './arena.ts';
+import { board, challengeInfo, createDuel, entryReplay, entrySource, entrySummary, hallOfFame, publishedSources, KIND_LIMITS, legacyLeaderboard, legacySubmit, loadChallenge, MAX_SOURCE_BYTES, moveLegacyDaily, stats, submitEntry } from './arena.ts';
 import type { AuthorKind, Medal } from './arena.ts';
 import { createFarm, dailyInfo, getFarm, getReplay, isValidDate, leaderboard, reserveAttempt, utcDate, verifyChunk } from './game.ts';
 import type { Board } from './game.ts';
 import { badgeFor, follow, listFollowing, playerPage, unfollow } from './players.ts';
 import { handleShare } from './share.ts';
-import { createGuard, dropReplaysOutsideTop, pruneOncePerDay, rateScale, refreshGuard, prune, withCacheHeaders } from './housekeeping.ts';
+import { createGuard, dropReplaysOutsideTop, pruneOncePerDay, rateScale, refreshGuard, prune, syncScale, withCacheHeaders } from './housekeeping.ts';
 import type { SourceVerifier } from './verify-client.ts';
 import { migrate } from './migrations.ts';
 import type { Migration } from './migrations.ts';
@@ -203,10 +203,10 @@ function createInnerApp(options: AppOptions): (request: Request) => Promise<Resp
       const chunk = /^\/farms\/([^/]+)\/chunks$/.exec(route);
       if (chunk && method === 'POST') {
         const identity = await requireUser();
-        await reserveAttempt(db, identity.userId, 'chunk', now(), options.chunkAttemptsPerHour, scale);
         rejectQuery(url);
         const input = chunkInput(await readJson(request));
-        return json(await verifyChunk(db, identity.userId, uuid(chunk[1]!), input, now));
+        // The attempt limit lives in the farm row (one write per sync, not two).
+        return json(await verifyChunk(db, identity.userId, uuid(chunk[1]!), input, now, { chunkAttemptsPerHour: options.chunkAttemptsPerHour, rateScale: scale, syncScale: syncScale(mode) }));
       }
       const replay = /^\/farms\/([^/]+)\/replay$/.exec(route);
       if (replay && method === 'GET') {
@@ -287,8 +287,12 @@ function createInnerApp(options: AppOptions): (request: Request) => Promise<Resp
           const viewer = await viewerId();
           if (scope === 'friends' && !viewer) throw new HttpError(401, 'Authentication required');
           const challenge = await loadChallenge(db, ref!, now());
-          return json(await board(db, challenge, { medal: medal as Medal, friends: scope === 'friends', author: (author ?? undefined) as AuthorKind | undefined, limit: limitParam(url), viewerId: viewer }));
+          return json(await board(db, challenge, { medal: medal as Medal, friends: scope === 'friends', author: (author ?? undefined) as AuthorKind | undefined, limit: limitParam(url), viewerId: viewer, now: now() }));
         }
+      }
+      if (route === '/seasons' && method === 'GET') {
+        rejectQuery(url, ['limit']);
+        return json(await hallOfFame(db, now(), limitParam(url)));
       }
       const entryRoute = /^\/entries\/([^/]+)(?:\/(replay|source))?$/.exec(route);
       if (entryRoute && method === 'GET') {
