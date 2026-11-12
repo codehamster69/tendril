@@ -109,13 +109,13 @@ afterEach(() => { db.close(); });
 
 describe('migrations', () => {
   it('are idempotent, recorded in schema_version, and applied lazily on the first request', async () => {
-    expect(await db.query('SELECT version FROM schema_version')).toEqual([{ version: 1 }, { version: 2 }, { version: 3 }, { version: 4 }]);
+    expect(await db.query('SELECT version FROM schema_version')).toEqual([{ version: 1 }, { version: 2 }, { version: 3 }, { version: 4 }, { version: 5 }]);
     expect(await migrate(db)).toEqual([]);
     const fresh = createDb({ url: ':memory:' });
     try {
       const lazy = createApp({ db: fresh, env, fetch: github.fetch, now: () => time });
       expect((await lazy(new Request('http://localhost:8787/api/stats'))).status).toBe(200);
-      expect(await fresh.query('SELECT version FROM schema_version')).toEqual([{ version: 1 }, { version: 2 }, { version: 3 }, { version: 4 }]);
+      expect(await fresh.query('SELECT version FROM schema_version')).toEqual([{ version: 1 }, { version: 2 }, { version: 3 }, { version: 4 }, { version: 5 }]);
     } finally { fresh.close(); }
   });
   it('persist in a file database across reopen', async () => {
@@ -150,8 +150,8 @@ describe('dev login and farms', () => {
     expect(await db.query('SELECT * FROM users')).toHaveLength(1);
   });
   it('stores SQL-shaped display names as plain text', async () => {
-    const name = "Robert'); DROP TABLE users;--";
-    const evil = await login(name);
+    const name = "Robert');-DROP-TABLE-users;--";
+    const evil = await login("Robert'); DROP TABLE users;--");
     expect(evil.profile.displayName).toBe(name);
     const me = await (await request('/me', { token: evil.token })).json() as { profile: Profile };
     expect(me.profile.displayName).toBe(name);
@@ -251,7 +251,7 @@ describe('GitHub OAuth', () => {
     const sessionCookie = session.split(';')[0]!;
     const token = sessionCookie.split('=')[1]!;
     const me = await (await request('/me', { cookie: sessionCookie })).json() as { profile: Profile };
-    expect(me.profile).toEqual({ id: expect.any(String), login: 'octo-cat', displayName: 'Octo Cat', avatarUrl: 'https://avatars.githubusercontent.com/u/4242' });
+    expect(me.profile).toEqual({ id: expect.any(String), login: 'octo-cat', displayName: 'octo-cat', avatarUrl: 'https://avatars.githubusercontent.com/u/4242' });
     expect(JSON.stringify(await db.query('SELECT * FROM sessions'))).not.toContain(token);
     expect(JSON.stringify(await db.query('SELECT * FROM users'))).not.toContain('gho_stub_token');
     // Signing in again reuses the same user.

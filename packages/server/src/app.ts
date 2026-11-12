@@ -11,6 +11,7 @@ import { badgeFor, follow, listFollowing, playerPage, unfollow } from './players
 import { handleShare } from './share.ts';
 import { createGuard, dropReplaysOutsideTop, pruneOncePerDay, rateScale, refreshGuard, prune, syncScale, withCacheHeaders } from './housekeeping.ts';
 import type { SourceVerifier } from './verify-client.ts';
+import { reportProgram } from './moderation.ts';
 import { migrate } from './migrations.ts';
 import type { Migration } from './migrations.ts';
 import { chunkInput, displayName, duelInput, entryIdParam, entryInput, HttpError, objectWithKeys, readJson, rejectQuery, validateActions, uuid } from './validation.ts';
@@ -298,6 +299,14 @@ function createInnerApp(options: AppOptions): (request: Request) => Promise<Resp
       if (route === '/seasons' && method === 'GET') {
         rejectQuery(url, ['limit']);
         return json(await hallOfFame(db, now(), limitParam(url)));
+      }
+      const reportRoute = /^\/entries\/([^/]+)\/report$/.exec(route);
+      if (reportRoute && method === 'POST') {
+        const identity = await requireUser();
+        await reserveAttempt(db, identity.userId, 'report', now(), undefined, scale);
+        rejectQuery(url);
+        objectWithKeys(await readJson(request), []);
+        return json(await reportProgram(db, identity.userId, entryIdParam(reportRoute[1]!), now()));
       }
       const entryRoute = /^\/entries\/([^/]+)(?:\/(replay|source))?$/.exec(route);
       if (entryRoute && method === 'GET') {

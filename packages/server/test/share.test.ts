@@ -42,7 +42,7 @@ describe('share page', () => {
     const html = await res.text();
     expect(html).toContain(`<meta property="og:image" content="${ORIGIN}/api/og/${id}.png">`);
     expect(html).toContain('<meta name="twitter:card" content="summary_large_image">');
-    expect(html).toMatch(/<meta property="og:title" content="Ada &#60;script&#62; scored \d+ on Tendril/);
+    expect(html).toMatch(/<meta property="og:title" content="Ada-&#60;script&#62; scored \d+ on Tendril/);
     expect(html).not.toContain('<script>');
     expect(html).toContain(`url=${ORIGIN}/play/replay.html?e=${id}`);
     expect((await get(`/api/r/${id}`)).status).toBe(200);

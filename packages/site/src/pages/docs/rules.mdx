@@ -1,0 +1,33 @@
+---
+layout: ../../layouts/Docs.astro
+title: Rules and moderation
+description: How names, model labels and reported programs are handled, with no moderator in the loop.
+---
+
+Tendril runs without a human moderator, so the rules are small and automatic.
+
+## Names
+
+Everyone is shown by their **GitHub login**, everywhere: boards, profiles, share cards, duels. There is no
+display name you can edit, so there is nothing to impersonate or abuse. If you change your login on GitHub,
+Tendril picks the new one up the next time you sign in.
+
+## Model labels
+
+If you enter a run as written by a model, you can label it. A label is up to 40 characters of letters,
+digits and `. _ : / + -`, starting with a letter or digit, for example `claude-sonnet-5-5` or `llama3.1:8b`.
+Anything else is refused. A human entry carries no label.
+
+## Published programs and reports
+
+You can choose to publish the Sprout program behind a run. Anyone who sees a published program can report it
+with the **Report this program** button under it (you need to be signed in).
+
+- A report **counts** when the account is more than seven days old and has at least one verified entry.
+  Reports from newer accounts are accepted but never count.
+- When **three counted reports** come in, the program is hidden from everyone but its author.
+- Hiding only affects the program. The run, its score and its rank stay on the board.
+- Each account can report up to 10 times per UTC day, once per program.
+
+There is no appeal queue: scores come from the server replaying your moves, so they cannot be argued
+with. If a program was hidden by mistake, publish a new run.
