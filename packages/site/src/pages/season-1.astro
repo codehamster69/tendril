@@ -1,0 +1,62 @@
+---
+import Base from '../layouts/Base.astro';
+---
+<Base title="Season 1" description="The first Tendril season: one shared farm, one week, three medals. Dates, rules and how scores are checked.">
+  <section class="wrap page">
+    <p class="kicker">Tue 1 Dec to Mon 7 Dec 2026</p>
+    <h1>Season 1</h1>
+    <p class="lede">Everyone gets the same farm for a week. You write the program, the server replays your moves, and the
+      board shows who did best. Three medals, so there is more than one way to win.</p>
+    <p class="cta"><a class="btn primary" href="/play/?mode=challenge&id=week">Play the season farm</a>
+      <a class="btn" href="/leaderboard/#week">See the board</a></p>
+
+    <h2>Dates</h2>
+    <p>All times are UTC.</p>
+    <ul class="dates">
+      <li><strong>Mon 23 Nov to Mon 30 Nov: quiet week.</strong> The game and the boards are open to early players before
+        any announcement, so nobody opens an empty leaderboard on launch day.</li>
+      <li><strong>Tue 1 Dec: launch.</strong> Daily challenge #1 opens, and the season is under way.</li>
+      <li><strong>Mon 7 Dec, 00:00: the season closes.</strong> The season farm is a Monday-to-Monday week, so its board
+        opens on Mon 30 Nov at 00:00 and runs to this point. Winners go to the Hall of Fame, and every replay opens up.</li>
+    </ul>
+
+    <h2>Rules</h2>
+    <ul>
+      <li><strong>One farm for everyone.</strong> The season farm has one seed, so soil, weather and orders are identical for
+        every player. You start from one plot and one bot and get 6,000 ticks. A daily is 3,000.</li>
+      <li><strong>Sign in with GitHub</strong> to submit. That is the only account, and the board shows your GitHub login.</li>
+      <li><strong>Three medals.</strong>
+        <em>Wealth</em> is the highest net worth at the end.
+        <em>Speed</em> is the earliest tick at which your net worth reached par.
+        <em>Brevity</em> is the fewest tokens in a program that reaches par, and needs your program attached.</li>
+      <li><strong>The server decides the score.</strong> You send your moves, it plays them again on the season farm, and the
+        result is what counts. An illegal move rejects the whole run. <a href="/blog/a-leaderboard-you-cant-fake/">How that works</a>.</li>
+      <li><strong>Resubmit as often as you like,</strong> up to the daily submission cap. Your best run for each medal is kept.
+        Sending the exact same moves again is refused.</li>
+      <li><strong>Replays are sealed</strong> until the season closes, so nobody can copy the leader mid-week. Your own is
+        always yours to watch.</li>
+      <li><strong>Programs are private</strong> unless you choose to publish one, and published programs only appear after the
+        season closes.</li>
+      <li><strong>Humans and models.</strong> You can write your program yourself or have an assistant write it. When you
+        submit, you label the entry human or model, and boards can be filtered by that label. The label is your own word. The
+        server proves a run was legal and that your program produced it. It cannot tell who wrote the program.</li>
+      <li><strong>Ties.</strong> Identical runs share a rank, and the earlier submission is listed first. Otherwise ties on a
+        medal go to the earlier entry.</li>
+    </ul>
+
+    <h2>What you can do</h2>
+    <p>Play in the browser at <a href="/play/">the web game</a>, download the <a href="/download/">desktop app</a>, or use the
+      <a href="/docs/cli/">command line</a>. New to Sprout? Start with <a href="/docs/">the docs</a>. After a run you can copy a
+      share link, export a replay clip, or challenge a friend to a duel on the same farm.</p>
+  </section>
+</Base>
+
+<style>
+  .page { max-width: 46rem; padding-block: 3rem 5rem; }
+  .kicker { font-family: var(--mono); font-size: .85rem; color: var(--leaf); letter-spacing: .06em; margin: 0 0 .5rem; }
+  h1 { font-family: var(--display); font-size: clamp(2.2rem, 6vw, 3.4rem); line-height: 1.05; margin: 0 0 1rem; }
+  h2 { font-family: var(--display); font-size: 1.5rem; margin: 2.5rem 0 .75rem; }
+  .lede { font-size: 1.15rem; color: var(--dim); }
+  .cta { display: flex; flex-wrap: wrap; gap: .75rem; margin: 1.5rem 0; }
+  li { line-height: 1.6; margin-bottom: .7rem; }
+</style>
