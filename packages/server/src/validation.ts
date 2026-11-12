@@ -61,13 +61,14 @@ export function validateActions(actions: unknown, fromTick: number, toTick: numb
   if (!Array.isArray(actions)) throw new HttpError(422, 'Invalid actions');
   if (actions.length > 20000) throw new HttpError(413, 'Chunk too large');
   for (const action of actions) {
-    if (!Array.isArray(action) || !isInteger(action[0]) || action[0] < fromTick || action[0] >= toTick || !isInteger(action[1], -1) || !isInteger(action[2], 0, 10)) throw new HttpError(422, 'Invalid action');
+    if (!Array.isArray(action) || !isInteger(action[0]) || action[0] < fromTick || action[0] >= toTick || !isInteger(action[1], -1) || !isInteger(action[2], 0, 15)) throw new HttpError(422, 'Invalid action');
     const op = action[2];
-    const length = op === 8 || op === 9 ? 5 : [0, 2, 6, 7].includes(op) ? 4 : 3;
+    const length = op === 8 || op === 9 ? 5 : [0, 2, 6, 7, 11, 15].includes(op) ? 4 : 3;
     if (action.length !== length || action.some((n) => !isInteger(n, -Number.MAX_SAFE_INTEGER))) throw new HttpError(422, 'Invalid action shape');
-    if ((op >= 9 && action[1] !== -1) || (op < 9 && action[1] < 0)) throw new HttpError(422, 'Invalid bot');
+    const farmOp = op === 9 || op === 10 || op === 15;
+    if ((farmOp && action[1] !== -1) || (!farmOp && action[1] < 0)) throw new HttpError(422, 'Invalid bot');
     const a = action[3], b = action[4];
-    if ((op === 0 && !isInteger(a, 0, 3)) || (op === 2 && !isInteger(a, 1, 4)) || (op === 6 && !isInteger(a, 1)) || (op === 7 && !isInteger(a, 1, 1000)) || (op === 8 && (!isInteger(a, 1, 4) || !isInteger(b, 1))) || (op === 9 && (!isInteger(a, -1000000000, 1000000000) || !isInteger(b, -1000000000, 1000000000)))) throw new HttpError(422, 'Invalid action argument');
+    if ((op === 0 && !isInteger(a, 0, 3)) || (op === 2 && !isInteger(a, 1, 6)) || (op === 6 && !isInteger(a, 1)) || (op === 7 && !isInteger(a, 1, 1000)) || (op === 8 && (!isInteger(a, 1, 7) || !isInteger(b, 1))) || (op === 11 && !isInteger(a, 1, 2)) || (op === 15 && !isInteger(a, 0, 8)) || (op === 9 && (!isInteger(a, -1000000000, 1000000000) || !isInteger(b, -1000000000, 1000000000)))) throw new HttpError(422, 'Invalid action argument');
   }
   return actions as LogEntry[];
 }
