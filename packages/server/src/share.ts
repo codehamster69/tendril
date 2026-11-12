@@ -172,7 +172,7 @@ export function sharePage(info: ShareInfo | null, origin: string, id: string): s
   const title = info ? `${info.player} scored ${info.netWorth} on Tendril ${info.title.toLowerCase()}` : 'Tendril: the farming game you code';
   const desc = info ? info.description : 'Write a script that runs your farm. Play the daily challenge and beat par.';
   const image = info ? `${origin}/api/og/${id}.png` : `${origin}/api/og/none.png`;
-  const dest = info ? `${origin}/play/?replay=${id}` : `${origin}/play/`;
+  const dest = info ? `${origin}/play/replay.html?e=${id}` : `${origin}/play/`;
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>${esc(title)}</title>
 <meta name="description" content="${esc(desc)}"><meta name="viewport" content="width=device-width,initial-scale=1">
 <link rel="canonical" href="${esc(info ? `${origin}/r/${id}` : origin)}">
