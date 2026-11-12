@@ -17,6 +17,14 @@ export interface ReplayResponse {
   chunks: { fromTick: number; toTick: number; actions: LogEntry[] }[];
   nextFromTick: number | null;
 }
+export interface ChallengeInfo {
+  id: string; kind: 'daily' | 'season' | 'duel'; number: number | null; seed: number; ticks: number; par: number | null;
+  opensAt: number | null; closesAt: number | null; rulesVersion: number; players: number; best: number | null;
+}
+export interface EntryResult {
+  entryId: string; netWorth: number; parTick: number | null; tokens: number | null; mosaic: string;
+  ranks: { wealth: number | null; speed: number | null; brevity: number | null }; percentile: number | null; improved: boolean; total: number;
+}
 export class ApiError extends Error {
   constructor(readonly status: number, message: string) { super(message); this.name = 'ApiError'; }
 }
@@ -67,6 +75,10 @@ export class FarmApi {
     return this.request(`/leaderboard?board=${board}&limit=20`);
   }
   replay(id: string, fromTick = 0): Promise<ReplayResponse> { return this.request(`/farms/${encodeURIComponent(id)}/replay?fromTick=${fromTick}&limit=1`); }
+  challenge(id: string): Promise<ChallengeInfo> { return this.request(`/challenges/${encodeURIComponent(id)}`); }
+  submitEntry(id: string, body: { rulesVersion: number; actions: LogEntry[] }): Promise<EntryResult> {
+    return this.request(`/challenges/${encodeURIComponent(id)}/entries`, 'POST', body);
+  }
   daily(): Promise<{ date: string; seed: number; ticks: number; rulesVersion: number }> { return this.request('/daily'); }
   submitDaily(body: { date: string; rulesVersion: number; actions: LogEntry[] }): Promise<{ netWorth: number; rank: number; best: number }> {
     return this.request('/daily/submit', 'POST', body);
