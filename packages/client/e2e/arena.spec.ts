@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { dailyNumber, dailySeed, DAILY_PAR, BASE_RULES_VERSION } from '@tendril/sim/src/index.ts';
+import { dailyNumber, dailySeed, DAILY_PAR, BASE_RULES_VERSION, RULES_VERSION, baseMarket, marketActive, daysUntilMarket } from '@tendril/sim/src/index.ts';
 
 const date = new Date().toISOString().slice(0, 10);
 const challenge = {
@@ -57,6 +57,26 @@ test('signed out: run to end shows the result and copies the share text', async 
   expect(lines.slice(2, 10)).toHaveLength(8);
   for (const row of lines.slice(2, 10)) expect([...row]).toHaveLength(8);
   expect(lines[10]).toBe('tendril.hokora.xyz');
+});
+
+test('the daily shows the market countdown before 8 Dec and the day\'s prices from then on', async ({ page }) => {
+  await mock(page, false);
+  if (marketActive(date)) {
+    const b = baseMarket(); b.m[1] = 1500; b.p[1] = 300;
+    served = { ...challenge, rulesVersion: RULES_VERSION, market: { prices: b.p, multipliers: b.m, shares: null } };
+  }
+  await page.goto('/?mode=daily');
+  const market = page.locator('#arena-market');
+  if (marketActive(date)) {
+    await expect(market).toContainText("Today's market");
+    await expect(market.locator('tbody tr')).toHaveCount(7);
+    await expect(market.locator('tbody tr').first()).toContainText('3.00');
+    await expect(market.locator('tbody tr').first()).toContainText('+50%');
+    await expect(market).toContainText('Orders always pay the base price');
+  } else {
+    const n = daysUntilMarket(date);
+    await expect(market).toHaveText(n === 1 ? 'Market opens tomorrow' : `Market opens in ${n} days`);
+  }
 });
 
 test('signed in: the finished run is submitted and the rank shown', async ({ page }) => {

@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
-  MARKET, MARKET_EPOCH, applyAction, baseMarket, blendedTarget, challengeSetup, createWorld, dailyNumber, dailyRulesVersion, dailySeed,
+  MARKET, MARKET_EPOCH, describeMarket, applyAction, baseMarket, blendedTarget, challengeSetup, createWorld, dailyNumber, dailyRulesVersion, dailySeed,
   daysUntilMarket, deserialize, tickWorld, hashWorld, isMarketTable, marketActive, marketPrices, netWorth, nextMarket, nextMultipliers, observedShares,
   price, rawTarget, replayChunk, replayStats, replayWithPar, serialize, ITEMS, OP, RULES_VERSION, BASE_RULES_VERSION, SUPPORTED_RULES_VERSIONS,
 } from '../src/index.ts';
@@ -340,5 +340,28 @@ describe('MARKET_EPOCH and challengeSetup', () => {
     expect(netWorth(b.w)).toBeGreaterThan(netWorth(plain));
     expect(ITEMS[1]!.price).toBe(2);
     void round;
+  });
+});
+
+describe('describeMarket (what the game and site show)', () => {
+  it('counts down before the epoch and never shows prices', () => {
+    expect(describeMarket('2026-12-01', null)).toEqual({ kind: 'soon', days: 7, text: 'Market opens in 7 days' });
+    expect(describeMarket('2026-12-07', null)).toMatchObject({ days: 1, text: 'Market opens tomorrow' });
+  });
+  it('lists seven items with price, change and share from the epoch on', () => {
+    const m = [0, 1500, 1000, 500, 2000, 1000, 1000, 1000];
+    const v = describeMarket(MARKET_EPOCH, { prices: marketPrices(m), multipliers: m, shares: [0, 300, 100, 100, 100, 100, 100, 200] });
+    expect(v?.kind).toBe('open');
+    if (v?.kind !== 'open') return;
+    expect(v.rows).toHaveLength(7);
+    expect(v.rows[0]).toMatchObject({ name: 'carrot', price: '3.00', change: '+50%', share: '30%', trend: 'up' });
+    expect(v.rows[2]).toMatchObject({ change: '\u221250%', trend: 'down' });
+    expect(v.rows[1]).toMatchObject({ change: 'base', trend: 'flat' });
+  });
+  it('omits shares when yesterday had too few players, and is null without a table', () => {
+    const b = baseMarket();
+    const v = describeMarket(MARKET_EPOCH, { prices: b.p, multipliers: b.m, shares: null });
+    expect(v?.kind === 'open' && v.rows.every((r) => r.share === null)).toBe(true);
+    expect(describeMarket(MARKET_EPOCH, null)).toBeNull();
   });
 });

@@ -1,11 +1,12 @@
 // Browser helpers shared by the home page, the boards and the player page.
 // The site is static: everything here fetches from /api at view time and fails soft.
 
-import { challengeSetup, describeModifiers, SETUP_LEGACY } from '@tendril/sim';
+import { challengeSetup, describeMarket, describeModifiers, SETUP_LEGACY } from '@tendril/sim';
 
 export interface Challenge {
   id: string; kind: 'daily' | 'season' | 'duel'; number: number; seed: number; ticks: number; par: number | null;
   opensAt: string | number; closesAt: string | number; rulesVersion: number; setupVersion?: number; players: number; best: number | null;
+  market?: { prices: number[]; multipliers: number[]; shares: number[] | null } | null;
 }
 export interface Row {
   rank: number; entryId: string; userId?: string; login: string; displayName: string; avatarUrl?: string;
@@ -23,6 +24,14 @@ export const fmt = new Intl.NumberFormat('en-US');
 /** The day's modifiers as short labels, from the same function the game and the server use. Empty for a plain farm. */
 export function modifiersOf(c: Pick<Challenge, 'kind' | 'seed' | 'setupVersion'>): string[] {
   return describeModifiers(challengeSetup(c.kind, c.seed, c.setupVersion ?? SETUP_LEGACY).modifiers, c.kind);
+}
+
+/** The market line for a daily: the countdown before 8 Dec, otherwise a short list of today's prices. Null for anything else. */
+export function marketOf(c: Pick<Challenge, 'id' | 'kind' | 'market'>): { text: string; rows: { name: string; price: string; change: string; trend: string }[] } | null {
+  if (c.kind !== 'daily' || !/^d-\d{4}-\d{2}-\d{2}$/.test(c.id)) return null;
+  const v = describeMarket(c.id.slice(2), c.market);
+  if (!v) return null;
+  return v.kind === 'soon' ? (v.days > 0 ? { text: v.text, rows: [] } : null) : { text: v.text, rows: v.rows };
 }
 
 export async function api<T>(path: string): Promise<T | null> {

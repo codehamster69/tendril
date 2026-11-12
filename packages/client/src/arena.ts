@@ -1,6 +1,6 @@
 // Challenge play: daily (`?mode=daily`) and any challenge (`?mode=challenge&id=`). The sim mode is always 'daily'.
 import { setupOf, challengeScenario } from './challenge-setup';
-import { challengeSetup, createWorld, dailyNumber, dailySeed, DAILY_PAR, describeModifiers, replayWithPar, BASE_RULES_VERSION, SETUP_VERSION, SUPPORTED_RULES_VERSIONS } from '@tendril/sim/src/index.ts';
+import { challengeSetup, createWorld, dailyNumber, dailySeed, DAILY_PAR, describeModifiers, describeMarket, replayWithPar, BASE_RULES_VERSION, SETUP_VERSION, SUPPORTED_RULES_VERSIONS } from '@tendril/sim/src/index.ts';
 import type { LogEntry, Snapshot } from '@tendril/sim/src/index.ts';
 import { ApiError, signedInHint } from './api-client';
 import type { ChallengeInfo, EntryResult, FarmApi } from './api-client';
@@ -53,6 +53,21 @@ export function requireKnownRules(c: ChallengeInfo): ChallengeInfo {
 }
 
 export { challengeScenario, setupOf };
+
+/** The market block: "Market opens in N days" before the epoch, the day's prices and yesterday's shares from then on. */
+export function marketPanel(c: ChallengeInfo): HTMLElement | null {
+  if (c.kind !== 'daily' || !/^d-\d{4}-\d{2}-\d{2}$/.test(c.id)) return null;
+  const view = describeMarket(c.id.slice(2), c.market);
+  if (!view) return null;
+  if (view.kind === 'soon') return view.days > 0 ? el('p', { id: 'arena-market', class: 'market-soon', text: view.text }) : null;
+  const head = el('tr', {}, ...['Item', 'Price', 'vs base', 'Sold yesterday'].map((t) => el('th', { scope: 'col', text: t })));
+  const body = view.rows.map((r) => el('tr', { class: `m-${r.trend}` },
+    el('th', { scope: 'row', text: r.name }), el('td', { text: r.price }), el('td', { text: r.change }), el('td', { text: r.share ?? '—' })));
+  return el('details', { id: 'arena-market', class: 'market', open: '' },
+    el('summary', { text: "Today's market" }),
+    el('p', { class: 'muted', text: `${view.text}. Orders always pay the base price.` }),
+    el('table', {}, el('thead', {}, head), el('tbody', {}, ...body)));
+}
 
 const clock = (ms: number): string => {
   const s = Math.max(0, Math.floor(ms / 1000));
@@ -116,7 +131,8 @@ export function mountArena({ loop, api, challenge: c }: { loop: GameLoop; api: F
   const modLine = mods.length ? el('p', { id: 'arena-mods', title: "Today's modifiers", text: `Today: ${mods.join(' · ')}` }) : null;
   const stats = el('p', { id: 'arena-stats' }, 'Time left ', left, ' · Score to beat ', beat);
   const result = el('section', { id: 'arena-result', class: 'daily-result', hidden: '' });
-  host.append(head, publishBox(), modelBox(), el('h3', { text: `One seed. ${c.ticks.toLocaleString('en-US')} ticks. Your best program.` }), ...(modLine ? [modLine] : []), stats, result);
+  const marketEl = marketPanel(c);
+  host.append(head, publishBox(), modelBox(), el('h3', { text: `One seed. ${c.ticks.toLocaleString('en-US')} ticks. Your best program.` }), ...(modLine ? [modLine] : []), ...(marketEl ? [marketEl] : []), stats, result);
 
   const draw = (): void => {
     left.textContent = c.closesAt === null ? 'open' : c.closesAt <= Date.now() ? 'closed' : clock(c.closesAt - Date.now());

@@ -24,6 +24,11 @@ const bot = art('bot_tender');
         <p class="eyebrow">Today's farm <span data-num>#…</span></p>
         <p class="facts"><span><strong data-players>–</strong> players</span> <span>Score to beat <strong data-best>–</strong></span> <span data-left></span></p>
         <p class="mods" data-mods hidden></p>
+        <div class="mkt" data-market hidden>
+          <p data-market-text></p>
+          <ul data-market-rows></ul>
+          <a href="/docs/market/">How the market works</a>
+        </div>
         <a class="btn primary" href="/play/?mode=daily">Play today's farm</a>
       </div>
       <DownloadCta />
@@ -113,7 +118,7 @@ const bot = art('bot_tender');
 </Base>
 
 <script>
-  import { api, fmt, modifiersOf, msUntil, timeLeft } from '../scripts/arena';
+  import { api, fmt, marketOf, modifiersOf, msUntil, timeLeft } from '../scripts/arena';
   import type { Challenge } from '../scripts/arena';
   const root = document.querySelector<HTMLElement>('[data-today]')!;
   const q = (s: string) => root.querySelector<HTMLElement>(s)!;
@@ -124,6 +129,15 @@ const bot = art('bot_tender');
     q('[data-best]').textContent = c.best == null ? 'none yet' : fmt.format(c.best);
     q('[data-left]').textContent = timeLeft(msUntil(c.closesAt));
     const mods = modifiersOf(c);
+    const mk = marketOf(c);
+    if (mk) {
+      q('[data-market-text]').textContent = mk.text;
+      q('[data-market-rows]').replaceChildren(...mk.rows.map((r) => {
+        const li = document.createElement('li'); li.className = r.trend;
+        li.textContent = `${r.name} ${r.price} (${r.change})`; return li;
+      }));
+      q('[data-market]').hidden = false;
+    }
     if (mods.length) { const m = q('[data-mods]'); m.textContent = `Today's twist: ${mods.join(' · ')}`; m.hidden = false; }
   });
 </script>
@@ -134,6 +148,10 @@ const bot = art('bot_tender');
   .facts { display: flex; flex-wrap: wrap; gap: 0.25rem 1.25rem; color: var(--dim); margin: 0.4rem 0 0.9rem; }
   .facts strong { color: var(--ink); }
   .mods { margin: -0.4rem 0 0.9rem; color: var(--dim); font-size: 0.95rem; }
+  .mkt { margin: -0.4rem 0 0.9rem; color: var(--dim); font-size: 0.95rem; }
+  .mkt p { margin: 0 0 0.3rem; }
+  .mkt ul { list-style: none; display: flex; flex-wrap: wrap; gap: 0.2rem 0.9rem; padding: 0; margin: 0 0 0.3rem; font-variant-numeric: tabular-nums; }
+  .mkt li { text-transform: capitalize; }
   .hero { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 6fr); gap: clamp(2rem, 5vw, 4.5rem); align-items: center; padding-block: clamp(2.5rem, 7vw, 5.5rem) 3rem; }
   .hero h1 { font-size: clamp(2.5rem, 6vw, 4.25rem); line-height: 1.02; max-width: 12ch; }
   .lede { font-size: 1.22rem; color: var(--dim); margin: 1.25rem 0 1.75rem; max-width: 34rem; }
