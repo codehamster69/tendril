@@ -92,7 +92,8 @@ export function createApp(options: AppOptions): (request: Request) => Promise<Re
         return empty(302);
       }
       if (route === '/auth/github/callback' && method === 'GET') {
-        rejectQuery(url, ['code', 'state', 'error', 'error_description']);
+        // No strict query check here: GitHub owns these parameters and adds new ones over time (error_uri, iss, ...).
+        // Only `code`, `state` and `error` are read; `state` is what protects this route.
         const result = await finishGithub(ctx, request, url);
         if (result.kind === 'desktop') {
           headers.set('Content-Type', 'text/html; charset=utf-8');

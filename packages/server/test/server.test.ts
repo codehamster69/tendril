@@ -212,6 +212,17 @@ describe('GitHub OAuth', () => {
   const cb = (state: string, cookie?: string, code = 'the-code') => request(`/auth/github/callback?code=${code}&state=${state}`, { cookie });
   const sessionFrom = (setCookie: string[]) => setCookie.find((c) => c.startsWith('tendril_session='))!;
 
+  it('accepts extra parameters GitHub may add to the callback (iss, error_uri) instead of failing with Invalid query', async () => {
+    const start = await begin();
+    const done = await request(`/auth/github/callback?code=the-code&state=${start.state}&iss=${encodeURIComponent('https://github.com/login/oauth')}`, { cookie: start.cookie });
+    expect(done.status).toBe(302);
+    expect(done.headers.get('location')).toBe('/play/');
+    const denied = await begin();
+    const refused = await request(`/auth/github/callback?error=access_denied&error_description=x&error_uri=${encodeURIComponent('https://docs.github.com/x')}&state=${denied.state}`, { cookie: denied.cookie });
+    expect(refused.status).toBe(400);
+    expect(await refused.text()).not.toContain('Invalid query');
+  });
+
   it('completes the happy path: state cookie, code exchange, session cookie, same-origin redirect', async () => {
     const start = await begin('return=/play/?lesson=1');
     expect(start.location.origin + start.location.pathname).toBe('https://github.com/login/oauth/authorize');
