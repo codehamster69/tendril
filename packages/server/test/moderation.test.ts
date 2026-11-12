@@ -196,7 +196,8 @@ describe('names shown to others', () => {
     expect((await enter((await login('Robot')).token, { actions: SMALL, authorKind: 'human', model: 'gpt-4o' })).status).toBe(422);
     for (const model of ['claude-sonnet-5-5', 'gpt-4o', 'llama3.1:8b', 'org/model_v2+x', 'a'.repeat(40)]) {
       const robot = await login('Robot');
-      const r = await enter(robot.token, { actions: SMALL, authorKind: 'model', model });
+      // A model entry must carry a published program the server can run; the idle program makes an empty log.
+      const r = await enter(robot.token, { actions: [], authorKind: 'model', model, source: 'x = 1\n', sourcePublic: true });
       expect(r.status, model).toBe(200);
       expect((await call(`/entries/${r.json.entryId}`)).json.model).toBe(model);
     }

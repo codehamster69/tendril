@@ -10,7 +10,7 @@ import { el, toast } from './palette';
 import { createPendingRuns } from './pending-run';
 import { createDuelPanel } from './duel';
 import { copyText, shareText } from './share';
-import { publishBox, submitWithProgram } from './publish';
+import { declaredModel, modelBox, publishBox, submitWithProgram } from './publish';
 import type { ProgramStatus } from './publish';
 
 export const CHALLENGE_ID = /^(?:week|[dsx]-[A-Za-z0-9_-]{1,40})$/; // `week` = the current season, resolved by the server
@@ -76,8 +76,9 @@ async function submitPlain(api: FarmApi, c: ChallengeInfo, actions: LogEntry[]):
 export async function submitRun(api: FarmApi, c: ChallengeInfo, actions: LogEntry[], source: string | null = null): Promise<EntryResult & { program: ProgramStatus }> {
   if (source !== null && source.trim() !== '') {
     try { return await submitWithProgram(api, c, actions, source); }
-    catch (e) { if (!(e instanceof ApiError && (e.status === 0 || e.status === 429 || e.status >= 500))) throw e; }
+    catch (e) { if (declaredModel() !== null || !(e instanceof ApiError && (e.status === 0 || e.status === 429 || e.status >= 500))) throw e; }
   }
+  if (declaredModel() !== null) throw new ApiError(422, 'A model entry needs a program. Write one in the editor first.');
   return { ...(await submitPlain(api, c, actions)), program: 'none' as const };
 }
 
@@ -97,7 +98,7 @@ export function mountArena({ loop, api, challenge: c }: { loop: GameLoop; api: F
   const modLine = mods.length ? el('p', { id: 'arena-mods', title: "Today's modifiers", text: `Today: ${mods.join(' · ')}` }) : null;
   const stats = el('p', { id: 'arena-stats' }, 'Time left ', left, ' · Score to beat ', beat);
   const result = el('section', { id: 'arena-result', class: 'daily-result', hidden: '' });
-  host.append(head, publishBox(), el('h3', { text: `One seed. ${c.ticks.toLocaleString('en-US')} ticks. Your best program.` }), ...(modLine ? [modLine] : []), stats, result);
+  host.append(head, publishBox(), modelBox(), el('h3', { text: `One seed. ${c.ticks.toLocaleString('en-US')} ticks. Your best program.` }), ...(modLine ? [modLine] : []), stats, result);
 
   const draw = (): void => {
     left.textContent = c.closesAt === null ? 'open' : c.closesAt <= Date.now() ? 'closed' : clock(c.closesAt - Date.now());

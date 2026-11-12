@@ -99,19 +99,52 @@ export async function play(id: string, file: string | undefined): Promise<void> 
   if (errors.length) process.exitCode = 1;
 }
 
-export async function submit(): Promise<void> {
+export interface SubmitOptions { publish?: boolean; model?: string }
+
+/** Parses `tendril submit [--publish] [--model <name>]`. A model entry is always published (the server insists). */
+export function parseSubmitOptions(args: string[]): SubmitOptions {
+  const out: SubmitOptions = {};
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i]!;
+    if (a === '--publish') out.publish = true;
+    else if (a === '--model' || a.startsWith('--model=')) {
+      const value = a === '--model' ? args[++i] : a.slice('--model='.length);
+      if (!value || value.startsWith('--')) throw new Error('--model needs a name, for example --model "my-model-1"');
+      out.model = value;
+    } else throw new Error(`Unknown option ${a}. Usage: tendril submit [--publish] [--model <name>]`);
+  }
+  return out;
+}
+
+type Submitted = { netWorth: number; parTick: number | null; tokens: number | null; mosaic: string; ranks: { wealth: number | null; speed: number | null; brevity: number | null }; percentile: number; improved: boolean; total: number };
+
+export async function submit(options: SubmitOptions = {}): Promise<void> {
   const last = readJson<LastRun>('last-run.json');
   if (!last) throw new Error('Nothing to submit. Play first: tendril daily my.sprout');
   if (last.api !== apiOrigin()) throw new Error(`The last run was for ${last.api}; set TENDRIL_API to match.`);
   const token = loadToken();
   if (!token) throw new Error('Not signed in. Run: tendril login');
-  const r = await api<{ netWorth: number; parTick: number | null; mosaic: string; ranks: { wealth: number | null; speed: number | null; brevity: number | null }; percentile: number; improved: boolean; total: number }>(
-    `/challenges/${encodeURIComponent(last.challengeId)}/entries`, { token, body: { rulesVersion: last.rulesVersion, actions: last.actions } });
+  const path = `/challenges/${encodeURIComponent(last.challengeId)}/entries`;
+  const base = { rulesVersion: last.rulesVersion, actions: last.actions };
+  const model = options.model !== undefined;
+  // The program always goes with the run: the server checks it, which is what earns the Brevity medal.
+  // It stays private unless --publish is given. A model entry is published by definition.
+  const withProgram = { ...base, source: last.source, sourcePublic: options.publish === true || model, ...(model ? { authorKind: 'model', model: options.model } : {}) };
+  let r = await api<Submitted>(path, { token, body: withProgram });
+  let program = r.status < 300 ? 'verified' : '';
+  const refused = r.status === 503 || (r.status === 422 && /^Source /.test((r.json as unknown as { error?: string } | null)?.error ?? ''));
+  if (refused && !model && last.source.trim() !== '') {
+    // Same as the game: a score is never lost to the Brevity check. A model entry is never sent without its program.
+    console.error(`The server could not match your program to this run (${(r.json as unknown as { error?: string }).error}); sending the run without it, so it earns no Brevity medal.`);
+    r = await api<Submitted>(path, { token, body: base });
+    program = 'none';
+  }
   if (r.status !== 200 && r.status !== 201) fail('Submit', r);
   const e = r.json;
-  console.log(`Submitted to ${last.challengeId}${e.improved ? '' : ' (not an improvement on your best)'}`);
+  console.log(`Submitted to ${last.challengeId}${e.improved ? '' : ' (not an improvement on your best)'}${model ? ` as model ${options.model}` : ''}`);
   console.log(`Net worth: ${e.netWorth}`);
   console.log(`Par tick:  ${e.parTick ?? 'not reached'}`);
+  if (program === 'verified') console.log(`Tokens:    ${e.tokens} (${options.publish || model ? 'program published when the challenge closes' : 'program private'})`);
   console.log(renderMosaic(e.mosaic));
   console.log(`Rank: wealth ${e.ranks.wealth ?? '-'}, speed ${e.ranks.speed ?? '-'}, brevity ${e.ranks.brevity ?? '-'} of ${e.total} (top ${100 - e.percentile + 1}%)`);
 }

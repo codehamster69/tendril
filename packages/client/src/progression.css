@@ -26,6 +26,8 @@
 @media (max-width: 640px) { .achievement-grid, .research-grid { grid-template-columns: repeat(2, 1fr); } }
 #lesson-card .publish-source { display: flex; align-items: center; gap: 6px; margin-top: 6px; color: var(--mist-2); font-size: 13px; cursor: pointer; }
 #lesson-card .publish-source input { accent-color: var(--wheat); }
+#lesson-card .publish-source input[type="text"] { flex: 1; min-width: 0; background: transparent; color: inherit; border: 1px solid var(--mist-2); border-radius: 4px; padding: 2px 6px; font: inherit; }
+#lesson-card .publish-source input[hidden] { display: none; }
 .coach-steps { margin: 8px 0 8px 18px; padding: 0; color: var(--mist-2); }
 .coach-steps li.done { color: #a7d59a; text-decoration: line-through; }
 .coach-steps code { margin-left: 4px; }

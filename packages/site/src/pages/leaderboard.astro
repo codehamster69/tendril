@@ -22,6 +22,11 @@ import Base from '../layouts/Base.astro';
         <button data-who="global" aria-pressed="true">Everyone</button>
         <button data-who="friends" aria-pressed="false">Friends</button>
       </div>
+      <div class="seg" role="group" aria-label="Author" data-author title="Whether a person or an AI model wrote the program. Declared by the entrant; models must publish their program.">
+        <button data-author="human" aria-pressed="true">Humans</button>
+        <button data-author="model" aria-pressed="false">Models</button>
+        <button data-author="all" aria-pressed="false">Both</button>
+      </div>
       <div class="seg" role="group" aria-label="Endless board" data-endless hidden>
         <button data-end="networth" aria-pressed="true">Net worth</button>
         <button data-end="growth" aria-pressed="false">Growth today</button>
@@ -83,9 +88,11 @@ import Base from '../layouts/Base.astro';
   const scopeTabs = [...document.querySelectorAll<HTMLButtonElement>('[data-scope]')];
   const medalBtns = [...document.querySelectorAll<HTMLButtonElement>('[data-medal]')];
   const whoBtns = [...document.querySelectorAll<HTMLButtonElement>('[data-who]')];
+  const authorBtns = [...document.querySelectorAll<HTMLButtonElement>('[data-author]')];
   const endBtns = [...document.querySelectorAll<HTMLButtonElement>('[data-end]')];
 
-  const st = { scope: 'daily' as Scope, medal: 'wealth' as Medal, who: 'global', end: 'networth' };
+  const st = { scope: 'daily' as Scope, medal: 'wealth' as Medal, who: 'global', author: 'human', end: 'networth' };
+  if (/^(human|model|all)$/.test(new URLSearchParams(location.search).get('author') ?? '')) st.author = new URLSearchParams(location.search).get('author')!;
   const hash = location.hash.slice(1);
   if (hash === 'daily' || hash === 'week' || hash === 'endless') st.scope = hash;
   let token = 0;
@@ -127,10 +134,12 @@ import Base from '../layouts/Base.astro';
     scopeTabs.forEach((t) => { t.setAttribute('aria-selected', String(t.dataset.scope === st.scope)); t.tabIndex = t.dataset.scope === st.scope ? 0 : -1; });
     pressed(medalBtns, 'medal', st.medal);
     pressed(whoBtns, 'who', st.who);
+    pressed(authorBtns, 'author', st.author);
     pressed(endBtns, 'end', st.end);
     const endless = st.scope === 'endless';
     $('[data-medals]').hidden = endless;
     $('[data-who]').hidden = endless;
+    $('[data-author]').hidden = endless;
     $('[data-endless]').hidden = !endless;
     $('[data-yesterday]').hidden = true;
     $('[data-hall]').hidden = st.scope !== 'week';
@@ -166,7 +175,7 @@ import Base from '../layouts/Base.astro';
     col.textContent = st.medal === 'wealth' ? 'Net worth' : st.medal === 'speed' ? 'Par reached' : 'Tokens';
     const [ch, board] = await Promise.all([
       api<Challenge>(`/challenges/${id}`),
-      api<Board>(`/challenges/${id}/board?medal=${st.medal}&scope=${st.who}&limit=50`),
+      api<Board>(`/challenges/${id}/board?medal=${st.medal}&scope=${st.who}${st.author === 'all' ? '' : `&author=${st.author}`}&limit=50`),
     ]);
     if (mine !== token) return;
     if (!ch || !board) {
@@ -176,7 +185,9 @@ import Base from '../layouts/Base.astro';
     const label = st.scope === 'week' ? `Season week #${ch.number}` : `Daily #${ch.number}`;
     about.textContent = `${label}: ${MEDALS[st.medal].blurb} ${ch.players} player${ch.players === 1 ? '' : 's'}, ${timeLeft(msUntil(ch.closesAt))}.`;
     if (!board.entries.length) {
-      state.textContent = st.who === 'friends'
+      state.textContent = st.author === 'model' && st.who !== 'friends'
+        ? 'No model has entered this one yet. The open harness in examples/agent will play it with any model: see "Humans vs models" in the docs.'
+        : st.who === 'friends'
         ? 'None of the players you follow have an entry here yet.'
         : st.medal === 'brevity'
           ? 'No Brevity scores yet. Token counts arrive with the next game update.'
@@ -263,6 +274,7 @@ import Base from '../layouts/Base.astro';
   });
   medalBtns.forEach((b) => b.addEventListener('click', () => { st.medal = b.dataset.medal as Medal; void show(); }));
   whoBtns.forEach((b) => b.addEventListener('click', () => { st.who = b.dataset.who!; void show(); }));
+  authorBtns.forEach((b) => b.addEventListener('click', () => { st.author = b.dataset.author!; void show(); }));
   endBtns.forEach((b) => b.addEventListener('click', () => { st.end = b.dataset.end!; void show(); }));
   void show();
 </script>

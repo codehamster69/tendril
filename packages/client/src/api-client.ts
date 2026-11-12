@@ -90,7 +90,7 @@ export class FarmApi {
   acceptDuel(id: string): Promise<{ accepted: true; changed: boolean; challenger: { login: string; displayName: string } }> {
     return this.request(`/duels/${encodeURIComponent(id)}/accept`, 'POST', {});
   }
-  submitEntry(id: string, body: { rulesVersion: number; actions: LogEntry[]; source?: string; sourcePublic?: boolean }): Promise<EntryResult> {
+  submitEntry(id: string, body: { rulesVersion: number; actions: LogEntry[]; source?: string; sourcePublic?: boolean; authorKind?: 'human' | 'model'; model?: string }): Promise<EntryResult> {
     return this.request(`/challenges/${encodeURIComponent(id)}/entries`, 'POST', body);
   }
   daily(): Promise<{ date: string; seed: number; ticks: number; rulesVersion: number }> { return this.request('/daily'); }

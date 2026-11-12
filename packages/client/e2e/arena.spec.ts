@@ -9,7 +9,7 @@ const challenge = {
 const label = challenge.number > 0 ? `#${challenge.number}` : challenge.id; // before launch day the number is <= 0
 const profile = { id: 'u1', login: 'octo', displayName: 'Octo Cat', avatarUrl: null };
 const entry = { entryId: 'k3f9Zq1AbCdE', netWorth: 512, parTick: 1140, tokens: null, mosaic: 'B' + '1'.repeat(63), ranks: { wealth: 4, speed: 9, brevity: null }, percentile: 97, improved: true, total: 120 };
-const submitted: { actions: unknown[]; rulesVersion: number; source?: string; sourcePublic?: boolean }[] = [];
+const submitted: { actions: unknown[]; rulesVersion: number; source?: string; sourcePublic?: boolean; authorKind?: string; model?: string }[] = [];
 type Respond = (body: (typeof submitted)[number]) => { status: number; body: unknown };
 
 async function mock(page: Page, signedIn: boolean, respond: Respond = () => ({ status: 200, body: entry })): Promise<void> {
@@ -85,6 +85,20 @@ test('signed in: the program goes with the run, the tick box publishes it, and t
   const lines = (await page.evaluate(() => navigator.clipboard.readText())).split('\n');
   expect(lines[1]).toMatch(/^Par (at tick [\d,]+|not reached) · 112 tokens$/);
   expect(lines).toHaveLength(11);
+});
+
+test('signed in: ticking "a model wrote this" sends the model name with a published program, and is never downgraded to a human run', async ({ page }) => {
+  await mock(page, true, (body) => (body.authorKind === 'model' ? { status: 422, body: { error: 'Source does not produce this run' } } : { status: 200, body: entry }));
+  await page.goto('/?mode=daily');
+  await expect(page.locator('#model-name')).toBeHidden();
+  await page.check('#model-entry');
+  await page.fill('#model-name', 'my-model-1');
+  await page.click('#btn-run-end');
+  await expect.poll(() => submitted.length, { timeout: 15_000 }).toBe(1);
+  expect(submitted[0]).toMatchObject({ authorKind: 'model', model: 'my-model-1', sourcePublic: true });
+  expect(typeof submitted[0]!.source).toBe('string');
+  await page.waitForTimeout(500);
+  expect(submitted).toHaveLength(1); // the refusal is shown; no plain human resubmission
 });
 
 test('signed in: a program the server cannot match does not cost the score', async ({ page }) => {
