@@ -1,5 +1,7 @@
 # Tendril simulation spec (rules version 3: endless farm, research, perennials, buildings)
 
+> A rules version 4 DRAFT (shared daily market) is appended at the end. It is a proposal, not implemented; version 3 below is what the code does.
+
 Single source of truth for `packages/sim`. Integer maths only. Forbidden in rule code: floats
 (other than `| 0` truncating division), `Math.random`, `Date`, `performance`, any I/O, and iterating
 `Map`/`Set`/object keys where order could depend on anything but insertion order defined here.
@@ -195,3 +197,150 @@ Pure helpers shared by the server and clients. They add no rules and do not chan
 - `farmMosaic(world)`: 64 characters for plot (0,0), row by row (y, then x). `B` barn tile (0,0), `h` hive, `c` composter, `1`..`6` crop id (settled state, so a crop killed by frost shows as empty), `t` tilled and empty, `0` untilled. Read-only.
 - `replayWithPar(world, actions, toTick, par)`: same validation and end state as `replayChunk`, returns `{ netWorth, parTick, mosaic }`. `parTick` is the first `world.tick` at which `netWorth >= par`, checked at the start, after every applied action and after every tick (so a sale at tick t counts as t); `null` if never reached. Throws `IllegalAction` on a bad log or non-integer `par`.
 - `challengeSetup(kind, seed)` with `kind` `'daily' | 'season' | 'duel'` returns `{ ticks, setup }`, currently `{ ticks: DAILY_TICKS, setup: {} }` for every kind. Servers must create challenge worlds through it.
+
+## Rules version 4 (DRAFT rev 3, proposed by E1a, not implemented): shared daily market
+
+Nothing below changes the code until E1b. Version 3 above stays exact. Version 4 is version 3 plus one optional
+input, `prices`; a world without `prices` plays exactly as version 3 (same actions, results and hashes).
+Decisions (coordinator, Fable's review): band 50..200%, daily move cap 25 points of base price, minimum 10 players,
+scale-free shares against a blended target share, 3:2:1 smoothing over three days, floor rounding, dailies only.
+
+### 4.1 Prices become an input
+```ts
+interface Setup { coins?: number; unlocks?: number; weatherBias?: number; prices?: number[] }
+// prices: length 8; index 1..7 = price of that item in centicoins (1/100 coin); index 0 and 8 are 0
+```
+- `createWorld` stores `world.prices` only when `setup.prices` is given. Items 1..7 must be integers
+  `1 <= p <= 100000`, else it throws. The server only passes tables inside the bounds of 4.2.
+- `price(w, i)` = `w.prices ? w.prices[i] : ITEMS[i].price * 100` (centicoins). Compost is always 0.
+- **sell** gain = `floor(b * price(w, a) / 100)` coins (v3: `b * price`, identical without prices). Floor rounding, no
+  1-coin minimum: a sale may pay 0 coins; it is legal and the stock is still removed.
+- **netWorth** stock term = `sum over i in 1..7 of floor(stock[i] * price(w, i) / 100)`, so net worth uses the day's
+  prices on client and server. Selling the whole stock at once equals its valuation; selling in pieces never gains.
+- **Orders do not change.** `reward = qty * CROPS[crop].price * 2 + 10` always uses the base price. Document it in
+  the player docs as the hedge: orders pay a fixed, predictable price while the market moves.
+- **Sprout**: free query `price(item)` returns the day's price of item 1..7 in centicoins (an integer; base carrot is 200).
+  Like `scan`, it is never logged, costs no ticks and does not mutate state. Out-of-range item is a script error.
+- **hashWorld**: when `w.prices` exists, mix `prices[1..7]` (8 bytes each) right after `stock[1..7]`; when absent nothing
+  is added, so every v3 hash is unchanged. `serialize` writes `rulesVersion: 3` without prices and `4` with them;
+  `deserialize` accepts 3 and 4 and rejects anything else.
+- `RULES_VERSION = 4` (new challenges), `SUPPORTED_RULES_VERSIONS = [3, 4]`. Dispatch is by data: a v3 challenge
+  row has no table, so its world has no `prices`. The server rejects an entry whose `rulesVersion` differs from the
+  row (existing 409) and refuses a v4 row without a table or a v3 row with one.
+- **Par** is computed under the day's table: the reference script runs on the v4 world, and `parFromReference` takes
+  its net worth, exactly as F1 does for modifiers (same fallback to `DAILY_PAR` if the check fails). The verify
+  function therefore receives the table.
+
+### 4.2 The day's table (pure helpers in `arena.ts`; they add no rules)
+`m` = per-item multipliers in permille of base, items 1..7 (1000 = base price).
+
+Constants (`MARKET`): `LO = 500`, `HI = 2000` (the 50%..200% band), `STEP = 250` (25 points of base per day),
+`MIN_PLAYERS = 10`, `SMOOTH = [3, 2, 1]`, and `BASE_SHARE = [_, 194, 129, 388, 65, 97, 78, 49]` (permille of units sold: carrot, wheat, clover, pumpkin, berry, apple,
+honey), the equal-revenue split: each item's share is proportional to `1 / base price` (60:40:120:20:30:24:15 out of
+309), so it needs no guessed volumes. It sums to 1000. Fixed forever for version 4; changing it needs version 5.
+`WINDOW = 14`, `MIN_VALID = 7`. The smoothing weights apply newest first.
+
+Day `D` reads the entries of day `D-1`: for every player who has an entry on that challenge with a stored `sold`
+vector, the single entry with the highest net worth (ties: earlier). Players whose total units sold is 0 are not counted.
+`N` = players counted. For player `p`, `u[p][c]` = units of item `c` sold, `U[p]` = their total.
+
+Observed share (stored on the day's row as `sh`; null when `N < MIN_PLAYERS`), integers only:
+```
+sh[c] = floor( sum over counted players of floor(1000 * u[p][c] / U[p]) / N )     // each player counts equally, whatever their volume
+```
+Blended target share: take the `sh` of the last `WINDOW` challenge rows up to and including day `D` (14 row reads; a
+missing row or a null `sh` is skipped). With `V` valid rows:
+```
+if V < MIN_VALID:  tgt[c] = BASE_SHARE[c]
+else:              trail  = floor( sum of sh[c] over the valid rows / V )
+                   tgt[c] = max(1, floor( (BASE_SHARE[c] + trail) / 2 ))          // half fixed, half what the crowd really sells
+```
+Raw target (stored on the day's row as `t`):
+```
+if N < MIN_PLAYERS:   t[c] = 1000 for all c                         // not enough data: neutral
+else:  rho = floor(1000 * sh[c] / tgt[c])                          // 1000 = sold exactly its target share
+       t[c] = clamp(floor(2000000 / (1000 + rho)), LO, HI)         // rho 0 -> 2000, 1000 -> 1000, 3000+ -> 500
+```
+Each player contributes only their own mix, so no account can swing the market by volume (scale-free; there is no
+cap constant). Then smooth over the raw targets of day `D` (`t`), `D-1` and `D-2` (a missing row or a day below
+`MIN_PLAYERS` counts as 1000) and step from yesterday's table `prev` (base table 1000 x 7 when none):
+```
+avg  = floor( (3*t_D[c] + 2*t_(D-1)[c] + 1*t_(D-2)[c]) / 6 )
+m[c] = prev[c] + clamp(avg - prev[c], -STEP, +STEP)
+price[c] (centicoins) = floor(ITEMS[c].price * m[c] / 10)
+```
+Guarantees: `LO <= m <= HI` always (a clamped step from inside the band toward a target inside it stays inside);
+`|m - prev| <= 250`; no float; every intermediate is below 2^31 for any N. The lazy read touches at most 13 earlier rows (the share window; the smoothing needs the last two `t`).
+
+### 4.3 Storage and lazy computation
+- `challenges.market` (nullable JSON, E1b migration): `{ m, p, t, sh, n, from }`: multipliers, centicoin table used by the
+  world, raw target, observed shares (null if too few players), players counted, and the id of the previous challenge it was derived from (null for none). Null on
+  v3 rows and on challenges without a market.
+- Computed on the first request that creates or loads that day's row (same moment as today), never by a scheduled job.
+  A missing earlier row means neutral targets, no share and the base `prev`. Stored with
+  `UPDATE challenges SET market = ? WHERE id = ? AND market IS NULL`; the loser re-reads, so everyone sees one table.
+  After it is stored the table never changes, so grace-period entries for `D-1` cannot rewrite it.
+- Dailies only. Seasons stay v3. A duel created from a daily copies that daily's version and table (like F1
+  modifiers); other duels are v3.
+- API: `GET /challenges/:id` gains `market: { prices: number[] /* centicoins, 1..7 */, multipliers: number[], shares: number[] /* yesterday's shares, permille, or null */ } | null`. `challengeSetup(kind, seed, setupVersion, market?)`
+  adds `prices` to the setup; client, server and verify function all build worlds through it.
+
+### 4.4 What the server records
+- `replayStats(world, actions, toTick)` (sim, read-only helper next to `replayWithPar`) returns `sold: number[8]`: for
+  every sell action, `b` units are added to `sold[a]` when `stock[a]` fell by `b` (a legal sale can pay 0 coins, so the
+  stock is checked). Order deliveries do not count. It runs for every submission on every version.
+- `entries.sold` (nullable JSON, 7 ints), written at submit. Rows without it are ignored by the table.
+
+### 4.5 Rollout: MARKET_EPOCH
+`MARKET_EPOCH = '2026-12-08'` (sim constant). A daily dated before it is created as v3 with no table (base prices,
+today's behavior). A daily dated on or after it is created as v4. The epoch day has no earlier v4 row, so its table is
+the base table (`t` neutral, `n` = 0 even if the day before had entries). The day after is the first derived table; it
+needs 10 players on the epoch day, else it stays neutral. Everything before the epoch stays replayable as v3.
+- The daily winner bot announces the opening on that date (E1c).
+- Game and site show "Market opens in N days" before the epoch, then today's prices and yesterday's shares.
+  The Season 0 page mentions that the market opens on 8 December (E1c).
+
+### 4.6 Version compatibility
+- Client: the challenge info carries `rulesVersion`. A client that does not support it (not in
+  `SUPPORTED_RULES_VERSIONS`) refuses to play or submit and shows "This day needs a newer Tendril. Update the app."
+- Desktop 0.1.x and the legacy `/api/daily` alias: on a v4 day `GET /daily` returns `rulesVersion: 4`, and the
+  old submit (which sends 3) gets the existing 409 mismatch with the message "This day uses rules version 4. Update
+  Tendril." E1b must test that the 0.1.x paths fail with that error and never write a score. Closes with `LEGACY_GRACE_MS = 0`.
+
+### 4.7 Simulated month (`brain/notes/E1a-market-sim.mjs`; seeded; `SMOOTH=0` shows it unsmoothed, `TRAIL_NUM/TRAIL_DEN` change the trailing weight)
+Player model: each player splits their volume across the seven items in proportion to `BASE_SHARE[c] * (m[c]/1000)^k`
+with per-player noise; k = 3 normally, 8 for herding; (a) and (b) use a fixed crowd mix instead. "Reversals" = direction
+changes of an item's multiplier over days 10..30 (7 items, 147 possible); "swing" = max minus min over days 10..30 (worst item).
+
+| scenario | min | max | max daily move | swing |
+|---|---|---|---|---|
+| A steady 200 players | 98.9% | 101.5% | 2.2 pts | 2.2 pts |
+| B growth 8 to 3000 players | 97.5% | 103.1% | 4.2 | 2.4 |
+| C 30 of 200 sell only wheat | 76.1% | 106.9% | 16.9 | 2.3 |
+| D 10 of 50 sell only carrots | 79.9% | 109.8% | 14.9 | 5.8 |
+| E 200, then 10 dormant days, then 6, then 12 players | 98.0% | 105.1% | 5.6 | 6.7 |
+| F herding (k = 8), accepted as intended | 91.6% | 127.9% | 25.0 | 34.4 |
+| G everyone sells only carrots (pre-blend run; kept as the extreme rail case) | 50.0% | 200.0% | 25.0 | 0 |
+| H everyone sells only honey 12 days, then normal | 50.0% | 200.0% | 25.0 | 117 (regime change) |
+| (a) 90% of volume is carrot, 30 days | 50.0% (days 3-6 only) | 188.5% | 25.0 | 1.8 |
+| (b) crowd 90% carrot, 90% wheat from day 15 (45 days) | 50.0% | 190.7% | 25.0 | regime change |
+
+- **(a)** carrot is pinned at the floor only while fewer than 7 valid days exist (days 3 to 6); from day 7 the trailing half
+  of the target takes over and carrot settles at **75.4%** of base, wheat 169%, the rest 165..179%, steady to the end. The
+  half-weight blend is enough; the trailing weight stays 1/2 (no change to 2/3).
+- **(b)** the response starts on day 15 itself and moves the 25-point cap every day: carrot 75 to 100 to 125 to 150 to 175
+  on days 15..18 while wheat falls 144, 119, 94, 69; at day 20 carrot peaks at 189.9% and wheat bottoms at 50.0%. It
+  re-centres as the trailing mean catches up: carrot 169.5% and wheat 72.1% by day 29 (14 days after the shift) and flat
+  at 168.7% / 72.6% from day 35 (it does not return to 100%, since half the target stays fixed).
+- Without smoothing A..D swing 25..28 points with a reversal almost every day; with 3:2:1 the swing is about 2 points.
+  The blended target does not oscillate in A..E, (a) or (b). The band is never left.
+- **F still oscillates and this is accepted as intended behaviour** (a crowd that follows price harder than volume ~ ratio^6:
+  k <= 5 swing <= 3.1 pts, k = 6 10.8 pts, k = 8 34.4 pts, k = 12 about 38 pts). The 25-point cap and three-day smoothing
+  stay as specified; there is no fourth smoothing day.
+
+### 4.8 Tests E1b must add
+v3 goldens untouched; base-price rounding cases; the blended target (fewer than 7 valid days uses `BASE_SHARE`; null shares skipped; window of 14 rows); property test (10,000 random inputs keep `m` in [500, 2000], moves
+<= 250, N < 10 neutral, a whale cannot move shares beyond one player's weight); serialize round trip with and
+without prices; CAS race returns one table; epoch tests for the day before (v3, no table), the epoch day (v4, base
+table), the day after with 10+ players (derived) and with fewer than 10 (neutral); v3 row replays after migration;
+0.1.x fails cleanly on a v4 day; `challengeSetup` identical on server, client and verify; `price(item)` in Sprout.
