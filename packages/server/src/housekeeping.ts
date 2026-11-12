@@ -239,6 +239,8 @@ export function edgeSeconds(route: string): number | null {
 /**
  * Applies cache headers to a finished response. Only successful, anonymous GETs are cacheable: anything that carries a
  * cookie or bearer token may differ per viewer (`me`, friends, sealed replays) and stays no-store, as does every error.
+ * No `Vary: Cookie` or `Vary: Authorization`: Vercel's CDN refuses to cache a response that names Cookie, and never caches a request
+ * with an Authorization header. The app's own `Vary: Origin` stays, so desktop (CORS) answers are keyed apart.
  */
 export function withCacheHeaders(request: Request, response: Response): Response {
   if (request.method !== 'GET' || response.status !== 200) return response;
@@ -248,6 +250,5 @@ export function withCacheHeaders(request: Request, response: Response): Response
   if (seconds === null) return response;
   const headers = new Headers(response.headers);
   headers.set('Cache-Control', `public, max-age=0, s-maxage=${seconds}, stale-while-revalidate=${seconds * 2}`);
-  headers.set('Vary', 'Origin, Authorization, Cookie');
   return new Response(response.body, { status: response.status, headers });
 }
