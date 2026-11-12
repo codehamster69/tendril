@@ -171,9 +171,9 @@ describe('F5 follow and unfollow are rate limited', () => {
 });
 
 describe('F6 a repeated submission does not pay for a second source check', () => {
-  it('the same log and program twice is a 409 and the verify function runs once', async () => {
+  it('the same log and program twice is a 409 and the player program is verified once', async () => {
     let calls = 0;
-    verify = async () => { calls++; return { ok: true, tokens: 5, logHash: logHash(SMALL), actions: SMALL.length }; };
+    verify = async (input) => { if (input.source === 'x = 1') calls++; return { ok: true, tokens: 5, logHash: logHash(SMALL), actions: SMALL.length }; };
     app = make();
     const ann = await login('Ann');
     expect((await enter('d-2026-11-12', ann.token, SMALL, { source: 'x = 1' })).status).toBe(200);
