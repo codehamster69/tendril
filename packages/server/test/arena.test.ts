@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { createWorld, dailyNumber, dailySeed, DAILY_PAR, DAILY_TICKS, replayWithPar, RULES_VERSION } from '@tendril/sim/src/index.ts';
+import { challengeSetup, createWorld, dailyNumber, dailySeed, DAILY_PAR, DAILY_TICKS, replayWithPar, RULES_VERSION, SEASON_TICKS } from '@tendril/sim/src/index.ts';
 import type { LogEntry } from '@tendril/sim/src/index.ts';
 import { createApp, createDb, migrate } from '../src/index.ts';
 import type { Db, Profile } from '../src/index.ts';
@@ -419,10 +419,51 @@ describe('POST /duels', () => {
   });
 });
 
+describe('weekly season', () => {
+  const WEEK = 's-2026-W46';
+  it('runs for the season tick budget and rejects actions past it', async () => {
+    expect((await call('/challenges/week')).json).toMatchObject({ id: WEEK, ticks: SEASON_TICKS });
+    expect(KIND_LIMITS.season.maxTicks).toBe(SEASON_TICKS);
+    expect((await enter(WEEK, [[SEASON_TICKS, 0, 3]])).status).toBe(422);
+  });
+
+  it('verifies a full-length entry (every tick replayed) well inside the function time limit', async () => {
+    const run: LogEntry[] = [...SMALL, [SEASON_TICKS - 1, 0, 3]];
+    const started = performance.now();
+    const r = await enter(WEEK, run);
+    const ms = performance.now() - started;
+    expect(r.status).toBe(200);
+    const ch = (await call(`/challenges/${WEEK}`)).json;
+    const ref = replayWithPar(createWorld({ id: WEEK, seed: ch.seed }, challengeSetup('season', ch.seed).setup), run, SEASON_TICKS, DAILY_PAR);
+    expect(r.json).toMatchObject({ netWorth: ref.netWorth, parTick: ref.parTick, mosaic: ref.mosaic });
+    expect(ms).toBeLessThan(5000); // the Vercel function allows 30 s (vercel.json)
+  });
+});
+
+describe('GET /seasons (Hall of Fame)', () => {
+  it('is empty with no closed seasons', async () => {
+    expect((await call('/seasons')).json).toEqual({ seasons: [] });
+  });
+
+  it('lists closed seasons with entries, newest first, and hides open ones', async () => {
+    await call('/challenges/week'); // an open season with no entries yet
+    await enter('s-2026-W46', SMALL);
+    expect((await call('/seasons')).json).toEqual({ seasons: [] }); // still open
+    time = Date.UTC(2026, 10, 17, 9); // the following Tuesday
+    const r = await call('/seasons');
+    expect(r.json.seasons).toHaveLength(1);
+    expect(r.json.seasons[0]).toMatchObject({ id: 's-2026-W46', number: -2, players: 1, closesAt: Date.UTC(2026, 10, 16) });
+    expect(r.json.seasons[0].winners.wealth).toMatchObject({ rank: 1, login: expect.any(String) });
+    expect(r.json.seasons[0].winners.brevity).toBeNull();
+    expect((await call('/seasons?limit=0')).status).toBe(400);
+    expect((await call('/seasons?x=1')).status).toBe(400);
+  });
+});
+
 describe('size caps', () => {
   it('fit the largest legal log of every kind under the body limit and Vercel\'s 4.5 MB', () => {
     // The widest legal action: five fields, a 15-digit bot id, the largest final argument.
-    const widest: LogEntry = [DAILY_TICKS - 1, 999_999_999_999_999, 8, 7, Number.MAX_SAFE_INTEGER];
+    const widest: LogEntry = [SEASON_TICKS - 1, 999_999_999_999_999, 8, 7, Number.MAX_SAFE_INTEGER];
     for (const kind of ['daily', 'season', 'duel'] as const) {
       const bytes = JSON.stringify({ rulesVersion: RULES_VERSION, actions: new Array(KIND_LIMITS[kind].maxActions).fill(widest), source: 'x'.repeat(32 * 1024), sourcePublic: true, authorKind: 'model', model: 'm'.repeat(64) }).length;
       expect(bytes).toBeLessThan(MAX_BODY_BYTES);

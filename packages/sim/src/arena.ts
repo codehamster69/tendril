@@ -1,5 +1,5 @@
 // Arena helpers (SIM_SPEC.md appendix "Arena helpers"). Pure; no rules change.
-import { COMPOSTER, DAILY_TICKS, HIVE, PLOT_SIZE } from './rules.ts';
+import { COMPOSTER, DAILY_TICKS, HIVE, PLOT_SIZE, SEASON_TICKS } from './rules.ts';
 import { IllegalAction } from './types.ts';
 import type { LogEntry, Setup, World } from './types.ts';
 import { applyAction, netWorth, scanAt, tickWorld } from './world.ts';
@@ -89,6 +89,6 @@ export interface ChallengeSetup { ticks: number; setup: Setup }
 export function challengeSetup(kind: ChallengeKind, seed: number): ChallengeSetup {
   if (kind !== 'daily' && kind !== 'season' && kind !== 'duel') throw new Error(`bad challenge kind ${String(kind)}`);
   if (!Number.isSafeInteger(seed)) throw new Error('seed must be a safe integer');
-  return { ticks: DAILY_TICKS, setup: {} };
+  return { ticks: kind === 'season' ? SEASON_TICKS : DAILY_TICKS, setup: {} };
 }
 

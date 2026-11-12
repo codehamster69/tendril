@@ -3,7 +3,7 @@ import { createWorld, deserialize, hashWorld, netWorth, replayChunk, serialize, 
 
 const KEY = 'tendril.unrankedNotice.dismissedUntil';
 const profile = { id: 'u1', login: 'octo', displayName: 'Octo Cat', avatarUrl: null };
-const WRAP = 'This farm is saved only on this computer and is not ranked. Sign in to join the leaderboard.';
+const WRAP = 'This farm is saved only on this computer and is not on the leaderboard. Sign in to join the leaderboard.';
 
 let farmAgeMs = 1000;
 function farm() {
@@ -79,35 +79,35 @@ test('sandbox, campaign and daily modes show no notice', async ({ page }) => {
   await mockApi(page, false);
   for (const mode of ['sandbox', 'campaign', 'daily']) {
     await page.goto(`/?mode=${mode}`);
-    await expect(page.locator('#mode-label')).not.toHaveText('Live farm');
+    await expect(page.locator('#mode-label')).not.toHaveText('Endless farm');
     await expect(page.locator('#btn-account')).toBeVisible();
     await expect(notice(page)).toBeHidden();
   }
 });
 
-test('signed in on the local farm: wording changes and links to the ranked farm', async ({ page }) => {
+test('signed in on the local farm: wording changes and links to the Endless farm', async ({ page }) => {
   await mockApi(page, true);
   await page.goto('/?mode=live&ranked=0');
   await expect(page.locator('#mode-label')).toContainText('Local');
   await expect(page.locator('#btn-account')).toHaveText('octo');
-  await expect(notice(page)).toContainText("You're signed in, but this is your local farm. Open your ranked farm to compete.");
+  await expect(notice(page)).toContainText("You're signed in, but this is your local farm. Open your Endless farm to compete.");
   await expect(notice(page).getByRole('link')).toHaveAttribute('href', '?mode=live&ranked=1');
   await expect(notice(page).getByRole('button', { name: 'Sign in' })).toHaveCount(0);
 });
 
-test('signed in on the ranked farm: no notice', async ({ page }) => {
+test('signed in on the Endless farm: no notice', async ({ page }) => {
   await mockApi(page, true);
   await page.goto('/?mode=live&ranked=1');
   await expect(page.locator('#btn-account')).toHaveText('octo');
-  await expect(page.locator('#mode-label')).toContainText('Ranked');
+  await expect(page.locator('#mode-label')).toContainText('Endless');
   await expect(notice(page)).toBeHidden();
 });
 
-test('signed in: the live farm is the ranked farm by default', async ({ page }) => {
+test('signed in: the live farm is the Endless farm by default', async ({ page }) => {
   await mockApi(page, true);
   await page.goto('/?mode=live');
   await expect(page.locator('#btn-account')).toHaveText('octo');
-  await expect(page.locator('#mode-label')).toContainText('Ranked');
+  await expect(page.locator('#mode-label')).toContainText('Endless');
   await expect(notice(page)).toBeHidden();
 });
 
@@ -116,13 +116,13 @@ test('a stale sign-in falls back to the local farm quietly', async ({ page }) =>
   await page.addInitScript(() => localStorage.setItem('tendril.signedin', '1'));
   await page.goto('/?mode=live');
   await expect(page.locator('#mode-label')).toContainText('Local');
-  await expect(page.getByText('Could not connect ranked farm')).toHaveCount(0);
+  await expect(page.getByText('Could not connect Endless farm')).toHaveCount(0);
 });
 
-test('Sync now verifies the ranked farm without pausing it', async ({ page }) => {
+test('Sync now verifies the Endless farm without pausing it', async ({ page }) => {
   await mockApi(page, true);
   await page.goto('/?mode=live');
-  await expect(page.locator('#mode-label')).toContainText('Ranked');
+  await expect(page.locator('#mode-label')).toContainText('Endless');
   await expect.poll(() => page.evaluate(() => window.tendril?.sim.latest()?.tick ?? 0)).toBeGreaterThan(5);
   const before = chunks.length;
   await page.locator('#btn-account').click();

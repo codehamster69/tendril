@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from 'node:crypto';
-import { challengeSetup, createWorld, dailyNumber, dailySeed, DAILY_PAR, DAILY_TICKS, IllegalAction, replayWithPar, RULES_VERSION } from '@tendril/sim/src/index.ts';
+import { challengeSetup, createWorld, dailyNumber, dailySeed, DAILY_PAR, DAILY_TICKS, IllegalAction, replayWithPar, RULES_VERSION, SEASON_TICKS } from '@tendril/sim/src/index.ts';
 import type { ChallengeKind, LogEntry } from '@tendril/sim/src/index.ts';
 import type { Db, Queryable } from './db.ts';
 import { DAY_MS, isValidDate, utcDate } from './game.ts';
@@ -11,7 +11,7 @@ import type { EntryInput } from './validation.ts';
 /** Per-kind size caps. A tick count never comes from a client except for duels, which are capped here. */
 export const KIND_LIMITS: Record<ChallengeKind, { maxActions: number; maxTicks: number }> = {
   daily: { maxActions: 20000, maxTicks: DAILY_TICKS },
-  season: { maxActions: 20000, maxTicks: DAILY_TICKS },
+  season: { maxActions: 20000, maxTicks: SEASON_TICKS },
   duel: { maxActions: 20000, maxTicks: 6000 },
 };
 /** Vercel rejects request bodies over 4.5 MB before our code runs; tests prove the largest legal log fits under it. */
@@ -335,6 +335,33 @@ export async function board(db: Db, c: ChallengeRow, q: BoardQuery): Promise<Boa
     if (mine) me = { ...boardRow(mine), percentile: percentileOf(mine.rank, total) };
   }
   return { medal: q.medal, entries: rows.map(boardRow), histogram: { min: lo, max: hi, width, counts }, total, me };
+}
+
+// ---- hall of fame ----
+
+export interface SeasonSummary {
+  id: string; number: number | null; opensAt: number; closesAt: number | null; players: number;
+  winners: Record<Medal, BoardRow | null>;
+}
+
+/** Closed seasons that had at least one entry, newest first, with the first-place entry of each medal. */
+export async function hallOfFame(db: Db, now: number, limit: number): Promise<{ seasons: SeasonSummary[] }> {
+  const closed = await db.query<ChallengeRow & { players: number }>(
+    `SELECT c.*, (SELECT COUNT(DISTINCT e.user_id) FROM entries e WHERE e.challenge_id = c.id) AS players
+       FROM challenges c WHERE c.kind = 'season' AND c.closes_at IS NOT NULL AND c.closes_at <= ?
+        AND EXISTS (SELECT 1 FROM entries e WHERE e.challenge_id = c.id) ORDER BY c.opens_at DESC LIMIT ?`,
+    [now, limit]);
+  const seasons: SeasonSummary[] = [];
+  for (const c of closed) {
+    const winners = {} as SeasonSummary['winners'];
+    for (const medal of ['wealth', 'speed', 'brevity'] as Medal[]) {
+      const { sql, args } = rankedCte(medal, c.id, { friends: false });
+      const [top] = await db.query<RankedRow>(`${sql} ${RANKED_SELECT} ORDER BY r.rank LIMIT 1`, args);
+      winners[medal] = top ? boardRow(top) : null;
+    }
+    seasons.push({ id: c.id, number: c.number, opensAt: c.opens_at, closesAt: c.closes_at, players: c.players, winners });
+  }
+  return { seasons };
 }
 
 // ---- single entries ----
