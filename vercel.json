@@ -5,6 +5,7 @@
   "buildCommand": "pnpm build:web",
   "outputDirectory": "packages/site/dist",
   "functions": { "api/index.mjs": { "maxDuration": 30 } },
+  "crons": [{ "path": "/api/cron/housekeeping", "schedule": "17 4 * * *" }],
   "rewrites": [
     { "source": "/api/(.*)", "destination": "/api" },
     { "source": "/r/:id", "destination": "/api" }
