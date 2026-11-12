@@ -1,10 +1,17 @@
+#!/usr/bin/env node
 import { readFileSync, writeFileSync } from 'node:fs';
 import { createWorld, hashWorld, netWorth, replayChunk, RULES_VERSION } from '@tendril/sim/src/index.ts';
 import type { LogEntry } from '@tendril/sim/src/index.ts';
 import { createRun } from './index.ts';
+import { login, play, submit } from './arena-cli.ts';
 const [command, file, ...options] = process.argv.slice(2);
 try {
-  if (!file || !['run', 'replay'].includes(command ?? '')) throw new Error('Usage: tendril run file.sprout --seed 42 --ticks 3000 [--log file.json], or tendril replay file.json');
+  if (command === 'login') await login();
+  else if (command === 'submit') await submit();
+  else if (command === 'daily') await play('today', file);
+  else if (command === 'challenge') { if (!file) throw new Error('Usage: tendril challenge <id> [file.sprout]'); await play(file, options[0]); }
+  else {
+  if (!file || !['run', 'replay'].includes(command ?? '')) throw new Error('Usage: tendril run file.sprout --seed 42 --ticks 3000 [--log file.json] | replay file.json | login | daily [file] | challenge <id> [file] | submit');
   const option = (name: string, fallback: string): string => { const i = options.indexOf(name); return i < 0 ? fallback : options[i + 1] ?? fallback; };
   if (command === 'run') {
     const seed = Number(option('--seed', '42')), ticks = Number(option('--ticks', '3000'));
@@ -21,5 +28,6 @@ try {
     if (log.rulesVersion !== RULES_VERSION) throw new Error('Rules version mismatch.');
     const world = createWorld({ id: 'cli', seed: log.seed }); replayChunk(world, log.actions, log.ticks);
     console.log(JSON.stringify({ hash: hashWorld(world), coins: world.coins, netWorth: netWorth(world), actions: log.actions.length }));
+  }
   }
 } catch (e) { console.error(e instanceof Error ? e.message : String(e)); process.exitCode = 1; }
