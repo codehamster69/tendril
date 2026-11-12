@@ -6,6 +6,8 @@ import { board, challengeInfo, createDuel, entryReplay, entrySummary, KIND_LIMIT
 import type { AuthorKind, Medal } from './arena.ts';
 import { createFarm, dailyInfo, getFarm, getReplay, isValidDate, leaderboard, reserveAttempt, utcDate, verifyChunk } from './game.ts';
 import type { Board } from './game.ts';
+import { badgeFor, follow, listFollowing, playerPage, unfollow } from './players.ts';
+import { handleShare } from './share.ts';
 import { createGuard, dropReplaysOutsideTop, pruneOncePerDay, rateScale, refreshGuard, prune, syncScale, withCacheHeaders } from './housekeeping.ts';
 import { migrate } from './migrations.ts';
 import type { Migration } from './migrations.ts';
@@ -28,6 +30,11 @@ const LOOPBACK_ORIGIN = /^http:\/\/(localhost|127\.0\.0\.1|\[::1\]):\d{1,5}$/;
 const DESKTOP_DONE_PAGE = '<!doctype html><html lang="en"><meta charset="utf-8"><title>Tendril</title>'
   + '<style>body{font:16px system-ui,sans-serif;max-width:32rem;margin:4rem auto;padding:0 1rem}</style>'
   + '<h1>Signed in</h1><p>You can close this tab and return to Tendril.</p></html>';
+
+function publicOriginOf(env: Env, url: URL): string {
+  const configured = env.PUBLIC_ORIGIN?.replace(/\/+$/, '');
+  return configured && /^https?:\/\/[^/\s]+$/.test(configured) ? configured : url.origin;
+}
 
 function limitParam(url: URL): number {
   const raw = url.searchParams.get('limit') ?? '20';
@@ -68,6 +75,13 @@ function createInnerApp(options: AppOptions): (request: Request) => Promise<Resp
     const empty = (status: number): Response => new Response(null, { status, headers });
     try {
       const url = new URL(request.url);
+      // ---- B4 share links and preview cards (public GET pages; no cookies, no CORS) ----
+      if (/^(\/api)?\/(r\/[^/]+|og\/[^/]+\.png)$/.test(url.pathname)) {
+        await ensureMigrated();
+        const shareOrigin = publicOriginOf(env, url);
+        const res = await handleShare(url.pathname, request.method, { db, now: now(), origin: shareOrigin, host: new URL(shareOrigin).host });
+        if (res) return res;
+      }
       const origin = request.headers.get('origin');
       const desktop = origin === DESKTOP_ORIGIN;
       const publicOrigin = env.PUBLIC_ORIGIN?.replace(/\/+$/, '');
@@ -281,6 +295,34 @@ function createInnerApp(options: AppOptions): (request: Request) => Promise<Resp
         rejectQuery(url);
         const input = duelInput(await readJson(request), KIND_LIMITS.duel.maxTicks);
         return json(await createDuel(db, identity.userId, input, now()), 201);
+      }
+      // ---- players: profile, follows, README badge (B5) ----
+      const playerRoute = /^\/players\/([^/]+?)(?:\/(follow|unfollow))?$/.exec(route);
+      if (playerRoute) {
+        const [, login, action] = playerRoute;
+        if (!action && method === 'GET') {
+          rejectQuery(url);
+          return json(await playerPage(db, login!, await viewerId(), now(), utcDate(now())));
+        }
+        if (action && method === 'POST') {
+          const identity = await requireUser();
+          rejectQuery(url);
+          objectWithKeys(await readJson(request), []);
+          return json(action === 'follow' ? await follow(db, identity.userId, login!, now()) : await unfollow(db, identity.userId, login!));
+        }
+      }
+      if (route === '/me/following' && method === 'GET') {
+        rejectQuery(url);
+        return json(await listFollowing(db, (await requireUser()).userId));
+      }
+      const badgeRoute = /^\/badge\/([^/]+)\.svg$/.exec(route);
+      if (badgeRoute && method === 'GET') {
+        rejectQuery(url);
+        const svg = await badgeFor(db, badgeRoute[1]!, utcDate(now()));
+        headers.set('Content-Type', 'image/svg+xml; charset=utf-8');
+        headers.set('Cache-Control', 'public, max-age=3600, s-maxage=3600');
+        headers.set('Content-Security-Policy', "default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'");
+        return new Response(svg, { status: 200, headers });
       }
       throw new HttpError(404, 'Not found');
     } catch (error) {

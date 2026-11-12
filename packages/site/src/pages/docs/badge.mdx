@@ -1,0 +1,26 @@
+---
+layout: ../../layouts/Docs.astro
+title: README badge and streaks
+description: Show your daily streak and best rank on your GitHub profile.
+---
+
+## Streaks
+
+Play the [daily challenge](/docs/daily/) and your streak grows by one for every UTC day you have an entry. Miss a
+whole day and the current streak starts again from zero. If you haven't played yet today, yesterday's streak is still
+alive until the day ends. Your best streak is kept.
+
+Your player page shows your current and best streak, your medals and your recent runs. You can follow other players
+from their page; the friends tab on a board then shows you and the players you follow.
+
+## The badge
+
+Add this to your GitHub profile README, with your GitHub login in place of `YOUR-LOGIN`:
+
+```md
+![Tendril streak](https://tendril.hokora.xyz/api/badge/YOUR-LOGIN.svg)
+```
+
+It shows your current streak and your best rank (for example `top 8%`) on any daily or weekly board. The badge is
+cached for an hour, so it can lag a little behind the game. An unknown login shows a grey "unknown player" badge
+instead of a broken image.
