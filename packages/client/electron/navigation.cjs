@@ -20,7 +20,7 @@ function entryURL({ devURL, packaged, smoke }) {
 const MODES = ['live', 'sandbox', 'campaign', 'daily'];
 const QUERY_KEYS = ['mode', 'ranked', 'lesson'];
 
-/** mode once, from MODES; ranked=1 only with mode=live; lesson=<slug> only with mode=campaign. */
+/** mode once, from MODES; ranked=0|1 only with mode=live; lesson=<slug> only with mode=campaign. */
 function allowedQuery(params) {
   const single = (key) => {
     const values = params.getAll(key);
@@ -32,7 +32,7 @@ function allowedQuery(params) {
   const lesson = single('lesson');
   if (mode === false || ranked === false || lesson === false) return false;
   if (mode !== null && !MODES.includes(mode)) return false;
-  if (ranked !== null && (ranked !== '1' || mode !== 'live')) return false;
+  if (ranked !== null && ((ranked !== '0' && ranked !== '1') || mode !== 'live')) return false;
   if (lesson !== null && (mode !== 'campaign' || !/^[a-z0-9-]{1,40}$/.test(lesson))) return false;
   return true;
 }
