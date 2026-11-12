@@ -15,7 +15,7 @@
     "pack": "pnpm build && pnpm --filter @tendril/client electron:pack",
     "test:electron": "pnpm --filter @tendril/client electron:smoke",
     "test:perf": "pnpm --filter @tendril/sim test:perf",
-    "test:desktop-policy": "node --test packages/client/electron/navigation.test.cjs",
+    "test:desktop-policy": "node --test packages/client/electron/navigation.test.cjs packages/client/electron/updater.test.cjs",
     "check": "pnpm lint && pnpm typecheck && pnpm test && pnpm build && pnpm test:e2e && pnpm test:electron",
     "build:web": "node scripts/build-web.mjs",
     "dev:site": "pnpm --filter @tendril/site dev"

@@ -107,3 +107,8 @@ Where `docs/PLAN.md` disagrees with this file, this file wins.
 
 ## D-025 (2026-11-12) Wave 3 parallelism
 - **Decision:** All workstreams launch at once (Rohan: "spawn as many subagents as required and finish as soon as possible"). Client agents code against CONTRACTS while sim/lang land; coordinator integrates and runs the gate.
+
+## D-026 (2026-11-12) Desktop auto-update from GitHub Releases
+- **Decision:** `electron/updater.cjs` uses electron-updater on Windows (NSIS) and Linux AppImage: check 10 s after launch and every 6 h, download in the background (player can turn that off), install on restart or quit. macOS and .deb only check the GitHub API and open the release page. The version shows as a chip in the status bar with an update panel. electron-updater is the client's only production dependency; renderer libraries moved to devDependencies because Vite bundles them.
+- **Why:** Rohan asked for auto-update and visible version info. Builds are unsigned, and Squirrel.Mac refuses unsigned updates; .deb installs need root. Windows skips signature checks when no publisherName is set; electron-updater still verifies sha512 from latest.yml.
+- **Release rule:** bump `packages/client/package.json` version before tagging `v<version>`; the workflow fails a tag that does not match. v0.1.1 and earlier have no updater, so those players update once by hand.
