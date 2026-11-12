@@ -8,7 +8,7 @@
     "build": "node ../../scripts/copy-assets.mjs && vite build",
     "preview": "vite preview --port 4173 --strictPort",
     "typecheck": "tsc --noEmit",
-    "test": "node --experimental-strip-types --test src/pending-run.test.ts",
+    "test": "node --experimental-strip-types --test src/pending-run.test.ts src/room.test.ts",
     "electron": "electron electron/main.cjs",
     "test:e2e": "playwright test --trace off",
     "electron:smoke": "node e2e/electron-smoke.mjs",

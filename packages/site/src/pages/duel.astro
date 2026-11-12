@@ -19,6 +19,7 @@ import Base from '../layouts/Base.astro';
       <p data-pending class="dim" hidden>They have not posted a score yet. You can still play the same farm.</p>
       <p class="duel-actions">
         <a class="btn primary" data-play href="/play/?mode=daily">Accept the duel</a>
+        <a class="btn" data-room href="/play/room.html" hidden>Watch everyone race</a>
       </p>
       <p class="dim">Same seed, same length. You play in the browser with no account. Sign in afterwards to race their ghost and follow each other.</p>
       <p class="dim" data-count></p>
@@ -63,6 +64,7 @@ import Base from '../layouts/Base.astro';
       $('[data-pending]').hidden = false;
     }
     $<HTMLAnchorElement>('[data-play]').href = `/play/?mode=challenge&id=${encodeURIComponent(d.id)}`;
+    if (d.entry) { const r = $<HTMLAnchorElement>('[data-room]'); r.href = `/play/room.html?id=${encodeURIComponent(d.id)}`; r.hidden = false; }
     if (d.accepted > 0) $('[data-count]').textContent = `${fmt.format(d.accepted)} ${d.accepted === 1 ? 'player has' : 'players have'} accepted this duel.`;
   }
   void main();
@@ -76,7 +78,7 @@ import Base from '../layouts/Base.astro';
   .who img { border-radius: 50%; }
   .who img[hidden] { display: none; }
   .duel-score { display: flex; align-items: center; gap: 1rem; border: 1.5px solid var(--line); border-radius: 10px; padding: 1rem; margin-bottom: 1.5rem; }
-  .duel-score[hidden], [data-pending][hidden] { display: none; }
+  .duel-score[hidden], [data-pending][hidden], [data-room][hidden] { display: none; }
   .duel-score strong { font: 700 1.9rem var(--display); }
   .duel-actions { margin: 1.5rem 0; }
 </style>
