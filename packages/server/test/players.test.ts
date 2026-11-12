@@ -38,7 +38,7 @@ let a: Login, b: Login;
 beforeEach(async () => {
   time = BASE;
   db = createDb({ url: ':memory:' });
-  app = createApp({ db, env: { TENDRIL_DEV_AUTH: '1' }, now: () => time });
+  app = createApp({ db, env: { TENDRIL_DEV_AUTH: '1' }, setupVersion: 0, now: () => time });
   a = await login('Alice');
   b = await login('Bob');
 });

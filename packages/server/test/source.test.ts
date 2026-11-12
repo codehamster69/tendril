@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { challengeSetup, createWorld, dailySeed, RULES_VERSION } from '@tendril/sim/src/index.ts';
+import { SETUP_LEGACY, challengeSetup, createWorld, dailySeed, RULES_VERSION } from '@tendril/sim/src/index.ts';
 import type { LogEntry } from '@tendril/sim/src/index.ts';
 import { createRun } from '../../lang/src/index.ts';
 import { countTokens } from '../../lang/src/tokens.ts';
@@ -26,7 +26,7 @@ const idle = 'x = 1\n';
 
 /** The log a program produces on today's daily, made the way the client makes it. */
 function logOf(source: string, id = DAILY, seed = dailySeed('2026-11-12')): LogEntry[] {
-  const run = createRun(createWorld({ id, seed }, challengeSetup('daily', seed).setup), source);
+  const run = createRun(createWorld({ id, seed }, challengeSetup('daily', seed, SETUP_LEGACY).setup), source);
   run.step(3000);
   return run.pending.filter((a) => a[0] < 3000);
 }
@@ -53,7 +53,7 @@ let ann: Login, bo: Login;
 beforeEach(async () => {
   time = BASE; verifyCalls = 0; verify = realVerifier;
   db = createDb({ url: ':memory:' });
-  app = createApp({ db, env: { TENDRIL_DEV_AUTH: '1', PUBLIC_ORIGIN: 'https://tendril.example' }, now: () => time, verifySource: (r) => (verify ? verify(r) : Promise.reject(new Error('down'))) });
+  app = createApp({ db, env: { TENDRIL_DEV_AUTH: '1', PUBLIC_ORIGIN: 'https://tendril.example' }, setupVersion: 0, now: () => time, verifySource: (r) => (verify ? verify(r) : Promise.reject(new Error('down'))) });
   ann = await login('Ann'); bo = await login('Bo');
 });
 afterEach(() => db.close());
@@ -163,7 +163,7 @@ describe('submitting a program', () => {
 
 describe('reading programs', () => {
   const put = async (who: Login, source: string, sourcePublic: boolean) => (await enter(who.token, { actions: logOf(source), source, sourcePublic })).json.entryId as string;
-  const closeIt = () => { time = BASE + DAY_MS; };
+  const closeIt = () => { time = BASE + 2 * DAY_MS; }; // closed and past the legacy grace (D2 F1)
 
   it('keeps every program hidden from others while the challenge is open', async () => {
     const id = await put(ann, daily, true);
@@ -201,7 +201,7 @@ describe('reading programs', () => {
   it('lets duel players read each other\'s published programs after both have entered', async () => {
     const duel = (await call('/duels', { token: ann.token, body: { seed: 7 } })).json.challengeId as string;
     const seed = 7;
-    const actions = (() => { const run = createRun(createWorld({ id: duel, seed }, challengeSetup('duel', seed).setup), daily); run.step(3000); return run.pending.filter((a) => a[0] < 3000); })();
+    const actions = (() => { const run = createRun(createWorld({ id: duel, seed }, challengeSetup('duel', seed, SETUP_LEGACY).setup), daily); run.step(3000); return run.pending.filter((a) => a[0] < 3000); })();
     const annEntry = (await enter(ann.token, { actions, source: daily, sourcePublic: true }, duel)).json.entryId as string;
     expect((await call(`/entries/${annEntry}/source`, { token: bo.token })).status).toBe(403);
     expect((await enter(bo.token, { actions: [] }, duel)).status).toBe(200);

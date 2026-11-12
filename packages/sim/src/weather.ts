@@ -17,7 +17,9 @@ export function ensureWeather(w: World, upTo: number): void {
     w.wrng = rand(w.wrng); t += 300 + (w.wrng % 500);
     w.wrng = rand(w.wrng);
     let kind: Segment['kind']; let len: number;
-    if (w.wrng % 4 === 0) { kind = 'frost'; w.wrng = rand(w.wrng); len = 60 + (w.wrng % 60); }
+    // Standard: 1 in 4 segments is frost. Bias -1 makes it 1 in 2, bias 1 makes it 1 in 8 (a subset of the standard ones).
+    const frostMod = w.weatherBias === -1 ? 2 : w.weatherBias === 1 ? 8 : 4;
+    if (w.wrng % frostMod === 0) { kind = 'frost'; w.wrng = rand(w.wrng); len = 60 + (w.wrng % 60); }
     else { kind = 'rain'; w.wrng = rand(w.wrng); len = 80 + (w.wrng % 120); }
     segs.push({ kind, start: t, end: t + len });
   }

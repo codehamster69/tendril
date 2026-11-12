@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { challengeSetup, createWorld, RULES_VERSION } from '@tendril/sim/src/index.ts';
+import { challengeSetup, createWorld, RULES_VERSION, SETUP_LEGACY, SETUP_VERSION } from '@tendril/sim/src/index.ts';
 import { createRun } from '../src/index.ts';
 import { countTokens, STRING_CHUNK } from '../src/tokens.ts';
 import { handleVerify, verifySecret } from '../src/vercel-verify.ts';
@@ -8,10 +8,10 @@ import { hashLog, verifySource } from '../src/verify.ts';
 import type { VerifyRequest } from '../src/verify.ts';
 
 const daily = readFileSync(new URL('../examples/daily.sprout', import.meta.url), 'utf8');
-const req = (source: string, over: Partial<VerifyRequest> = {}): VerifyRequest => ({ source, challengeId: 'd-2026-12-01', kind: 'daily', seed: 7, ticks: 3000, rulesVersion: RULES_VERSION, ...over });
+const req = (source: string, over: Partial<VerifyRequest> = {}): VerifyRequest => ({ source, challengeId: 'd-2026-12-01', kind: 'daily', seed: 7, ticks: 3000, rulesVersion: RULES_VERSION, setupVersion: SETUP_VERSION, ...over });
 /** The log a program really produces, made the way the client and CLI make it. */
 function produce(r: VerifyRequest) {
-  const run = createRun(createWorld({ id: r.challengeId, seed: r.seed }, challengeSetup(r.kind, r.seed).setup), r.source);
+  const run = createRun(createWorld({ id: r.challengeId, seed: r.seed }, challengeSetup(r.kind, r.seed, r.setupVersion).setup), r.source);
   run.step(r.ticks);
   return run.pending.filter((a) => a[0] < r.ticks);
 }
@@ -38,14 +38,22 @@ describe('verifySource', () => {
     const actions = produce(r);
     expect(actions.length).toBeGreaterThan(50);
     const v = verifySource(r);
-    expect(v).toEqual({ ok: true, tokens: countTokens(daily), logHash: hashLog(actions), actions: actions.length });
+    expect(v).toEqual({ ok: true, tokens: countTokens(daily), logHash: hashLog(actions), actions: actions.length, netWorth: expect.any(Number) });
   });
   it('matches a run the client made in uneven chunks, as the game loop does', () => {
     const r = req(daily);
-    const run = createRun(createWorld({ id: r.challengeId, seed: r.seed }, challengeSetup(r.kind, r.seed).setup), daily);
+    const run = createRun(createWorld({ id: r.challengeId, seed: r.seed }, challengeSetup(r.kind, r.seed, r.setupVersion).setup), daily);
     for (let left = r.ticks, n = 1; left > 0; n = (n * 7) % 211 + 1) { const k = Math.min(left, n); run.step(k); left -= k; }
     const chunked = hashLog(run.pending.filter((a) => a[0] < r.ticks));
     expect(verifySource(r)).toMatchObject({ ok: true, logHash: chunked });
+  });
+  it('a request without setupVersion is an old challenge (plain farm) and still verifies', () => {
+    const old = req(daily);
+    delete old.setupVersion;
+    const run = createRun(createWorld({ id: old.challengeId, seed: old.seed }, challengeSetup(old.kind, old.seed, SETUP_LEGACY).setup), daily);
+    run.step(old.ticks);
+    const hash = hashLog(run.pending.filter((a) => a[0] < old.ticks));
+    expect(verifySource(old)).toMatchObject({ ok: true, logHash: hash });
   });
   it('is deterministic and depends on the seed', () => {
     const a = verifySource(req(daily)), b = verifySource(req(daily)), c = verifySource(req(daily, { seed: 8 }));
@@ -125,5 +133,22 @@ describe('highlight', () => {
   it('highlights every shipped example without losing text', async () => {
     const { highlight } = await import('../src/highlight.ts');
     expect(highlight(daily).map((s) => s.text).join('')).toBe(daily);
+  });
+});
+
+describe('verifySource bounds (D2)', () => {
+  it('stops a memory bomb quickly and without holding much heap', () => {
+    const before = process.memoryUsage().heapUsed;
+    const started = Date.now();
+    const v = verifySource(req('big = []\nrepeat forever:\n    append big, range(100000)\n'));
+    expect(v.ok).toBe(true); // the bot stops with an error; whether the log matches is the caller's check
+    expect(Date.now() - started).toBeLessThan(3000);
+    expect(process.memoryUsage().heapUsed - before).toBeLessThan(400e6);
+  });
+  it('still runs ordinary programs under the allocation budget', () => {
+    expect(verifySource(req(daily)).ok).toBe(true);
+  });
+  it('reports absurdly nested source as a compile error, not a crash', () => {
+    expect(verifySource(req(`x = ${'('.repeat(15000)}1${')'.repeat(15000)}`))).toMatchObject({ ok: false, reason: 'compile' });
   });
 });

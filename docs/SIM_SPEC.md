@@ -344,3 +344,22 @@ v3 goldens untouched; base-price rounding cases; the blended target (fewer than 
 without prices; CAS race returns one table; epoch tests for the day before (v3, no table), the epoch day (v4, base
 table), the day after with 10+ players (derived) and with fewer than 10 (neutral); v3 row replays after migration;
 0.1.x fails cleanly on a v4 day; `challengeSetup` identical on server, client and verify; `price(item)` in Sprout.
+
+- `challengeSetup(kind, seed, version = SETUP_VERSION)` with `kind` `'daily' | 'season' | 'duel'` returns `{ ticks, setup, modifiers }`. Servers and clients must create challenge worlds through it, passing the setup version stored with the challenge (`setupVersion` in the API, `setup_v` in the database).
+  - Version `0` (`SETUP_LEGACY`): every challenge created before modifiers. `{ ticks: DAILY_TICKS (SEASON_TICKS for seasons), setup: {}, modifiers: null }`, so old entries replay exactly as before.
+  - Version `1` (`SETUP_VERSION`): the day's modifiers, drawn from the seed (below). New challenges are written with version 1.
+
+### Challenge modifiers (setup version 1)
+These add no rules and do not change `RULES_VERSION` (3) or any golden hash: they are `createWorld` setup values, plus one optional setup field, `weatherBias`, that is absent (and changes nothing) on every other world. Draws use xorshift32 seeded with `(seed ^ 0xC0DE5EED) >>> 0` (0 -> 1); each draw advances the state and takes `(state >>> 8) % n`. Order and bounds (`MODIFIER_BOUNDS`):
+
+| # | Modifier | Draw | Values | Effect |
+|---|---|---|---|---|
+| 1 | starting coins | `% 7` | 0, 10, 20, 30, 40, 50, 60 | `setup.coins` (omitted when 0) |
+| 2 | starting research | `% 3` | none, wheat (bit 1), clover (bit 2) | `setup.unlocks = 1 \| bit` (omitted for none) |
+| 3 | weather bias | `% 3` | -1 frosty, 0 standard, 1 calm | `setup.weatherBias` (omitted when 0) |
+| 4 | tick budget | `% 3` | 2400, 3000, 3600 | `ticks` (seasons always `SEASON_TICKS`; duels use the daily draw unless the creator gives a length) |
+
+- `weatherBias` (-1, 0, 1; anything else throws) only changes which weather segments are frost. The segment timings and lengths consume the same random draws. Standard: frost when `wrng % 4 === 0`. Bias -1: `wrng % 2 === 0` (about half of segments, a superset of the standard frosts). Bias 1: `wrng % 8 === 0` (about one in eight, a subset). `serialize` writes `weatherBias` only when non-zero and `deserialize` restores it.
+- Kinds share the draw: a duel made from a daily's seed gets that daily's coins, research and weather.
+- `describeModifiers(modifiers, kind)` gives the labels shown in the game header, the CLI and on the site (e.g. `30 starting coins`, `wheat researched`, `frosty weather`, `2,400 ticks`).
+- Par: when a challenge with setup version 1 is created, the server asks the verify function to run the bundled reference program (a copy of `packages/lang/examples/daily.sprout`) on that exact world and sets `par = max(PAR_MIN, floor(netWorth * PAR_PERCENT / 100))` with `PAR_PERCENT = 90`, `PAR_MIN = 60`. The reference therefore reaches par every day (a 365-day test checks it; its net worth ranges 238 to 404, so par 214 to 363). If the check cannot be made, par falls back to `DAILY_PAR` (290), and it is never recomputed for an existing challenge. Version 0 challenges keep their stored par.

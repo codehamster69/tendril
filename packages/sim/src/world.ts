@@ -38,6 +38,10 @@ export function createWorld(farm: Farm, setup?: Setup): World {
       }
       w.unlocks = setup.unlocks | 1;
     }
+    if (setup.weatherBias !== undefined) {
+      if (setup.weatherBias !== -1 && setup.weatherBias !== 0 && setup.weatherBias !== 1) throw new Error('bad setup weatherBias');
+      if (setup.weatherBias !== 0) w.weatherBias = setup.weatherBias;
+    }
   }
   addPlot(w, 0, 0);
   return w;

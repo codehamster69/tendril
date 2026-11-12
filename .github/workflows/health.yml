@@ -1,0 +1,39 @@
+# Health watch (F4). Every 30 minutes: checks the site, the daily challenge, the web game, a local replay
+# of a stored known-good log, and a canary farm. A failing run opens or updates one issue labelled `health`;
+# a passing run closes it. The script lives in scripts/health.mjs.
+#
+# Note: GitHub pauses scheduled workflows after 60 days without repository activity. F5's merges and
+# monthly release bumps are what keep this schedule alive.
+#
+# Secrets: HEALTH_CANARY_TOKEN (bearer token of a canary account). Without it the canary check is skipped.
+name: Health watch
+
+on:
+  schedule:
+    - cron: '*/30 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: health-watch
+  cancel-in-progress: false
+
+jobs:
+  check:
+    name: Health checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+      - name: Run health checks and sync the health issue
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HEALTH_CANARY_TOKEN: ${{ secrets.HEALTH_CANARY_TOKEN }}
+          HEALTH_BASE_URL: https://tendril.hokora.xyz
+        run: node --experimental-strip-types scripts/health.mjs

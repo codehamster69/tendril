@@ -1,15 +1,15 @@
 // Source check for the Arena (C3): does this program, run on this challenge, produce exactly the submitted moves?
 // Runs only in the separate verify function (api/verify.mjs). The main API function never imports this file.
 import { createHash } from 'node:crypto';
-import { challengeSetup, createWorld, RULES_VERSION } from '@tendril/sim/src/index.ts';
+import { challengeSetup, createWorld, replayWithPar, RULES_VERSION, SETUP_LEGACY } from '@tendril/sim/src/index.ts';
 import type { ChallengeKind, LogEntry } from '@tendril/sim/src/index.ts';
 import { compile } from './parser.ts';
 import { createRun } from './interpreter.ts';
 import { countTokens } from './tokens.ts';
 
-export interface VerifyRequest { source: string; challengeId: string; kind: ChallengeKind; seed: number; ticks: number; rulesVersion: number }
+export interface VerifyRequest { source: string; challengeId: string; kind: ChallengeKind; seed: number; ticks: number; rulesVersion: number; /** Absent means 0, the plain farm of challenges created before modifiers. */ setupVersion?: number }
 export type VerifyResult =
-  | { ok: true; tokens: number; logHash: string; actions: number }
+  | { ok: true; tokens: number; logHash: string; actions: number; /** End net worth of the verified run (used to set par from the reference program). */ netWorth: number }
   | { ok: false; reason: 'compile' | 'timeout' | 'rules' | 'bad'; message: string };
 
 /** SHA-256 hex of JSON.stringify(actions): the same value the server stores as entries.log_hash. */
@@ -17,6 +17,8 @@ export const hashLog = (actions: LogEntry[]): string => createHash('sha256').upd
 
 export const MAX_VERIFY_SOURCE_BYTES = 32 * 1024;
 export const VERIFY_DEADLINE_MS = 8000;
+/** Elements and characters a checked program may allocate in total. Small programs use thousands; a memory bomb reaches this in well under a second and stops with an error instead of exhausting the function. */
+export const VERIFY_ALLOCATION_BUDGET = 5_000_000;
 /** Ticks run between clock checks. One tick is bounded by the interpreter's 5,000-step budget per bot. */
 const SLICE = 4;
 
@@ -33,14 +35,18 @@ export function verifySource(req: VerifyRequest, options: VerifyOptions = {}): V
     const d = compiled.diagnostics.find((x) => x.severity === 'error') ?? compiled.diagnostics[0];
     return { ok: false, reason: 'compile', message: d ? `Line ${d.line}: ${d.message}` : 'The program does not compile' };
   }
-  const { setup } = challengeSetup(req.kind, req.seed);
+  let setup;
+  try { setup = challengeSetup(req.kind, req.seed, req.setupVersion ?? SETUP_LEGACY).setup; } catch { return { ok: false, reason: 'bad', message: 'Invalid challenge' }; }
   const world = createWorld({ id: req.challengeId, seed: req.seed }, setup);
-  const run = createRun(world, req.source);
+  const run = createRun(world, req.source, { allocationBudget: VERIFY_ALLOCATION_BUDGET });
   while (world.tick < req.ticks) {
     run.step(Math.min(SLICE, req.ticks - world.tick));
     if (world.tick < req.ticks && now() > deadline) { run.close(); return { ok: false, reason: 'timeout', message: 'The program took too long to check' }; }
   }
   const actions = run.pending.filter((a) => a[0] < req.ticks);
   run.close();
-  return { ok: true, tokens: countTokens(req.source), logHash: hashLog(actions), actions: actions.length };
+  let netWorth: number;
+  try { netWorth = replayWithPar(createWorld({ id: req.challengeId, seed: req.seed }, setup), actions, req.ticks, Number.MAX_SAFE_INTEGER).netWorth; }
+  catch { return { ok: false, reason: 'bad', message: 'The run is not a legal log' }; }
+  return { ok: true, tokens: countTokens(req.source), logHash: hashLog(actions), actions: actions.length, netWorth };
 }

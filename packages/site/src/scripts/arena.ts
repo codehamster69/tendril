@@ -1,9 +1,11 @@
 // Browser helpers shared by the home page, the boards and the player page.
 // The site is static: everything here fetches from /api at view time and fails soft.
 
+import { challengeSetup, describeModifiers, SETUP_LEGACY } from '@tendril/sim';
+
 export interface Challenge {
   id: string; kind: 'daily' | 'season' | 'duel'; number: number; seed: number; ticks: number; par: number | null;
-  opensAt: string | number; closesAt: string | number; rulesVersion: number; players: number; best: number | null;
+  opensAt: string | number; closesAt: string | number; rulesVersion: number; setupVersion?: number; players: number; best: number | null;
 }
 export interface Row {
   rank: number; entryId: string; userId?: string; login: string; displayName: string; avatarUrl?: string;
@@ -17,6 +19,11 @@ export interface Board {
 export type Medal = 'wealth' | 'speed' | 'brevity';
 
 export const fmt = new Intl.NumberFormat('en-US');
+
+/** The day's modifiers as short labels, from the same function the game and the server use. Empty for a plain farm. */
+export function modifiersOf(c: Pick<Challenge, 'kind' | 'seed' | 'setupVersion'>): string[] {
+  return describeModifiers(challengeSetup(c.kind, c.seed, c.setupVersion ?? SETUP_LEGACY).modifiers, c.kind);
+}
 
 export async function api<T>(path: string): Promise<T | null> {
   try {

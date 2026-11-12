@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { challengeSetup, createWorld, dailySeed, RULES_VERSION } from '@tendril/sim/src/index.ts';
+import { SETUP_LEGACY, challengeSetup, createWorld, dailySeed, RULES_VERSION } from '@tendril/sim/src/index.ts';
 import type { LogEntry } from '@tendril/sim/src/index.ts';
 import { createRun } from '../../lang/src/index.ts';
 import { verifySource } from '../../lang/src/verify.ts';
@@ -20,7 +20,7 @@ const SMALL: LogEntry[] = [[0, 0, 0, 1], [2, 0, 1], [5, 0, 2, 1], [7, 0, 3], [9,
 
 function logOf(source: string): LogEntry[] {
   const seed = dailySeed('2026-11-12');
-  const run = createRun(createWorld({ id: DAILY, seed }, challengeSetup('daily', seed).setup), source);
+  const run = createRun(createWorld({ id: DAILY, seed }, challengeSetup('daily', seed, SETUP_LEGACY).setup), source);
   run.step(3000);
   return run.pending.filter((a) => a[0] < 3000);
 }
@@ -54,7 +54,7 @@ let entryId: string;
 beforeEach(async () => {
   time = BASE;
   db = createDb({ url: ':memory:' });
-  app = createApp({ db, env: { TENDRIL_DEV_AUTH: '1', PUBLIC_ORIGIN: 'https://tendril.example' }, now: () => time, verifySource: async (r) => verifySource(r) });
+  app = createApp({ db, env: { TENDRIL_DEV_AUTH: '1', PUBLIC_ORIGIN: 'https://tendril.example' }, setupVersion: 0, now: () => time, verifySource: async (r) => verifySource(r) });
   author = await login('Author');
   const r = await enter(author.token, { actions: logOf(daily), source: daily, sourcePublic: true });
   expect(r.status).toBe(200);
@@ -62,7 +62,7 @@ beforeEach(async () => {
 });
 afterEach(() => db.close());
 
-const closed = () => { time = BASE + DAY_MS; };
+const closed = () => { time = BASE + 2 * DAY_MS; }; // closed and past the legacy grace (D2 F1)
 const visible = async () => (await call(`/entries/${entryId}/source`)).status === 200;
 const listed = async () => ((await call(`/challenges/${DAILY}/sources`)).json.entries as Json[]).some((e) => e.entryId === entryId);
 
@@ -196,7 +196,8 @@ describe('names shown to others', () => {
     expect((await enter((await login('Robot')).token, { actions: SMALL, authorKind: 'human', model: 'gpt-4o' })).status).toBe(422);
     for (const model of ['claude-sonnet-5-5', 'gpt-4o', 'llama3.1:8b', 'org/model_v2+x', 'a'.repeat(40)]) {
       const robot = await login('Robot');
-      const r = await enter(robot.token, { actions: SMALL, authorKind: 'model', model });
+      // A model entry must carry a published program the server can run; the idle program makes an empty log.
+      const r = await enter(robot.token, { actions: [], authorKind: 'model', model, source: 'x = 1\n', sourcePublic: true });
       expect(r.status, model).toBe(200);
       expect((await call(`/entries/${r.json.entryId}`)).json.model).toBe(model);
     }
