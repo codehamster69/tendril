@@ -35,7 +35,7 @@ function allowedQuery(params) {
   if (mode !== null && !MODES.includes(mode)) return false;
   if (ranked !== null && ((ranked !== '0' && ranked !== '1') || mode !== 'live')) return false;
   if (lesson !== null && (mode !== 'campaign' || !/^[a-z0-9-]{1,40}$/.test(lesson))) return false;
-  if (mode === 'challenge' ? id === null || !/^(?:week|[dsx]-[A-Za-z0-9-]{1,40})$/.test(id) : id !== null) return false;
+  if (mode === 'challenge' ? id === null || !/^(?:week|[dsx]-[A-Za-z0-9_-]{1,40})$/.test(id) : id !== null) return false;
   return true;
 }
 
