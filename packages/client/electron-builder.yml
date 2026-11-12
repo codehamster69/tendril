@@ -3,19 +3,23 @@ productName: Tendril
 asar: true
 npmRebuild: false
 forceCodeSigning: false
-# Prevent electron-builder's automatic dependency inclusion. Vite has bundled
-# runtime dependencies; Electron is supplied by the packaging tool itself.
+# Vite bundles all runtime dependencies into dist/, so no node_modules ship.
+# dist/ holds index.html, assets/ (chunks, workers) and models/*.glb served via app://tendril/.
 files:
   - dist/**/*
-  - electron/**/*
-  - '!electron/**/*.test.cjs'
+  - electron/*.cjs
+  - '!electron/*.test.cjs'
+  - '!**/*.map'
   - '!node_modules/**/*'
+  - '!**/node_modules/**'
+  - '!**/.env*'
 extraMetadata:
   main: electron/main.cjs
   description: A farming game powered by player-written Sprout programs.
   author: Tendril
 directories:
   output: release
+  buildResources: build
 artifactName: '${productName}-${version}-${os}-${arch}.${ext}'
 publish: null
 mac:

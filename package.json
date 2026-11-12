@@ -12,6 +12,7 @@
     "assets:copy": "node scripts/copy-assets.mjs",
     "assets:check": "node scripts/validate-assets.mjs",
     "test:e2e": "pnpm assets:copy && pnpm --filter @tendril/client test:e2e",
+    "pack": "pnpm build && pnpm --filter @tendril/client electron:pack",
     "test:electron": "pnpm --filter @tendril/client electron:smoke",
     "test:perf": "pnpm --filter @tendril/sim test:perf",
     "test:desktop-policy": "node --test packages/client/electron/navigation.test.cjs",

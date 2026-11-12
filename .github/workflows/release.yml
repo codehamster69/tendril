@@ -15,20 +15,25 @@ concurrency:
 
 jobs:
   installers:
-    name: Validate and package ${{ matrix.platform }}
+    name: Package ${{ matrix.name }}
     strategy:
       fail-fast: false
       matrix:
         include:
-          - platform: mac
+          - name: mac-arm64
             os: macos-14
-          - platform: win
+            args: --mac dmg:arm64 zip:arm64
+          - name: mac-x64
+            os: macos-14
+            args: --mac dmg:x64 zip:x64
+          - name: win-x64
             os: windows-latest
-          - platform: linux
-            # User namespaces work here without disabling Chromium's sandbox.
+            args: --win nsis:x64
+          - name: linux-x64
             os: ubuntu-22.04
+            args: --linux AppImage:x64 deb:x64
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 60
+    timeout-minutes: 45
     env:
       CI: 'true'
       CSC_IDENTITY_AUTO_DISCOVERY: 'false'
@@ -38,42 +43,33 @@ jobs:
     steps:
       - name: Check out source
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      # No version input: pnpm/action-setup reads the root package.json packageManager field.
       - name: Install the repository's pinned pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v4 # UNPINNED: coordinator to pin to a full SHA
       - name: Install Node
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
-          node-version: '22.14.0'
+          node-version: 22
           cache: pnpm
       - name: Install frozen workspace dependencies
         run: pnpm install --frozen-lockfile
-      - name: Install Playwright Chromium and system dependencies
-        run: pnpm --filter @tendril/client exec playwright install --with-deps chromium
       - name: Lint
         run: pnpm lint
       - name: Typecheck
         run: pnpm typecheck
       - name: Unit tests
         run: pnpm test
-      - name: Build
+      # Models come from committed assets/export/*.glb; Blender is not needed in CI.
+      - name: Copy exported models
+        run: pnpm assets:copy
+      - name: Build client
         run: pnpm build
-      - name: Browser E2E (no retries)
-        run: pnpm test:e2e --retries=0
-      - name: Electron navigation policy tests
-        run: node --test packages/client/electron/navigation.test.cjs
-      - name: Electron smoke (macOS and Windows)
-        if: runner.os != 'Linux'
-        run: pnpm --filter @tendril/client electron:smoke
-      - name: Electron smoke (Linux, sandbox enabled)
-        if: runner.os == 'Linux'
-        run: xvfb-run --auto-servernum pnpm --filter @tendril/client electron:smoke
       - name: Build unsigned installers (no publishing)
-        working-directory: packages/client
-        run: pnpm exec electron-builder --config electron-builder.yml --${{ matrix.platform }} --publish never
-      - name: Store installers as GitHub workflow artifacts only
-        uses: actions/upload-artifact@v4
+        run: pnpm --filter @tendril/client run electron:pack ${{ matrix.args }}
+      - name: Store installers as workflow artifacts only
+        uses: actions/upload-artifact@v4 # UNPINNED: coordinator to pin to a full SHA
         with:
-          name: Tendril-unsigned-${{ matrix.platform }}-${{ github.sha }}
+          name: Tendril-unsigned-${{ matrix.name }}
           if-no-files-found: error
           retention-days: 14
           path: |

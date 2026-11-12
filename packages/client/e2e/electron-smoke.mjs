@@ -24,6 +24,7 @@ delete env.ELECTRON_RUN_AS_NODE;
 
 const rendererErrors = [];
 const failedRequests = [];
+const modelResponses = [];
 const workers = new Set();
 const watchedPages = new WeakSet();
 function watchPage(page) {
@@ -34,6 +35,11 @@ function watchPage(page) {
     if (message.type() === 'error') rendererErrors.push(message.text());
   });
   page.on('requestfailed', (request) => failedRequests.push(`${request.url()}: ${request.failure()?.errorText}`));
+  page.on('response', (response) => {
+    const { status, url } = { status: response.status(), url: response.url() };
+    if (status >= 400) failedRequests.push(`${url}: HTTP ${status}`);
+    if (/\.glb(\?|$)/.test(url) && status === 200) modelResponses.push(url);
+  });
   page.on('worker', (worker) => workers.add(worker.url()));
 }
 
@@ -146,9 +152,10 @@ try {
   await page.locator('#electron-smoke-navigation-probe').click({ noWaitAfter: true });
   assert.equal(page.url(), entry, 'External navigation must stay on the local entry');
   assert.equal(await application.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().length), 1);
+  assert.ok(modelResponses.length > 0 && modelResponses.every((url) => url.startsWith('app://tendril/')), 'Models (.glb) must load over app://');
   assert.deepEqual(rendererErrors, [], 'Renderer errors must be empty');
   assert.deepEqual(failedRequests, [], 'No worker, wasm, model or renderer requests may fail');
-  console.log(`Electron smoke passed: sandboxed app:// entry, canvas/editor, real Sprout worker, tick ${before} -> ${await tick()}, navigation blocked.`);
+  console.log(`Electron smoke passed: sandboxed app:// entry, canvas/editor, real Sprout worker, tick ${before} -> ${await tick()}, ${modelResponses.length} .glb loaded, navigation blocked.`);
 } catch (error) {
   console.error('Electron smoke diagnostics:', {
     rendererErrors,
