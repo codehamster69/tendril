@@ -24,3 +24,6 @@
 .lesson-link.locked { opacity: .4; pointer-events: none; }
 .daily-result { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
 @media (max-width: 640px) { .achievement-grid, .research-grid { grid-template-columns: repeat(2, 1fr); } }
+.coach-steps { margin: 8px 0 8px 18px; padding: 0; color: var(--mist-2); }
+.coach-steps li.done { color: #a7d59a; text-decoration: line-through; }
+.coach-steps code { margin-left: 4px; }
