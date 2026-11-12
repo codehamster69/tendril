@@ -31,7 +31,7 @@ let farm: FarmResponse;
 
 const noNetwork: FetchFn = () => { throw new Error('network is forbidden in attack tests'); };
 // A small chunk budget keeps the rate-limit tests short; production uses CHUNK_ATTEMPTS_PER_HOUR (tested below).
-function makeApp(): void { app = createApp({ db, env, fetch: noNetwork, now: () => time, chunkAttemptsPerHour: 10 }); }
+function makeApp(): void { app = createApp({ db, env, fetch: noNetwork, setupVersion: 0, now: () => time, chunkAttemptsPerHour: 10 }); }
 
 /** Low-level call. `path` is the full path including `/api` so odd paths can be probed verbatim. */
 async function send(path: string, o: Opts = {}): Promise<Reply> {
@@ -804,7 +804,7 @@ describe('9. rate limit bypass', () => {
   };
 
   it(`production default: ${CHUNK_ATTEMPTS_PER_HOUR} attempts per hour, then 429`, async () => {
-    app = createApp({ db, env, fetch: noNetwork, now: () => time });
+    app = createApp({ db, env, fetch: noNetwork, setupVersion: 0, now: () => time });
     const stale = chunkBody([], 100, { ...farm, checkpointHash: '00000000' });
     for (let i = 0; i < CHUNK_ATTEMPTS_PER_HOUR; i++) expect((await submit(stale)).status).toBe(409);
     expect((await submit(chunkBody(GOOD, GOOD_TO))).status).toBe(429);
@@ -1222,7 +1222,7 @@ describe('12. determinism', () => {
   it('the same chunk on two fresh app instances yields the same checkpoint hash, checkpoint and net worth', async () => {
     const second = createDb({ url: ':memory:' });
     try {
-      const otherApp = createApp({ db: second, env, fetch: noNetwork, now: () => time, chunkAttemptsPerHour: 10 });
+      const otherApp = createApp({ db: second, env, fetch: noNetwork, setupVersion: 0, now: () => time, chunkAttemptsPerHour: 10 });
       const login2 = await (await otherApp(new Request('http://localhost:8787/api/dev/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ displayName: 'Twin' }) }))).json() as Login;
       // Clone the first farm (same id, seed, start time, checkpoint) into the second instance.
       const created = await otherApp(new Request('http://localhost:8787/api/farms', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${login2.token}` }, body: '{}' }));

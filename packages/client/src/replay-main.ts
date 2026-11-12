@@ -28,7 +28,7 @@ async function load(id: string): Promise<Loaded> {
   if (rep.status === 403) return { entry, sealed: true };
   if (!rep.ok) throw new Error(rep.status === 404 ? 'This run has no stored replay.' : 'Could not load the replay.');
   const data = (await rep.json()) as ReplayData;
-  return { entry, timeline: new Timeline(entry.challenge.kind, data.seed, data.ticks, data.actions) };
+  return { entry, timeline: new Timeline(entry.challenge.kind, data.seed, data.ticks, data.actions, data.setupVersion) };
 }
 
 async function main(): Promise<void> {

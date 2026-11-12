@@ -28,6 +28,8 @@ export interface AppOptions {
   chunkAttemptsPerHour?: number;
   /** Source check (C3). Absent: submissions that carry a program answer 503. Production wires the remote verify function. */
   verifySource?: SourceVerifier;
+  /** Setup version for challenges created from now on (default: current). Tests pin 0 to keep plain-farm fixtures. */
+  setupVersion?: number;
 }
 
 const DESKTOP_ORIGIN = 'app://tendril';
@@ -254,7 +256,7 @@ function createInnerApp(options: AppOptions): (request: Request) => Promise<Resp
         if (!isValidDate(body.date)) throw new HttpError(422, 'Invalid date');
         if (body.rulesVersion !== RULES_VERSION) throw new HttpError(409, 'Rules version mismatch');
         const actions = validateActions(body.actions, 0, DAILY_TICKS);
-        return json(await legacySubmit(db, identity.userId, body.date, actions, now()));
+        return json(await legacySubmit(db, identity.userId, body.date, actions, now(), options.setupVersion));
       }
 
       // ---- arena: challenges, entries, duels ----
@@ -264,13 +266,13 @@ function createInnerApp(options: AppOptions): (request: Request) => Promise<Resp
         const [, ref, sub] = challengeRoute;
         if (!sub && method === 'GET') {
           rejectQuery(url);
-          return json(await challengeInfo(db, await loadChallenge(db, ref!, now())));
+          return json(await challengeInfo(db, await loadChallenge(db, ref!, now(), options.verifySource, options.setupVersion)));
         }
         if (sub === 'entries' && method === 'POST') {
           const identity = await requireUser();
           await reserveAttempt(db, identity.userId, 'entry', now(), undefined, scale);
           rejectQuery(url);
-          const challenge = await loadChallenge(db, ref!, now());
+          const challenge = await loadChallenge(db, ref!, now(), options.verifySource, options.setupVersion);
           const input = entryInput(await readJson(request), MAX_SOURCE_BYTES);
           const limits = KIND_LIMITS[challenge.kind];
           const actions = validateActions(input.actions, 0, challenge.ticks, limits.maxActions);
@@ -280,7 +282,7 @@ function createInnerApp(options: AppOptions): (request: Request) => Promise<Resp
         }
         if (sub === 'sources' && method === 'GET') {
           rejectQuery(url, ['limit']);
-          return json(await publishedSources(db, await loadChallenge(db, ref!, now()), limitParam(url), now()));
+          return json(await publishedSources(db, await loadChallenge(db, ref!, now(), options.verifySource, options.setupVersion), limitParam(url), now()));
         }
         if (sub === 'board' && method === 'GET') {
           rejectQuery(url, ['medal', 'scope', 'author', 'limit']);
@@ -292,7 +294,7 @@ function createInnerApp(options: AppOptions): (request: Request) => Promise<Resp
           if (author !== null && author !== 'human' && author !== 'model') throw new HttpError(400, 'Invalid author');
           const viewer = await viewerId();
           if (scope === 'friends' && !viewer) throw new HttpError(401, 'Authentication required');
-          const challenge = await loadChallenge(db, ref!, now());
+          const challenge = await loadChallenge(db, ref!, now(), options.verifySource, options.setupVersion);
           return json(await board(db, challenge, { medal: medal as Medal, friends: scope === 'friends', author: (author ?? undefined) as AuthorKind | undefined, limit: limitParam(url), viewerId: viewer, now: now() }));
         }
       }
@@ -320,20 +322,20 @@ function createInnerApp(options: AppOptions): (request: Request) => Promise<Resp
         await reserveAttempt(db, identity.userId, 'duel', now(), undefined, scale);
         rejectQuery(url);
         const input = duelInput(await readJson(request), KIND_LIMITS.duel.maxTicks);
-        return json(await createDuel(db, identity.userId, input, now()), 201);
+        return json(await createDuel(db, identity.userId, input, now(), options.verifySource, options.setupVersion), 201);
       }
       const duelRoute = /^\/duels\/(x-[A-Za-z0-9_-]{8})(?:\/(accept))?$/.exec(route);
       if (duelRoute) {
         const [, ref, action] = duelRoute;
         if (!action && method === 'GET') {
           rejectQuery(url);
-          return json(await duelPage(db, await loadChallenge(db, ref!, now()), await viewerId()));
+          return json(await duelPage(db, await loadChallenge(db, ref!, now(), options.verifySource, options.setupVersion), await viewerId()));
         }
         if (action && method === 'POST') {
           const identity = await requireUser();
           rejectQuery(url);
           objectWithKeys(await readJson(request), []);
-          return json(await acceptDuel(db, await loadChallenge(db, ref!, now()), identity.userId, now()));
+          return json(await acceptDuel(db, await loadChallenge(db, ref!, now(), options.verifySource, options.setupVersion), identity.userId, now()));
         }
       }
       // ---- players: profile, follows, README badge (B5) ----

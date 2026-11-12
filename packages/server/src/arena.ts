@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from 'node:crypto';
-import { challengeSetup, createWorld, dailyNumber, dailySeed, DAILY_PAR, DAILY_TICKS, IllegalAction, replayWithPar, RULES_VERSION, SEASON_TICKS } from '@tendril/sim/src/index.ts';
+import { challengeSetup, createWorld, dailyNumber, dailySeed, DAILY_PAR, DAILY_TICKS, IllegalAction, parFromReference, replayWithPar, RULES_VERSION, SEASON_TICKS, SETUP_LEGACY, SETUP_VERSION } from '@tendril/sim/src/index.ts';
 import type { ChallengeKind, LogEntry } from '@tendril/sim/src/index.ts';
 import type { Db, Queryable } from './db.ts';
 import { DAY_MS, isValidDate, utcDate } from './game.ts';
@@ -7,6 +7,7 @@ import { hiddenSql, isHidden } from './moderation.ts';
 import { HttpError } from './validation.ts';
 import type { EntryInput } from './validation.ts';
 import type { SourceVerifier } from './verify-client.ts';
+import { REFERENCE_SOURCE } from './reference.ts';
 
 // ---- limits ----
 
@@ -60,45 +61,46 @@ export type AuthorKind = 'human' | 'model';
 export interface ChallengeRow {
   id: string; kind: ChallengeKind; number: number | null; seed: number; ticks: number; par: number | null;
   opens_at: number; closes_at: number | null; created_by: string | null; rules_version: number;
+  /** How the starting conditions derive from the seed: 0 plain farm (old challenges), 1 seed-drawn modifiers. */ setup_v: number;
   /** Players with an entry for each medal, kept by submitEntry so a board total never needs a scan. */
   n_wealth?: number; n_speed?: number; n_brevity?: number;
 }
 export interface ChallengeInfo {
   id: string; kind: ChallengeKind; number: number | null; seed: number; ticks: number; par: number | null;
-  opensAt: number; closesAt: number | null; rulesVersion: number; players: number; best: number | null;
+  opensAt: number; closesAt: number | null; rulesVersion: number; setupVersion: number; players: number; best: number | null;
 }
 
 export const isOpen = (c: ChallengeRow, now: number): boolean => now >= c.opens_at && (c.closes_at === null || now < c.closes_at);
 export const isClosed = (c: ChallengeRow, now: number): boolean => c.closes_at !== null && now >= c.closes_at;
 
-function newDailyRow(date: string): ChallengeRow {
+function newDailyRow(date: string, setupV: number): ChallengeRow {
   const seed = dailySeed(date);
   const start = Date.parse(`${date}T00:00:00Z`);
-  return { id: dailyId(date), kind: 'daily', number: dailyNumber(date), seed, ticks: challengeSetup('daily', seed).ticks, par: DAILY_PAR, opens_at: start, closes_at: start + DAY_MS, created_by: null, rules_version: RULES_VERSION };
+  return { id: dailyId(date), kind: 'daily', number: dailyNumber(date), seed, ticks: challengeSetup('daily', seed, setupV).ticks, par: DAILY_PAR, opens_at: start, closes_at: start + DAY_MS, created_by: null, rules_version: RULES_VERSION, setup_v: setupV };
 }
-function newSeasonRow(ms: number): ChallengeRow {
+function newSeasonRow(ms: number, setupV: number): ChallengeRow {
   const id = seasonId(ms);
   const seed = seasonSeed(id);
   const start = mondayOf(ms);
-  return { id, kind: 'season', number: 1 + Math.round((start - SEASON_EPOCH_MONDAY) / WEEK_MS), seed, ticks: challengeSetup('season', seed).ticks, par: DAILY_PAR, opens_at: start, closes_at: start + WEEK_MS, created_by: null, rules_version: RULES_VERSION };
+  return { id, kind: 'season', number: 1 + Math.round((start - SEASON_EPOCH_MONDAY) / WEEK_MS), seed, ticks: challengeSetup('season', seed, setupV).ticks, par: DAILY_PAR, opens_at: start, closes_at: start + WEEK_MS, created_by: null, rules_version: RULES_VERSION, setup_v: setupV };
 }
 
 /** Rows that may be created on first request: today's and yesterday's daily, this and last week's season. */
-function creatable(id: string, now: number): ChallengeRow | null {
+function creatable(id: string, now: number, setupV: number): ChallengeRow | null {
   if (id.startsWith('d-')) {
     const date = id.slice(2);
-    return isValidDate(date) && (date === utcDate(now) || date === utcDate(now - DAY_MS)) ? newDailyRow(date) : null;
+    return isValidDate(date) && (date === utcDate(now) || date === utcDate(now - DAY_MS)) ? newDailyRow(date, setupV) : null;
   }
   if (id.startsWith('s-')) {
-    for (const ms of [now, now - WEEK_MS]) if (seasonId(ms) === id) return newSeasonRow(ms);
+    for (const ms of [now, now - WEEK_MS]) if (seasonId(ms) === id) return newSeasonRow(ms, setupV);
   }
   return null;
 }
 
 async function insertChallenge(q: Queryable, c: ChallengeRow): Promise<void> {
   await q.execute(
-    'INSERT OR IGNORE INTO challenges (id, kind, number, seed, ticks, par, opens_at, closes_at, created_by, rules_version) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-    [c.id, c.kind, c.number, c.seed, c.ticks, c.par, c.opens_at, c.closes_at, c.created_by, c.rules_version],
+    'INSERT OR IGNORE INTO challenges (id, kind, number, seed, ticks, par, opens_at, closes_at, created_by, rules_version, setup_v) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    [c.id, c.kind, c.number, c.seed, c.ticks, c.par, c.opens_at, c.closes_at, c.created_by, c.rules_version, c.setup_v],
   );
 }
 
@@ -110,12 +112,13 @@ export function resolveChallengeId(ref: string, now: number): string {
 }
 
 /** Loads a challenge, creating today's daily or this week's season on first request. 404 for anything else unknown. */
-export async function loadChallenge(db: Db, ref: string, now: number): Promise<ChallengeRow> {
+export async function loadChallenge(db: Db, ref: string, now: number, verify?: SourceVerifier, setupV: number = SETUP_VERSION): Promise<ChallengeRow> {
   const id = resolveChallengeId(ref, now);
   const [found] = await db.query<ChallengeRow>('SELECT * FROM challenges WHERE id = ?', [id]);
   if (found) return found;
-  const fresh = creatable(id, now);
+  const fresh = creatable(id, now, setupV);
   if (!fresh) throw new HttpError(404, 'Challenge not found');
+  fresh.par = await referencePar(fresh, verify) ?? fresh.par;
   await insertChallenge(db, fresh);
   const [row] = await db.query<ChallengeRow>('SELECT * FROM challenges WHERE id = ?', [id]);
   return row!;
@@ -127,20 +130,34 @@ export async function challengeInfo(db: Db, c: ChallengeRow): Promise<ChallengeI
     'SELECT (SELECT n_wealth FROM challenges WHERE id = ?1) AS players, (SELECT MAX(net_worth) FROM entries WHERE challenge_id = ?1) AS best', [c.id]);
   return {
     id: c.id, kind: c.kind, number: c.number, seed: c.seed, ticks: c.ticks, par: c.par, opensAt: c.opens_at,
-    closesAt: c.closes_at, rulesVersion: c.rules_version, players: stats!.players ?? 0, best: stats!.best,
+    closesAt: c.closes_at, rulesVersion: c.rules_version, setupVersion: c.setup_v, players: stats!.players ?? 0, best: stats!.best,
   };
+}
+
+/**
+ * Par for a new challenge: 90% of what the bundled reference program earns on this exact world, measured by the
+ * separate verify function (the main function never runs programs). Null when the check cannot be made, and the
+ * caller keeps its constant fallback, so a verify outage never blocks a challenge from opening.
+ */
+export async function referencePar(c: ChallengeRow, verify: SourceVerifier | undefined): Promise<number | null> {
+  if (!verify || c.setup_v < 1) return null; // version 0 challenges keep the constant par
+  try {
+    const v = await verify({ source: REFERENCE_SOURCE, challengeId: c.id, kind: c.kind, seed: c.seed, ticks: c.ticks, rulesVersion: c.rules_version, setupVersion: c.setup_v });
+    return v.ok && typeof v.netWorth === 'number' && Number.isSafeInteger(v.netWorth) ? parFromReference(v.netWorth) : null;
+  } catch { return null; }
 }
 
 // ---- duels ----
 
 export interface DuelInput { seed: number | null; ticks: number | null }
 
-export async function createDuel(db: Db, userId: string, input: DuelInput, now: number): Promise<{ challengeId: string }> {
+export async function createDuel(db: Db, userId: string, input: DuelInput, now: number, verify?: SourceVerifier, setupV: number = SETUP_VERSION): Promise<{ challengeId: string }> {
   const seed = input.seed ?? ((randomBytes(4).readUInt32LE() >>> 0) || 1);
-  const { ticks: defaultTicks } = challengeSetup('duel', seed);
+  const { ticks: defaultTicks } = challengeSetup('duel', seed, setupV);
   const ticks = input.ticks ?? defaultTicks;
   // Only the standard length has a calibrated par, so other lengths have no Speed medal.
-  const row: ChallengeRow = { id: `x-${randomBytes(6).toString('base64url')}`, kind: 'duel', number: null, seed, ticks, par: ticks === DAILY_TICKS ? DAILY_PAR : null, opens_at: now, closes_at: null, created_by: userId, rules_version: RULES_VERSION };
+  const row: ChallengeRow = { id: `x-${randomBytes(6).toString('base64url')}`, kind: 'duel', number: null, seed, ticks, par: ticks === DAILY_TICKS ? DAILY_PAR : null, opens_at: now, closes_at: null, created_by: userId, rules_version: RULES_VERSION, setup_v: setupV };
+  row.par = await referencePar(row, verify) ?? row.par;
   await insertChallenge(db, row);
   return { challengeId: row.id };
 }
@@ -162,7 +179,7 @@ interface Replayed { netWorth: number; parTick: number | null; mosaic: string }
 
 /** Replays the log from the challenge's start. Throws 422 for an illegal log, never leaves partial state. */
 function replayLog(c: ChallengeRow, actions: LogEntry[]): Replayed {
-  const { setup } = challengeSetup(c.kind, c.seed);
+  const { setup } = challengeSetup(c.kind, c.seed, c.setup_v);
   const world = createWorld({ id: c.id, seed: c.seed }, setup);
   try {
     const result = replayWithPar(world, actions, c.ticks, c.par ?? Number.MAX_SAFE_INTEGER);
@@ -294,7 +311,7 @@ export const SOURCE_MISMATCH = 'Source does not produce this run';
 async function checkSource(c: ChallengeRow, source: string, hash: string, verify: SourceVerifier | undefined): Promise<number> {
   if (!verify) throw new HttpError(503, SOURCE_UNAVAILABLE);
   let verdict;
-  try { verdict = await verify({ source, challengeId: c.id, kind: c.kind, seed: c.seed, ticks: c.ticks, rulesVersion: c.rules_version }); }
+  try { verdict = await verify({ source, challengeId: c.id, kind: c.kind, seed: c.seed, ticks: c.ticks, rulesVersion: c.rules_version, setupVersion: c.setup_v }); }
   catch { throw new HttpError(503, SOURCE_UNAVAILABLE); }
   if (!verdict.ok) {
     if (verdict.reason === 'rules') throw new HttpError(409, 'Rules version mismatch');
@@ -505,7 +522,7 @@ export async function entrySummary(db: Db, id: string, viewerId: string | undefi
     netWorth: e.net_worth, parTick: e.par_tick, tokens: e.tokens, mosaic: e.mosaic,
     authorKind: e.author_kind, model: e.model, sourceVerified: e.source_verified === 1, sourcePublic: e.source_public === 1,
     createdAt: e.created_at, sealed: !(await replayVisible(db, c!, e, viewerId, now)),
-    challenge: { id: c!.id, kind: c!.kind, number: c!.number, seed: c!.seed, ticks: c!.ticks, par: c!.par, opensAt: c!.opens_at, closesAt: c!.closes_at, rulesVersion: c!.rules_version },
+    challenge: { id: c!.id, kind: c!.kind, number: c!.number, seed: c!.seed, ticks: c!.ticks, par: c!.par, opensAt: c!.opens_at, closesAt: c!.closes_at, rulesVersion: c!.rules_version, setupVersion: c!.setup_v },
   };
 }
 
@@ -514,7 +531,7 @@ export async function entryReplay(db: Db, id: string, viewerId: string | undefin
   const [c] = await db.query<ChallengeRow>('SELECT * FROM challenges WHERE id = ?', [e.challenge_id]);
   if (!(await replayVisible(db, c!, e, viewerId, now))) throw new HttpError(403, 'Sealed until the challenge closes');
   if (e.actions === null) throw new HttpError(404, 'No replay stored for this entry');
-  return { seed: c!.seed, ticks: c!.ticks, rulesVersion: c!.rules_version, actions: JSON.parse(e.actions) as LogEntry[] };
+  return { seed: c!.seed, ticks: c!.ticks, rulesVersion: c!.rules_version, setupVersion: c!.setup_v, kind: c!.kind, actions: JSON.parse(e.actions) as LogEntry[] };
 }
 
 /**
@@ -558,9 +575,9 @@ export async function publishedSources(db: Db, c: ChallengeRow, limit: number, n
 
 // ---- old /api/daily* routes ----
 
-export async function legacySubmit(db: Db, userId: string, date: string, actions: LogEntry[], now: number) {
+export async function legacySubmit(db: Db, userId: string, date: string, actions: LogEntry[], now: number, setupV: number = SETUP_VERSION) {
   if (date !== utcDate(now) && date !== utcDate(now - DAY_MS)) throw new HttpError(422, 'Only today or yesterday (UTC) can be submitted');
-  const c = await loadChallenge(db, dailyId(date), now);
+  const c = await loadChallenge(db, dailyId(date), now, undefined, setupV);
   const input: EntryInput = { rulesVersion: RULES_VERSION, actions, source: null, sourcePublic: false, authorKind: 'human', model: null };
   const result = await submitEntry(db, userId, c, input, actions, now, { graceMs: LEGACY_GRACE_MS, repeatOk: true });
   const [best] = await db.query<{ best: number }>('SELECT MAX(net_worth) AS best FROM entries WHERE challenge_id = ? AND user_id = ?', [c.id, userId]);
@@ -590,7 +607,7 @@ export async function moveLegacyDaily(db: Db): Promise<void> {
   if (done) return;
   const rows = await db.query<{ date: string; user_id: string; net_worth: number; achieved_at: number }>('SELECT date, user_id, net_worth, achieved_at FROM daily_entries ORDER BY date, user_id');
   await db.transaction(async (tx) => {
-    for (const date of new Set(rows.map((r) => r.date))) await insertChallenge(tx, newDailyRow(date));
+    for (const date of new Set(rows.map((r) => r.date))) await insertChallenge(tx, newDailyRow(date, SETUP_LEGACY));
     for (const r of rows) {
       const hash = `legacy:${r.date}:${r.user_id}`;
       const id = createHash('sha256').update(hash).digest('base64url').slice(0, 12);

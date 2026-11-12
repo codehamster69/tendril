@@ -1,4 +1,4 @@
-import { applyAction, challengeSetup, createWorld, deserialize, netWorth, serialize, snapshot, tickWorld } from '@tendril/sim/src/index.ts';
+import { applyAction, challengeSetup, SETUP_LEGACY, createWorld, deserialize, netWorth, serialize, snapshot, tickWorld } from '@tendril/sim/src/index.ts';
 import type { ChallengeKind, LogEntry, Snapshot, World } from '@tendril/sim/src/index.ts';
 
 export interface ReplayEntry {
@@ -6,9 +6,9 @@ export interface ReplayEntry {
   player: { login: string; displayName: string | null };
   netWorth: number;
   sealed: boolean;
-  challenge: { id: string; kind: ChallengeKind; number: number | null; seed: number; ticks: number; closesAt: string | null };
+  challenge: { id: string; kind: ChallengeKind; number: number | null; seed: number; ticks: number; closesAt: string | null; setupVersion?: number };
 }
-export interface ReplayData { seed: number; ticks: number; rulesVersion: number; actions: LogEntry[] }
+export interface ReplayData { seed: number; ticks: number; rulesVersion: number; setupVersion?: number; actions: LogEntry[] }
 
 const CHECKPOINT_EVERY = 250;
 
@@ -20,7 +20,7 @@ export class Timeline {
   private checkpoints: { tick: number; next: number; state: string }[] = [];
   private finalWorth = 0;
 
-  constructor(private kind: ChallengeKind, private seed: number, ticks: number, private actions: LogEntry[]) {
+  constructor(private kind: ChallengeKind, private seed: number, ticks: number, private actions: LogEntry[], private setupVersion: number = SETUP_LEGACY) {
     this.ticks = ticks;
     this.world = this.fresh();
     this.checkpoints.push({ tick: 0, next: 0, state: serialize(this.world) });
@@ -29,7 +29,7 @@ export class Timeline {
     this.seek(0);
   }
 
-  private fresh(): World { return createWorld({ id: 'replay', seed: this.seed }, challengeSetup(this.kind, this.seed).setup); }
+  private fresh(): World { return createWorld({ id: 'replay', seed: this.seed }, challengeSetup(this.kind, this.seed, this.setupVersion).setup); }
 
   /** Net worth at the last tick of the run, from a full re-run. */
   get finalNetWorth(): number { return this.finalWorth; }
