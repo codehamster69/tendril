@@ -286,7 +286,7 @@ export class GameLoop {
       const key = p ? `${p.bot}:${p.line}:${s.tick}` : '';
       if (p) {
         this.running = false;
-        if (key !== this.pauseKey) this.notice('info', `Paused · bot ${p.bot} is at line ${p.line}. Step line (F10) or Run to continue.`, { line: p.line, bot: p.bot });
+        if (key !== this.pauseKey) this.notice('info', `Paused · bot ${p.bot} is at line ${p.line}. Step (F10) or Run to continue.`, { line: p.line, bot: p.bot });
       }
       this.pauseKey = key;
       emit('debug', { bots: this.sim.debug, paused: p });

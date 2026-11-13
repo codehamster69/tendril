@@ -45,6 +45,18 @@ const ogImage = new URL(`/og/${/^\/404/.test(path) ? 'index' : path.replace(/^\/
           <a href="/docs/" aria-current={here('/docs') && !here('/docs/reference') ? 'page' : undefined}>Docs</a>
           <a href="/docs/reference/" aria-current={here('/docs/reference') ? 'page' : undefined}>Reference</a>
           <a href="/leaderboard/" aria-current={here('/leaderboard') ? 'page' : undefined}>Leaderboard</a>
+          <a href="/season-1/" aria-current={here('/season-1') ? 'page' : undefined}>Season 1</a>
+          <details class="menu">
+            <summary>Menu</summary>
+            <div class="menu-panel">
+              <a href="/docs/" aria-current={here('/docs') && !here('/docs/reference') ? 'page' : undefined}>Docs</a>
+              <a href="/docs/reference/" aria-current={here('/docs/reference') ? 'page' : undefined}>Reference</a>
+              <a href="/leaderboard/" aria-current={here('/leaderboard') ? 'page' : undefined}>Leaderboard</a>
+              <a href="/season-1/" aria-current={here('/season-1') ? 'page' : undefined}>Season 1</a>
+              <a href="/docs/models/">AI models</a>
+              <a href="/play/">Play in browser</a>
+            </div>
+          </details>
           <a class="btn primary small" href="/download/">Download</a>
         </nav>
       </div>
@@ -83,5 +95,24 @@ const ogImage = new URL(`/og/${/^\/404/.test(path) ? 'index' : path.replace(/^\/
   .foot p { max-width: 34rem; margin: 0; }
   .foot nav { display: flex; flex-wrap: wrap; gap: 0.5rem 1.25rem; }
   .foot a { color: var(--dim); }
-  @media (max-width: 420px) { .site-head nav a[href='/docs/reference/'], .site-head nav a[href='/leaderboard/'] { display: none; } }
+  .menu { display: none; position: relative; }
+  .menu summary { list-style: none; cursor: pointer; font-weight: 700; font-size: 0.98rem; padding: 0.4rem 0.2rem; }
+  .menu summary::-webkit-details-marker { display: none; }
+  .menu summary::after { content: ' ▾'; }
+  .menu[open] summary::after { content: ' ▴'; }
+  .menu-panel { position: absolute; right: 0; top: calc(100% + 0.5rem); min-width: 12rem; display: grid; background: var(--paper); border: 1px solid var(--line); border-radius: 12px; padding: 0.4rem; box-shadow: 0 8px 24px rgb(0 0 0 / 0.12); }
+  .site-head nav .menu-panel a:not(.btn) { padding: 0.6rem 0.75rem; border-radius: 8px; }
+  .site-head nav .menu-panel a:hover { background: color-mix(in srgb, var(--leaf) 10%, transparent); }
+  @media (max-width: 640px) {
+    .site-head nav > a:not(.btn) { display: none; }
+    .menu { display: block; }
+  }
 </style>
+<script>
+  // The phone menu is a plain <details>; close it on Escape or a click elsewhere.
+  const menu = document.querySelector<HTMLDetailsElement>('.site-head .menu');
+  if (menu) {
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && menu.open) { menu.open = false; menu.querySelector('summary')?.focus(); } });
+    document.addEventListener('click', (e) => { if (menu.open && !menu.contains(e.target as Node)) menu.open = false; });
+  }
+</script>

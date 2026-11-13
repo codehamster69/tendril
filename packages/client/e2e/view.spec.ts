@@ -447,3 +447,17 @@ test('camera stays put after a manual drag when more land is bought', async ({ p
   const a = JSON.parse(dragged!) as number[], b = JSON.parse((await canvas.getAttribute('data-camera-position'))!) as number[];
   expect(Math.hypot(...a.map((v, i) => v - b[i]!))).toBeLessThan(0.1);
 });
+
+test('keyboard: the farm takes focus and arrow keys walk the tile selection', async ({ page }) => {
+  await harness(page);
+  const canvas = page.locator('#farm-canvas');
+  await canvas.focus();
+  await page.keyboard.press('ArrowRight'); // nothing selected yet: starts at the barn
+  await page.keyboard.press('ArrowRight');
+  await page.keyboard.press('ArrowDown');
+  const tiles = await page.evaluate(() => (window as unknown as { __tiles: { x: number; y: number }[] }).__tiles.map(({ x, y }) => `${x},${y}`));
+  expect(tiles).toEqual(['0,0', '1,0', '1,1']);
+  await page.keyboard.press('ArrowLeft'); await page.keyboard.press('ArrowLeft'); await page.keyboard.press('ArrowLeft'); // stops at the edge of owned land
+  const last = await page.evaluate(() => { const t = (window as unknown as { __tiles: { x: number; y: number }[] }).__tiles; const l = t[t.length - 1]!; return `${l.x},${l.y}`; });
+  expect(last).toBe('0,1');
+});

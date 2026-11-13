@@ -81,6 +81,8 @@ for (const tab of document.querySelectorAll<HTMLButtonElement>('.deck-tabs butto
   for (const p of document.querySelectorAll<HTMLElement>('#view .deck')) p.hidden = p.id !== `deck-${tab.dataset.tab}`;
 });
 
+document.querySelector('.skip-link')?.addEventListener('click', (e) => { e.preventDefault(); editor.revealLine(1); });
+
 document.addEventListener('visibilitychange', () => { if (document.hidden && sim.latest()) void sim.flush().catch(() => {}); });
 window.addEventListener('pagehide', () => { loop.dispose(); view.dispose(); sim.dispose(); });
 window.addEventListener('pageshow', (e) => { if (e.persisted) location.reload(); });

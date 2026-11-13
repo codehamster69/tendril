@@ -130,7 +130,8 @@ export function mountArena({ loop, api, challenge: c }: { loop: GameLoop; api: F
   const head = el('header', { id: 'arena-head' }, el('span', { class: 'eyebrow', text: title }), el('span', { class: 'arena-head-actions' }, fold, runEnd));
   const mods = describeModifiers(setupOf(c).modifiers, c.kind);
   const modLine = mods.length ? el('p', { id: 'arena-mods', title: "Today's modifiers", text: `Today: ${mods.join(' · ')}` }) : null;
-  const stats = el('p', { id: 'arena-stats' }, 'Time left ', left, ' · Score to beat ', beat);
+  // Practice challenges have no deadline, so they say that instead of "Time left open".
+  const stats = el('p', { id: 'arena-stats' }, c.closesAt === null ? 'No deadline in practice' : 'Time left ', left, ' · Score to beat ', beat);
   const result = el('section', { id: 'arena-result', class: 'daily-result', hidden: '' });
   const marketEl = marketPanel(c);
   const body = el('div', { id: 'arena-body' }, publishBox(), modelBox(), el('h3', { text: `One seed. ${c.ticks.toLocaleString('en-US')} ticks. Your best program.` }), ...(modLine ? [modLine] : []), ...(marketEl ? [marketEl] : []), stats, result);
@@ -139,7 +140,7 @@ export function mountArena({ loop, api, challenge: c }: { loop: GameLoop; api: F
   fold.addEventListener('click', () => { const open = body.hidden; body.hidden = !open; fold.setAttribute('aria-expanded', String(open)); fold.textContent = open ? 'Hide details' : 'Show details'; });
 
   const draw = (): void => {
-    left.textContent = c.closesAt === null ? 'open' : c.closesAt <= Date.now() ? 'closed' : clock(c.closesAt - Date.now());
+    left.textContent = c.closesAt === null ? '' : c.closesAt <= Date.now() ? 'closed' : clock(c.closesAt - Date.now());
     const target = c.best ?? c.par;
     beat.textContent = target === null ? '—' : `${target.toLocaleString('en-US')} coins`;
   };
@@ -148,7 +149,7 @@ export function mountArena({ loop, api, challenge: c }: { loop: GameLoop; api: F
 
   let signedIn = signedInHint();
   window.addEventListener('tendril:account', (event) => { signedIn = !!(event as CustomEvent<{ profile: unknown }>).detail.profile; });
-  window.addEventListener('tendril:snapshot', (event) => { if ((event as CustomEvent<Snapshot>).detail.tick < c.ticks) result.hidden = true; });
+  window.addEventListener('tendril:snapshot', (event) => { if ((event as CustomEvent<Snapshot>).detail.tick < c.ticks) { if (!result.hidden && marketEl instanceof HTMLDetailsElement) marketEl.open = true; result.hidden = true; } });
   window.addEventListener('tendril:scenario-end', (event) => { void showResult((event as CustomEvent<{ snapshot: Snapshot }>).detail.snapshot); });
 
   async function showResult(snapshot: Snapshot): Promise<void> {
@@ -156,6 +157,7 @@ export function mountArena({ loop, api, challenge: c }: { loop: GameLoop; api: F
     const local = localResult(c, actions);
     let entry: (EntryResult & { program: ProgramStatus }) | null = null;
     const duel = createDuelPanel(api, c, () => actions);
+    if (marketEl instanceof HTMLDetailsElement) marketEl.open = false; // the result needs the room; the prices reopen on the next run
     let note = signedIn ? 'Submitting…' : 'Saved on this device. Sign in to submit this run and see your rank.';
     const render = (): void => {
       const facts = el('p', { id: 'arena-facts' },

@@ -143,7 +143,7 @@ export function createEditor(container: HTMLElement, storageKey: string, fallbac
   const ed = monaco.editor.create(container, {
     value: load(), language: LANG, theme: 'greenhouse', ariaLabel: 'Sprout program for your farm bots',
     fontFamily: 'ui-monospace, "SF Mono", SFMono-Regular, Menlo, monospace', fontLigatures: false,
-    padding: { top: 14, bottom: 12 }, renderLineHighlight: 'all', automaticLayout: true, minimap: { enabled: false },
+    padding: { top: 14, bottom: 12 }, renderLineHighlight: 'all', automaticLayout: true, wordWrap: 'on', wrappingIndent: 'deepIndent', minimap: { enabled: false },
     fontSize: 13.5, lineHeight: 21, scrollBeyondLastLine: false, glyphMargin: true, tabSize: 4, insertSpaces: true,
     detectIndentation: false, lineDecorationsWidth: 14, smoothScrolling: true, cursorBlinking: 'smooth',
     guides: { indentation: true }, bracketPairColorization: { enabled: true },

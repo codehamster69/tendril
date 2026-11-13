@@ -25,6 +25,9 @@ Arena = Daily and Season tabs (web and desktop). Duel = Challenge a friend on a 
 - Not verifiable here: real Electron window, signed-in flows against a live server, the room page on a phone.
 
 ## Open (priority order; numbering restarts)
+
+**All items below fixed on 2026-11-13** (thread "Polish remaining UI rough edges"): 4 stage min height 250 and deck min 150; 5 reference shows commands as written (`move direction`); 6 toolbar labels Step and +100; 7 editor word wrap; 8 site Menu on phones plus Season 1 in the header; 9 tabs `aria-controls`, skip link, farm canvas focusable with arrow keys and a screen reader announcement; 10 caption reworded; 11 practice says "No deadline in practice"; 12 Season 1 in header and AI models in the menu; pass-2 market table folds when a result shows.
+
 4. **Farm instruments panel is cramped at 800 px height** (medium). Farm, Research and Achievements show about one row. The 3D view takes the space; consider a resizable split or a smaller default stage.
 5. **Reference shows `move(direction)` but the language is `move east`** (low, copy). Signature style and the Insert text disagree; show the pseudocode form first.
 6. **Toolbar wraps to two rows in challenge modes** (low). Step line, +100 ticks and Speed push Reset and Reference down. Group the debug buttons or shorten labels.
