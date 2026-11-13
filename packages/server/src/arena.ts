@@ -604,18 +604,18 @@ export interface SeasonSummary {
   winners: Record<Medal, BoardRow | null>;
 }
 
-/** Closed seasons that had at least one entry, newest first, with the first-place entry of each medal. */
+/** Closed seasons that had at least one human entry, newest first, with the first-place human entry of each medal. Models have their own board. */
 export async function hallOfFame(db: Db, now: number, limit: number): Promise<{ seasons: SeasonSummary[] }> {
   const closed = await db.query<ChallengeRow & { players: number }>(
-    `SELECT c.*, (SELECT COUNT(DISTINCT e.user_id) FROM entries e WHERE e.challenge_id = c.id) AS players
+    `SELECT c.*, (SELECT COUNT(DISTINCT e.user_id) FROM entries e WHERE e.challenge_id = c.id AND e.author_kind = 'human') AS players
        FROM challenges c WHERE c.kind = 'season' AND c.closes_at IS NOT NULL AND c.closes_at <= ?
-        AND EXISTS (SELECT 1 FROM entries e WHERE e.challenge_id = c.id) ORDER BY c.opens_at DESC LIMIT ?`,
+        AND EXISTS (SELECT 1 FROM entries e WHERE e.challenge_id = c.id AND e.author_kind = 'human') ORDER BY c.opens_at DESC LIMIT ?`,
     [now, limit]);
   const seasons: SeasonSummary[] = [];
   for (const c of closed) {
     const winners = {} as SeasonSummary['winners'];
     for (const medal of ['wealth', 'speed', 'brevity'] as Medal[]) {
-      const { sql, args } = rankedCte(medal, c.id, { friends: false });
+      const { sql, args } = rankedCte(medal, c.id, { friends: false, author: 'human' });
       const [top] = await db.query<RankedRow>(`${sql} ${RANKED_SELECT} ORDER BY r.rank LIMIT 1`, args);
       winners[medal] = top ? boardRow(top) : null;
     }

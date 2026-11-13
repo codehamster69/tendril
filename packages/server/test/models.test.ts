@@ -1,4 +1,5 @@
 // D1: the humans vs models board. A model entry must carry a program the server ran and must publish it.
+import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { SETUP_LEGACY, challengeSetup, createWorld, dailySeed, BASE_RULES_VERSION } from '@tendril/sim/src/index.ts';
@@ -134,5 +135,26 @@ describe('the humans vs models board filter', () => {
 
   it('rejects an unknown author filter', async () => {
     for (const a of ['robot', 'Model', '', 'human,model']) expect((await call(`/challenges/${DAILY}/board?author=${encodeURIComponent(a)}`)).status).toBe(400);
+  });
+});
+
+describe('the scheduled model runner token', () => {
+  const token = 'r'.repeat(43);
+  const hash = createHash('sha256').update(token).digest('hex');
+  const build = (env: Record<string, string | undefined>) => createApp({ db, env: { PUBLIC_ORIGIN: 'https://tendril.example', ...env }, setupVersion: 0, now: () => BASE, verifySource: async (r) => verifySource(r) });
+
+  it('signs in as the fixed robot account when MODEL_RUNNER_TOKEN_SHA256 matches, and enters a model run', async () => {
+    app = build({ MODEL_RUNNER_TOKEN_SHA256: hash });
+    const me = await call('/me', { token });
+    expect(me.status).toBe(200);
+    expect(JSON.stringify(me.json)).toContain('tendril-models');
+    expect((await enter(token, asModel(daily))).status).toBe(200);
+    expect((await call(`/challenges/${DAILY}/board?author=model`)).json.entries[0]).toMatchObject({ displayName: 'tendril-models', authorKind: 'model' });
+  });
+  it('does nothing when unset, malformed, or for a different token', async () => {
+    for (const env of [{}, { MODEL_RUNNER_TOKEN_SHA256: 'nothex' }, { MODEL_RUNNER_TOKEN_SHA256: hash.replace(/^./, 'f') }]) {
+      app = build(env);
+      expect((await call('/me', { token })).status).toBe(401);
+    }
   });
 });

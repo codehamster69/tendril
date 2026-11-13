@@ -62,6 +62,23 @@ export async function createSession(ctx: Ctx, userId: string): Promise<string> {
   return token;
 }
 
+/**
+ * The scheduled model runner (.github/workflows/model-runs.yml) signs in with a long-lived token that never expires, because
+ * session tokens last 30 days and nobody should have to renew a robot. Only the token's SHA-256 is stored, in
+ * MODEL_RUNNER_TOKEN_SHA256. With the variable unset this does nothing. The account is the fixed user below.
+ */
+export const RUNNER_USER_ID = 'model-runner';
+export const RUNNER_LOGIN = 'tendril-models';
+function isRunnerToken(env: Env, token: string): boolean {
+  const want = env.MODEL_RUNNER_TOKEN_SHA256;
+  if (!want || !/^[0-9a-f]{64}$/.test(want)) return false;
+  return timingSafeEqual(Buffer.from(sha256(token), 'hex'), Buffer.from(want, 'hex'));
+}
+async function runnerUser(ctx: Ctx): Promise<string> {
+  await ctx.db.execute('INSERT INTO users (id, github_id, login, display_name, avatar_url, created_at) VALUES (?, NULL, ?, ?, NULL, ?) ON CONFLICT (id) DO NOTHING', [RUNNER_USER_ID, RUNNER_LOGIN, RUNNER_LOGIN, ctx.now()]);
+  return RUNNER_USER_ID;
+}
+
 /** Bearer wins over the cookie. A malformed or unknown Bearer token never falls back to the cookie. */
 export async function authenticate(ctx: Ctx, request: Request, allowCookie: boolean): Promise<Identity | null> {
   const authorization = request.headers.get('authorization');
@@ -74,6 +91,7 @@ export async function authenticate(ctx: Ctx, request: Request, allowCookie: bool
     via = 'cookie';
   }
   if (!token || !TOKEN_PATTERN.test(token)) return null;
+  if (via === 'bearer' && isRunnerToken(ctx.env, token)) return { userId: await runnerUser(ctx), via };
   const rows = await ctx.db.query<{ user_id: string }>('SELECT user_id FROM sessions WHERE token_hash = ? AND expires_at > ?', [sha256(token), ctx.now()]);
   return rows[0] ? { userId: rows[0].user_id, via } : null;
 }
