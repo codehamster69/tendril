@@ -86,7 +86,7 @@ jobs:
       - name: Build unsigned installers (no publishing)
         run: pnpm --filter @tendril/client run electron:pack ${{ matrix.args }}
       - name: Store installers as workflow artifacts only
-        uses: actions/upload-artifact@v4 # UNPINNED: coordinator to pin to a full SHA
+        uses: actions/upload-artifact@v7 # UNPINNED: coordinator to pin to a full SHA
         with:
           name: Tendril-unsigned-${{ matrix.name }}
           if-no-files-found: error
