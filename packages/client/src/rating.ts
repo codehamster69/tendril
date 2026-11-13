@@ -16,9 +16,9 @@ export function contestLabel(l: Pick<LatestRating, 'challengeId' | 'kind'>): str
   return m ? `daily ${Number(m[3])} ${['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][Number(m[2]) - 1]}` : 'daily';
 }
 
-/** Line on the result panel: is this run on course to be rated? Null when the challenge is never rated (duels, practice) or the player is signed out. */
+/** Line on the result panel: is this run on course to be rated? Null when the challenge is never rated (duels) or the player is signed out. */
 export function rateLine(c: { kind: string; number: number | null }, signedIn: boolean, parTick: number | null): string | null {
-  if (!signedIn || (c.kind !== 'daily' && c.kind !== 'season') || c.number === null || c.number <= 0) return null;
+  if (!signedIn || (c.kind !== 'daily' && c.kind !== 'season') || c.number === null) return null;
   return parTick !== null
     ? 'On course to be rated: you reached par, so this run counts when the day closes.'
     : 'Not on course to be rated: par was not reached. A run below par is never rated, so it costs you nothing.';

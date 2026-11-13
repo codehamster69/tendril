@@ -7,6 +7,7 @@ const path = Astro.url.pathname;
 const here = (p: string) => (p === '/' ? path === '/' : path.startsWith(p));
 // Social card drawn at build time by scripts/og.mjs (keep this path rule in step with ogPath() there).
 const canonical = new URL(path, Astro.site);
+const signIn = `/api/auth/github?return=${encodeURIComponent(path)}`;
 const ogImage = new URL(`/og/${/^\/404/.test(path) ? 'index' : path.replace(/^\/+|\/+$/g, '') || 'index'}.png`, Astro.site);
 ---
 <!doctype html>
@@ -46,6 +47,7 @@ const ogImage = new URL(`/og/${/^\/404/.test(path) ? 'index' : path.replace(/^\/
           <a href="/docs/reference/" aria-current={here('/docs/reference') ? 'page' : undefined}>Reference</a>
           <a href="/leaderboard/" aria-current={here('/leaderboard') ? 'page' : undefined}>Leaderboard</a>
           <a href="/season-1/" aria-current={here('/season-1') ? 'page' : undefined}>Season 1</a>
+          <a data-me href={signIn}>Sign in</a>
           <details class="menu">
             <summary>Menu</summary>
             <div class="menu-panel">
@@ -55,6 +57,7 @@ const ogImage = new URL(`/og/${/^\/404/.test(path) ? 'index' : path.replace(/^\/
               <a href="/season-1/" aria-current={here('/season-1') ? 'page' : undefined}>Season 1</a>
               <a href="/docs/models/">AI models</a>
               <a href="/play/">Play in browser</a>
+              <a data-me href={signIn}>Sign in</a>
             </div>
           </details>
           <a class="btn primary small" href="/download/">Download</a>
@@ -62,6 +65,20 @@ const ogImage = new URL(`/og/${/^\/404/.test(path) ? 'index' : path.replace(/^\/
       </div>
     </header>
     <main id="main"><slot /></main>
+    <script>
+      // Signed in: the header links to your own profile. Signed out: it links to GitHub sign-in.
+      fetch('/api/me', { headers: { accept: 'application/json' } })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((d: { profile?: { login?: string } } | null) => {
+          const login = d?.profile?.login;
+          if (!login) return;
+          document.querySelectorAll<HTMLAnchorElement>('[data-me]').forEach((a) => {
+            a.href = `/u/?login=${encodeURIComponent(login)}`;
+            a.textContent = 'My profile';
+          });
+        })
+        .catch(() => {});
+    </script>
     <footer class="site-foot">
       <div class="wrap foot">
         <p>Tendril is a farming game you play by writing code. Your programs run on your machine; the server only checks the moves.</p>
