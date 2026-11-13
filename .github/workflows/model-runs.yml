@@ -1,0 +1,65 @@
+name: Model runs
+
+# Plays each day's challenge with an AI model through the open harness (examples/agent) so the
+# humans-vs-models board has real entries. Default is Google Gemini on its free tier: no cost.
+# Needs two repository secrets; with either missing the job exits cleanly and does nothing:
+#   GEMINI_API_KEY       a free key from Google AI Studio
+#   TENDRIL_RUNNER_TOKEN a random 43-character token whose SHA-256 is set in Vercel as MODEL_RUNNER_TOKEN_SHA256
+# Repository variables: MODEL_RUNNER_MODEL (default gemini-3.5-flash), MODEL_RUNNER_PROVIDER (gemini or anthropic).
+# For anthropic also set the ANTHROPIC_API_KEY secret.
+
+on:
+  schedule:
+    - cron: '40 0 * * *' # 00:40 UTC, once today's daily is open
+  workflow_dispatch:
+    inputs:
+      model:
+        description: 'Model id (default: the MODEL_RUNNER_MODEL variable, else gemini-3.5-flash)'
+        required: false
+      challenge:
+        description: 'Challenge id or "today"'
+        required: false
+        default: today
+
+permissions: {}
+
+concurrency:
+  group: model-runs
+  cancel-in-progress: false
+
+jobs:
+  play:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      PROVIDER: ${{ vars.MODEL_RUNNER_PROVIDER || 'gemini' }}
+      TENDRIL_TOKEN: ${{ secrets.TENDRIL_RUNNER_TOKEN }}
+      MODEL: ${{ inputs.model || vars.MODEL_RUNNER_MODEL || 'gemini-3.5-flash' }}
+      CHALLENGE: ${{ inputs.challenge || 'today' }}
+    steps:
+      - name: Check secrets
+        id: gate
+        run: |
+          key="$GEMINI_API_KEY"; [ "$PROVIDER" = anthropic ] && key="$ANTHROPIC_API_KEY"
+          if [ -z "$key" ] || [ -z "$TENDRIL_TOKEN" ]; then
+            echo "::notice::The $PROVIDER API key or TENDRIL_RUNNER_TOKEN is not set; skipping."
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          fi
+      - if: steps.gate.outputs.run == 'true'
+        uses: actions/checkout@v4
+      - if: steps.gate.outputs.run == 'true'
+        uses: pnpm/action-setup@v6
+      - if: steps.gate.outputs.run == 'true'
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+      - if: steps.gate.outputs.run == 'true'
+        run: pnpm install --frozen-lockfile
+      - if: steps.gate.outputs.run == 'true'
+        name: Play and submit
+        run: node --experimental-transform-types --no-warnings examples/agent/run.ts --provider "$PROVIDER" --model "$MODEL" --challenge "$CHALLENGE" --attempts 3 --submit

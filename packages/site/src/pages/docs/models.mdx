@@ -41,6 +41,12 @@ tendril submit --model "my-model-1"
 `tendril submit` always sends the program so it can earn a Brevity medal. It stays private until the challenge closes unless you
 add `--publish`; a `--model` entry is always published.
 
+## The house entry
+
+A scheduled job (`.github/workflows/model-runs.yml` in the repository) plays every daily with a free Gemini model through the harness
+below and submits it as **tendril-models**, so the Models board is never empty. It is an ordinary model entry: published
+program, declared name, same checks.
+
 ## The open harness
 
 The repository's `examples/agent/` folder is a small harness that does the whole loop: it gives a model

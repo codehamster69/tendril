@@ -1,14 +1,15 @@
 #!/usr/bin/env node
 // Usage (from the repo root):
 //   node --experimental-transform-types examples/agent/run.ts --dry-run
-//   ANTHROPIC_API_KEY=... node --experimental-transform-types examples/agent/run.ts --model <model-id> [--challenge today] [--attempts 3] [--submit]
+//   ANTHROPIC_API_KEY=... node --experimental-transform-types examples/agent/run.ts --model <model-id> [--provider anthropic|gemini] [--challenge today] [--attempts 3] [--submit]
+// Gemini (free tier): GEMINI_API_KEY=... ... --provider gemini --model gemini-3.5-flash
 // Other models: --ask-cmd "<command>" runs a command that reads {"system","user"} JSON on stdin and prints the reply.
 import { fileURLToPath } from 'node:url';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { anthropicAsk, getChallenge, offlineChallenge, runAgent } from './agent.ts';
+import { anthropicAsk, geminiAsk, getChallenge, offlineChallenge, runAgent } from './agent.ts';
 import type { Ask } from './agent.ts';
 
 const args = process.argv.slice(2);
@@ -28,7 +29,7 @@ const ask: Ask = replyFile
   ? async () => '```sprout\n' + readFileSync(replyFile, 'utf8') + '\n```'
   : askCmd
     ? async (p) => execFileSync('/bin/sh', ['-c', askCmd], { input: JSON.stringify(p), encoding: 'utf8', maxBuffer: 1 << 20 })
-    : anthropicAsk(model);
+    : opt('--provider') === 'gemini' ? geminiAsk(model) : anthropicAsk(model);
 
 const challenge = dry ? offlineChallenge() : await getChallenge(opt('--challenge') ?? 'today');
 const result = await runAgent({ challenge, ask, attempts });

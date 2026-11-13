@@ -81,4 +81,18 @@ export function anthropicAsk(model: string, apiKey = process.env.ANTHROPIC_API_K
   };
 }
 
+/** Google Gemini (the free tier is enough for a few calls a day); needs GEMINI_API_KEY from Google AI Studio. */
+export function geminiAsk(model: string, apiKey = process.env.GEMINI_API_KEY): Ask {
+  if (!apiKey) throw new Error('Set GEMINI_API_KEY, or use --dry-run, --reply-file or --ask-cmd.');
+  return async ({ system, user }) => {
+    const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
+      method: 'POST', headers: { 'content-type': 'application/json', 'x-goog-api-key': apiKey },
+      body: JSON.stringify({ systemInstruction: { parts: [{ text: system }] }, contents: [{ role: 'user', parts: [{ text: user }] }] }),
+    });
+    if (!r.ok) throw new Error(`Model call failed: ${r.status} ${(await r.text()).slice(0, 200)}`);
+    const json = (await r.json()) as { candidates?: { content?: { parts?: { text?: string }[] } }[] };
+    return (json.candidates?.[0]?.content?.parts ?? []).map((p) => p.text ?? '').join('');
+  };
+}
+
 export { getChallenge };

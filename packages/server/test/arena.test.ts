@@ -466,6 +466,15 @@ describe('GET /seasons (Hall of Fame)', () => {
     expect((await call('/seasons?limit=0')).status).toBe(400);
     expect((await call('/seasons?x=1')).status).toBe(400);
   });
+
+  it('counts humans only: a season with only model entries is not listed, and models never win a medal', async () => {
+    await enter('s-2026-W46', SMALL);
+    await db.execute("UPDATE entries SET author_kind = 'model', model = 'test-model-1'");
+    time = Date.UTC(2026, 10, 17, 9);
+    expect((await call('/seasons')).json).toEqual({ seasons: [] });
+    await db.execute("UPDATE entries SET author_kind = 'human', model = NULL");
+    expect((await call('/seasons')).json.seasons).toHaveLength(1);
+  });
 });
 
 describe('size caps', () => {
