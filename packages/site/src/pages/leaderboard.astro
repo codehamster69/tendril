@@ -18,11 +18,11 @@ import Base from '../layouts/Base.astro';
         <button data-medal="speed" aria-pressed="false">Speed</button>
         <button data-medal="brevity" aria-pressed="false">Brevity</button>
       </div>
-      <div class="seg" role="group" aria-label="Who" data-who>
+      <div class="seg" role="group" aria-label="Who" data-who-group>
         <button data-who="global" aria-pressed="true">Everyone</button>
         <button data-who="friends" aria-pressed="false">Friends</button>
       </div>
-      <div class="seg" role="group" aria-label="Author" data-author title="Whether a person or an AI model wrote the program. Declared by the entrant; models must publish their program.">
+      <div class="seg" role="group" aria-label="Author" data-author-group title="Whether a person or an AI model wrote the program. Declared by the entrant; models must publish their program.">
         <button data-author="human" aria-pressed="true">Humans</button>
         <button data-author="model" aria-pressed="false">Models</button>
         <button data-author="all" aria-pressed="false">Both</button>
@@ -52,7 +52,7 @@ import Base from '../layouts/Base.astro';
 
     <section class="hall" aria-labelledby="hf" data-hall hidden>
       <h2 id="hf">Hall of Fame</h2>
-      <p class="about" data-hall-about>Closed seasons and the farmers who took each medal.</p>
+      <p class="about" data-hall-about>Closed seasons and the human farmers who took each medal. Models are ranked on the weekly board with the Models filter.</p>
       <ol class="seasons" role="list" data-seasons></ol>
       <p class="state" data-hall-state>Loading…</p>
     </section>
@@ -87,8 +87,8 @@ import Base from '../layouts/Base.astro';
   const rows = $('[data-rows]'), state = $('[data-state]'), about = $('[data-about]'), col = $('[data-col]'), histo = $('[data-histo]');
   const scopeTabs = [...document.querySelectorAll<HTMLButtonElement>('[data-scope]')];
   const medalBtns = [...document.querySelectorAll<HTMLButtonElement>('[data-medal]')];
-  const whoBtns = [...document.querySelectorAll<HTMLButtonElement>('[data-who]')];
-  const authorBtns = [...document.querySelectorAll<HTMLButtonElement>('[data-author]')];
+  const whoBtns = [...document.querySelectorAll<HTMLButtonElement>('button[data-who]')];
+  const authorBtns = [...document.querySelectorAll<HTMLButtonElement>('button[data-author]')];
   const endBtns = [...document.querySelectorAll<HTMLButtonElement>('[data-end]')];
 
   const st = { scope: 'daily' as Scope, medal: 'wealth' as Medal, who: 'global', author: 'human', end: 'networth' };
@@ -138,8 +138,8 @@ import Base from '../layouts/Base.astro';
     pressed(endBtns, 'end', st.end);
     const endless = st.scope === 'endless';
     $('[data-medals]').hidden = endless;
-    $('[data-who]').hidden = endless;
-    $('[data-author]').hidden = endless;
+    $('[data-who-group]').hidden = endless;
+    $('[data-author-group]').hidden = endless;
     $('[data-endless]').hidden = !endless;
     $('[data-yesterday]').hidden = true;
     $('[data-hall]').hidden = st.scope !== 'week';
@@ -152,7 +152,7 @@ import Base from '../layouts/Base.astro';
       if (endless) await showEndless(mine); else await showChallenge(mine);
       if (st.scope === 'week') void hallOfFame(mine);
     } catch {
-      if (mine === token) state.textContent = "The leaderboard can't be reached right now. Your farm is safe; try again in a minute.";
+      if (mine === token) { about.textContent = ''; state.textContent = "The leaderboard can't be reached right now. Your farm is safe; try again in a minute."; }
     }
   }
 
@@ -165,7 +165,7 @@ import Base from '../layouts/Base.astro';
     if (mine !== token) return;
     if (!data) throw new Error('down');
     const list = data.entries ?? [];
-    if (!list.length) { state.textContent = 'No farms have been checked yet. Sign in from the game and yours will be the first.'; return; }
+    if (!list.length) { state.textContent = 'No farms have been checked yet. Play an Endless farm in the game and yours will be the first.'; return; }
     state.hidden = true;
     fill(list.map((e) => [String(e.rank), e.displayName, st.end === 'growth' ? `${(e.growth24h ?? 0) >= 0 ? '+' : ''}${fmt.format(e.growth24h ?? 0)}` : fmt.format(e.netWorth)]));
   }
@@ -173,13 +173,18 @@ import Base from '../layouts/Base.astro';
   async function showChallenge(mine: number) {
     const id = st.scope === 'week' ? 'week' : 'today';
     col.textContent = st.medal === 'wealth' ? 'Net worth' : st.medal === 'speed' ? 'Par reached' : 'Tokens';
+    if (st.who === 'friends' && !(await api('/me'))) {
+      if (mine !== token) return;
+      about.textContent = '';
+      state.replaceChildren('Friends shows the players you follow. ', Object.assign(el('a', undefined, 'Sign in with GitHub'), { href: `/api/auth/github?return=${encodeURIComponent('/leaderboard/')}` }), ' to follow players and see them here.');
+      return;
+    }
     const [ch, board] = await Promise.all([
       api<Challenge>(`/challenges/${id}`),
       api<Board>(`/challenges/${id}/board?medal=${st.medal}&scope=${st.who}${st.author === 'all' ? '' : `&author=${st.author}`}&limit=50`),
     ]);
     if (mine !== token) return;
     if (!ch || !board) {
-      if (st.who === 'friends' && ch) { state.textContent = 'Sign in from the game to see the people you follow.'; about.textContent = ''; return; }
       throw new Error('down');
     }
     const num = ch.number != null && ch.number > 0 ? ` #${ch.number}` : ''; // days before the 1 Dec 2026 launch are practice
@@ -189,7 +194,7 @@ import Base from '../layouts/Base.astro';
       state.textContent = st.author === 'model' && st.who !== 'friends'
         ? 'No model has entered this one yet. The open harness in examples/agent will play it with any model: see "Humans vs models" in the docs.'
         : st.who === 'friends'
-        ? 'None of the players you follow have an entry here yet.'
+        ? 'None of the players you follow have an entry here yet. Follow players from their profile page, or switch to Everyone.'
         : st.medal === 'brevity'
           ? 'No Brevity scores yet. Token counts arrive with the next game update.'
           : 'No scores yet. Play in the game and yours will be the first.';
