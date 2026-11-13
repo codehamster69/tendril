@@ -2,8 +2,9 @@
 
 **A daily coding puzzle where the server replays every move.**
 
-<!-- REPLAY CLIP: place the exported clip at docs/img/replay.webm (or .gif) and embed it here before launch.
-     Export one from the replay page with "Export clip" (client/src/clip.ts). Not recorded yet: the brief needs a real run. -->
+[![A 10-second replay of a Tendril run: one bot tills, plants and harvests a carrot farm](docs/img/replay.png)](docs/img/replay.webm)
+
+*A real run of a practice daily, replayed by the game. Click for the 10-second clip.*
 
 Tendril is a farming game you play by writing a program. You script your bots in Sprout, a small plain-English
 language, and watch the farm grow. Every day, and every week for a season, everyone gets the same farm. Your program
@@ -30,6 +31,7 @@ plays it, and the server plays your moves again to produce the score, so the lea
 ## Play from the terminal
 
 ```
+npm install -g tendril-cli
 tendril login
 tendril daily my.sprout
 tendril submit
@@ -66,3 +68,9 @@ Contributors and agents: start with `AGENTS.md` and `brain/README.md`. The exact
 language is in `docs/LANGUAGE.md`.
 
 If you find a way to post a score the rules would not give, please open an issue.
+
+## License
+
+The code is licensed under the [GNU AGPL-3.0](LICENSE) (or any later version). The art (models, renders, icon and
+site images) is under [CC BY-NC-SA 4.0](LICENSE-ART.md). The name "Tendril" and its logo are not covered by either
+license, so a fork needs its own name.
