@@ -151,6 +151,12 @@ describe('the scheduled model runner token', () => {
     expect((await enter(token, asModel(daily))).status).toBe(200);
     expect((await call(`/challenges/${DAILY}/board?author=model`)).json.entries[0]).toMatchObject({ displayName: 'tendril-models', authorKind: 'model' });
   });
+  it('also accepts a longer robot token (for example 64 hex characters), but never a long session token', async () => {
+    const long = 'a'.repeat(64);
+    app = build({ MODEL_RUNNER_TOKEN_SHA256: createHash('sha256').update(long).digest('hex') });
+    expect((await call('/me', { token: long })).status).toBe(200);
+    expect((await call('/me', { token: 'b'.repeat(64) })).status).toBe(401);
+  });
   it('does nothing when unset, malformed, or for a different token', async () => {
     for (const env of [{}, { MODEL_RUNNER_TOKEN_SHA256: 'nothex' }, { MODEL_RUNNER_TOKEN_SHA256: hash.replace(/^./, 'f') }]) {
       app = build(env);

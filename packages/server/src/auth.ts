@@ -85,13 +85,14 @@ export async function authenticate(ctx: Ctx, request: Request, allowCookie: bool
   let token: string | undefined;
   let via: Identity['via'] = 'bearer';
   if (authorization !== null) {
-    token = /^Bearer ([A-Za-z0-9_-]{43})$/.exec(authorization)?.[1];
+    token = /^Bearer ([A-Za-z0-9_-]{43,128})$/.exec(authorization)?.[1]; // 43 for sessions; the robot token may be longer
   } else if (allowCookie) {
     token = parseCookies(request.headers.get('cookie')).get(SESSION_COOKIE);
     via = 'cookie';
   }
-  if (!token || !TOKEN_PATTERN.test(token)) return null;
+  if (!token) return null;
   if (via === 'bearer' && isRunnerToken(ctx.env, token)) return { userId: await runnerUser(ctx), via };
+  if (!TOKEN_PATTERN.test(token)) return null;
   const rows = await ctx.db.query<{ user_id: string }>('SELECT user_id FROM sessions WHERE token_hash = ? AND expires_at > ?', [sha256(token), ctx.now()]);
   return rows[0] ? { userId: rows[0].user_id, via } : null;
 }
