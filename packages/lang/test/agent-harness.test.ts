@@ -1,4 +1,5 @@
 // D1: the open model harness (examples/agent). The dry run needs no key and no network; the submit path is checked against a local server.
+import { fileURLToPath } from 'node:url';
 import { execFile } from 'node:child_process';
 import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
@@ -13,8 +14,8 @@ import { challengePrompt, extractProgram, offlineChallenge, runAgent, systemProm
 import { verifySource } from '../src/verify.ts';
 
 const run = promisify(execFile);
-const harness = new URL('../../../examples/agent/run.ts', import.meta.url).pathname;
-const daily = new URL('../examples/daily.sprout', import.meta.url).pathname;
+const harness = fileURLToPath(new URL('../../../examples/agent/run.ts', import.meta.url));
+const daily = fileURLToPath(new URL('../examples/daily.sprout', import.meta.url));
 const node = (...args: string[]) => run('node', ['--experimental-transform-types', '--no-warnings', harness, ...args], { env, timeout: 100_000 });
 let env: NodeJS.ProcessEnv, dir: string, server: Server, origin: string;
 const db = createDb({ url: ':memory:' });

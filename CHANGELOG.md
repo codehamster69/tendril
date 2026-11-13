@@ -1,8 +1,8 @@
 # Changelog
 
-## 0.2.0 (2026-11-13)
+## 0.2.2 (2026-11-13)
 
-The Arena release. Desktop players get everything the web game has had since 0.1.2.
+The Arena release. (Tags v0.2.0 and v0.2.1 never published installers: the first pointed at an old commit, the second failed the Windows build.) Desktop players get everything the web game has had since 0.1.2.
 
 - **Daily farm**: one seed for everyone each UTC day, with three medals (Wealth, Speed to par, Brevity in Sprout tokens), a shareable emoji mosaic and sealed replays. Challenges generate themselves from the date with their own modifiers and par.
 - **Season**: a weekly equal-start challenge, plus the Hall of Fame. The real-time ranked farm is now called Endless.
