@@ -1,5 +1,6 @@
 {
   "name": "tendril",
+  "license": "AGPL-3.0-or-later",
   "private": true,
   "packageManager": "pnpm@10.34.9",
   "scripts": {
@@ -18,7 +19,8 @@
     "test:desktop-policy": "node --test packages/client/electron/navigation.test.cjs packages/client/electron/updater.test.cjs",
     "check": "pnpm lint && pnpm typecheck && pnpm test && pnpm build && pnpm test:e2e && pnpm test:electron",
     "build:web": "node scripts/build-web.mjs",
-    "dev:site": "pnpm --filter @tendril/site dev"
+    "dev:site": "pnpm --filter @tendril/site dev",
+    "pack:cli": "node scripts/pack-cli.mjs"
   },
   "pnpm": {
     "overrides": {
