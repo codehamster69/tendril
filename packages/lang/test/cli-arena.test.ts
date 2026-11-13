@@ -1,3 +1,4 @@
+import { fileURLToPath } from 'node:url';
 import { execFile } from 'node:child_process';
 import { mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from 'node:fs';
 import { createServer } from 'node:http';
@@ -12,8 +13,8 @@ import { createApp, createDb } from '../../server/src/index.ts';
 import { verifySource } from '../src/verify.ts';
 
 const run = promisify(execFile);
-const cli = new URL('../src/cli.ts', import.meta.url).pathname;
-const daily = new URL('../examples/daily.sprout', import.meta.url).pathname;
+const cli = fileURLToPath(new URL('../src/cli.ts', import.meta.url));
+const daily = fileURLToPath(new URL('../examples/daily.sprout', import.meta.url));
 let server: Server, origin: string, dir: string, env: NodeJS.ProcessEnv;
 const migDir = new URL('../../server/migrations/', import.meta.url);
 const migrations = readdirSync(migDir).filter((f) => /^\d+_.+\.sql$/.test(f)).sort()

@@ -3,6 +3,7 @@
 //   node --experimental-transform-types examples/agent/run.ts --dry-run
 //   ANTHROPIC_API_KEY=... node --experimental-transform-types examples/agent/run.ts --model <model-id> [--challenge today] [--attempts 3] [--submit]
 // Other models: --ask-cmd "<command>" runs a command that reads {"system","user"} JSON on stdin and prints the reply.
+import { fileURLToPath } from 'node:url';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -21,7 +22,7 @@ if (!model) throw new Error('Say which model wrote the program: --model <name>. 
 if (!Number.isInteger(attempts) || attempts < 1 || attempts > 10) throw new Error('--attempts is 1..10');
 
 // The stub reply used by --dry-run and --reply-file: no model, no key, no network.
-const replyFile = opt('--reply-file') ?? (dry ? new URL('../../packages/lang/examples/daily.sprout', import.meta.url).pathname : undefined);
+const replyFile = opt('--reply-file') ?? (dry ? fileURLToPath(new URL('../../packages/lang/examples/daily.sprout', import.meta.url)) : undefined);
 const askCmd = opt('--ask-cmd');
 const ask: Ask = replyFile
   ? async () => '```sprout\n' + readFileSync(replyFile, 'utf8') + '\n```'
@@ -41,7 +42,7 @@ const file = join(dir, 'program.sprout');
 writeFileSync(file, result.best.source);
 console.log(`Program written to ${file}`);
 
-const cli = new URL('../../packages/lang/src/cli.ts', import.meta.url).pathname;
+const cli = fileURLToPath(new URL('../../packages/lang/src/cli.ts', import.meta.url));
 const tendril = (...a: string[]): void => {
   const r = spawnSync('node', ['--experimental-transform-types', '--no-warnings', cli, ...a], { stdio: 'inherit' });
   if (r.status !== 0) process.exit(r.status ?? 1);
