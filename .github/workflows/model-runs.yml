@@ -50,6 +50,10 @@ jobs:
             echo "run=true" >> "$GITHUB_OUTPUT"
           fi
       - if: steps.gate.outputs.run == 'true'
+        name: Token fingerprint (SHA-256 is not secret; compare it with MODEL_RUNNER_TOKEN_SHA256 in Vercel)
+        run: |
+          printf 'length=%s sha256=%s\n' "${#TENDRIL_TOKEN}" "$(printf %s "$TENDRIL_TOKEN" | sha256sum | cut -d' ' -f1)"
+      - if: steps.gate.outputs.run == 'true'
         uses: actions/checkout@v4
       - if: steps.gate.outputs.run == 'true'
         uses: pnpm/action-setup@v6
