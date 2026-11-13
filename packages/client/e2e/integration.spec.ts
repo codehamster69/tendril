@@ -5,6 +5,7 @@ import type { LogChunk } from '../src/real-sim';
 async function sandbox(page: Page): Promise<void> {
   await page.goto('/?mode=sandbox');
   await expect(page.locator('#status')).toHaveAttribute('data-state', 'paused');
+  await expect(page.locator('#btn-step')).toBeEnabled();
 }
 
 async function saved(page: Page, prefix = 'sprout.v1.sandbox.'): Promise<{ world: string; logs: LogChunk[]; hash: string; source: string }> {
@@ -235,8 +236,16 @@ test('live clock catches up offline, speed cannot mint ticks and reset needs con
   await expect(page.locator('#speed')).toBeHidden();
   await expect(page.locator('#speed-label')).toHaveText('Live farms run in real time');
   await page.evaluate(() => window.tendril!.loop.setSpeed(64)); // Even asked directly, speed cannot mint ticks.
+  // Catching up can end within a frame on a fast machine, so record that it happened instead of sampling for it.
+  await page.evaluate(() => {
+    const w = window as unknown as { __caught: boolean };
+    const status = document.querySelector('#status')!;
+    w.__caught = status.getAttribute('data-state') === 'catching-up';
+    new MutationObserver(() => { if (status.getAttribute('data-state') === 'catching-up' && status.textContent?.includes('Catching up')) w.__caught = true; })
+      .observe(status, { attributes: true, childList: true, characterData: true, subtree: true });
+  });
   await page.click('#btn-run');
-  await expect(page.locator('#status')).toContainText('Catching up');
+  await expect.poll(() => page.evaluate(() => (window as unknown as { __caught: boolean }).__caught)).toBe(true);
   await page.clock.runFor(2000);
   await expect.poll(async () => Number(await page.locator('#hud-tick').textContent())).toBeGreaterThanOrEqual(oldTick + 1000);
   await page.evaluate(() => window.tendril!.loop.pause());

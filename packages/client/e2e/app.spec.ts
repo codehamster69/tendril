@@ -97,6 +97,7 @@ test('real worker loads without browser errors', async ({ browser }) => {
   page.on('pageerror', (e) => errors.push(String(e)));
   await page.goto('/?mode=sandbox');
   await expect(page.locator('#status')).toHaveAttribute('data-state', 'paused');
+  await expect(page.locator('#btn-step')).toBeEnabled();
   await page.click('#btn-step');
   await expect(page.locator('#hud-tick')).toHaveText('100');
   expect(errors).toEqual([]);
