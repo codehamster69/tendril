@@ -59,7 +59,7 @@ jobs:
           ref: ${{ inputs.tag || github.ref }}
       # No version input: pnpm/action-setup reads the root package.json packageManager field.
       - name: Install the repository's pinned pnpm
-        uses: pnpm/action-setup@v4 # UNPINNED: coordinator to pin to a full SHA
+        uses: pnpm/action-setup@v6 # UNPINNED: coordinator to pin to a full SHA
       - name: Install Node
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
