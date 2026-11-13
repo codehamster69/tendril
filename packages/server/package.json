@@ -8,9 +8,11 @@
     "dev": "node --experimental-transform-types src/dev.ts",
     "test": "vitest run --reporter=dot",
     "typecheck": "tsc --noEmit",
-    "migrate": "node --experimental-strip-types src/migrate.ts"
+    "migrate": "node --experimental-strip-types src/migrate.ts",
+    "ratings:recompute": "node --experimental-strip-types src/recompute-ratings.ts"
   },
   "dependencies": {
+    "@tendril/rating": "workspace:*",
     "@tendril/sim": "workspace:*",
     "@libsql/client": "^0.15.0"
   },

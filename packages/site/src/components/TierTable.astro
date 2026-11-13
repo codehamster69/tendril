@@ -1,0 +1,16 @@
+---
+import { TIER_ROWS, tierBand } from '../data/rating-rules';
+import { tierCss } from '../data/tier-colors';
+const rows = TIER_ROWS.map((t, i) => ({ ...t, band: tierBand(i) })).reverse();
+---
+<div class="table-scroll">
+  <table>
+    <thead><tr><th>Tier</th><th>Rating</th><th>Name colour</th><th>Rough share of rated players</th></tr></thead>
+    <tbody>
+      {rows.map((t) => (
+        <tr><td><strong class={`tier-${t.key}`}>{t.name}</strong></td><td>{t.band}</td><td>{t.colour}</td><td>{t.share}</td></tr>
+      ))}
+    </tbody>
+  </table>
+</div>
+<style is:inline set:html={tierCss}></style>

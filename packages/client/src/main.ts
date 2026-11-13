@@ -13,6 +13,7 @@ import { mountNotice } from './notice';
 import { mountUpdates } from './updates';
 import { isFirstRun, mountFirstRun } from './firstrun';
 import { mountProgression, selectedLesson } from './progression';
+import { mountRating } from './rating';
 import { challengeScenario, loadChallenge, mountArena } from './arena';
 import { FarmApi, signedInHint, wireSiteLinks } from './api-client';
 import { mountJoinDuel } from './join-duel';
@@ -62,6 +63,7 @@ if (firstRun) mountFirstRun({ editor, host: document.getElementById('lesson-card
 if (challenge) mountArena({ loop, api, challenge });
 mountNotice({ live: mode === 'live', verified: sim.ranked });
 mountUpdates();
+mountRating(api);
 mountAccount(api, sim);
 if (sim.ranked) mountAutoSync(api, sim, document.getElementById('mode-note'));
 window.addEventListener('tendril:snapshot', (event) => view.update((event as CustomEvent).detail));

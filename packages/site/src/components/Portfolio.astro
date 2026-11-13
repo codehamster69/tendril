@@ -1,0 +1,195 @@
+---
+// Player portfolio shell. Static markup with data-* hooks; scripts/portfolio.ts fills it from /api/players/:login.
+---
+<div class="pf" data-pf>
+  <p class="pf-state" data-state role="status">Loading…</p>
+  <div data-profile hidden>
+    <div class="pf-id">
+      <div class="pf-avatar" data-avatar-box aria-hidden="true"><img data-avatar alt="" width="88" height="88" hidden /><span data-initials></span></div>
+      <div class="pf-who">
+        <h1 data-name></h1>
+        <div class="pf-sub" data-sub></div>
+        <p class="pf-follow" data-follow-row hidden><button class="btn" type="button" data-follow></button> <span class="dim" data-follow-msg role="status"></span></p>
+      </div>
+      <div class="pf-big">
+        <div class="n" data-big-n></div>
+        <div class="t" data-big-t></div>
+      </div>
+    </div>
+    <div class="pf-facts" data-facts></div>
+    <p class="pf-banner" data-banner hidden></p>
+
+    <div class="pf-sheet">
+      <div>
+        <section data-sec="history">
+          <div class="pf-head">
+            <h2>Rating history</h2>
+            <div class="pf-seg" role="group" aria-label="Discipline" data-seg>
+              <button type="button" data-d="overall" aria-pressed="true">Overall</button>
+              <button type="button" data-d="speed" aria-pressed="false">Speed</button>
+              <button type="button" data-d="brevity" aria-pressed="false">Brevity</button>
+            </div>
+          </div>
+          <div class="pf-chart" data-chart><div class="pf-tip" data-tip hidden></div></div>
+          <p class="cap" data-chart-cap>Each dot is one rated challenge. Larger dots are weekly seasons. Bands are tiers. Every dot links to the replay of that run.</p>
+        </section>
+
+        <section data-sec="disc">
+          <h2>Disciplines</h2>
+          <div class="pf-disc" data-disc></div>
+        </section>
+
+        <section data-sec="results">
+          <h2>Rated results</h2>
+          <div class="pf-scroll">
+            <table>
+              <thead><tr><th>Date</th><th>Challenge</th><th class="r">Place</th><th class="r">Played like</th><th class="r">Change</th><th class="r">Rating</th><th><span class="sr">Replay</span></th></tr></thead>
+              <tbody class="mono" data-results></tbody>
+            </table>
+          </div>
+          <p class="cap">"Played like" is the rating this result would be normal for. A run below par keeps the streak and is not rated.</p>
+        </section>
+
+        <section data-sec="pinned" hidden>
+          <div class="pf-head"><h2>Pinned programs</h2><span class="cap" data-pin-cap></span></div>
+          <div class="pf-pins" data-pins></div>
+        </section>
+      </div>
+
+      <div>
+        <section>
+          <h2>Medals</h2>
+          <div class="pf-medals">
+            <div><span class="label">Wealth</span><b data-m-wealth>0</b><span class="cap">first places</span></div>
+            <div><span class="label">Speed</span><b data-m-speed>0</b><span class="cap">first places</span></div>
+            <div><span class="label">Brevity</span><b data-m-brevity>0</b><span class="cap">first places</span></div>
+          </div>
+        </section>
+
+        <section>
+          <h2>The garden</h2>
+          <div class="pf-garden" data-garden role="img" aria-label="Days played over the last 20 weeks"></div>
+          <div class="pf-key"><span><i></i>No run</span><span><i data-l="1"></i>Below par or unrated</span><span><i data-l="3"></i>Rated</span><span><i data-l="4"></i>Podium</span></div>
+          <p class="cap" data-garden-cap></p>
+        </section>
+
+        <section data-sec="ladder">
+          <h2>Tier ladder</h2>
+          <div class="pf-ladder" data-ladder></div>
+          <p class="cap" data-ladder-cap></p>
+        </section>
+
+        <section data-sec="farms">
+          <h2>Signature farms</h2>
+          <div class="pf-farms" data-farms></div>
+          <p class="state cap" data-farms-empty hidden>No finished farms yet.</p>
+        </section>
+      </div>
+    </div>
+  </div>
+</div>
+
+<style is:global>
+.pf {
+  --tier-seed: #6b4a32; --tier-seedling: #696120; --tier-shoot: #3d6a20; --tier-vine: #1b6b5e;
+  --tier-bloom: #7b3a86; --tier-orchard: #af3028; --tier-grove: #904f0c; --tier-evergreen: #0f4d2a;
+  /* Light tiers are darker than the mockup: its seedling/shoot/vine/grove failed 4.5:1 as text. */
+  --pf-gold: #b98a12; --up: #2f6e35; --down: #a3362c; --tier: var(--tier-shoot);
+  max-width: 72rem; margin: 0 auto; padding: clamp(1.5rem, 4vw, 2.5rem) var(--gutter, 16px) 3rem;
+}
+@media (prefers-color-scheme: dark) {
+  .pf {
+    --tier-seed: #b08866; --tier-seedling: #d4c86a; --tier-shoot: #9bd16a; --tier-vine: #5fd0bd;
+    --tier-bloom: #c07ac9; --tier-orchard: #e6736a; --tier-grove: #f0a04a; --tier-evergreen: #b7f0c0;
+    --pf-gold: #e2be4f; --up: #7cc67f; --down: #e0675c;
+  }
+}
+.pf .dim { color: var(--dim); }
+.pf .mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.pf .label { font-size: 0.72rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--dim); }
+.pf .cap { font-size: 0.85rem; color: var(--dim); margin: 0; }
+.pf .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.pf-state { color: var(--dim); padding: 1.5rem 0; }
+.pf h1, .pf h2 { font-family: var(--display); line-height: 1.12; margin: 0; text-wrap: balance; }
+.pf h2 { font-size: 1.3rem; font-weight: 650; }
+.pf section { display: flex; flex-direction: column; gap: 0.8rem; min-width: 0; }
+.pf section[hidden] { display: none; }
+.pf [hidden] { display: none !important; }
+
+.pf-id { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 1.5rem 2rem; align-items: center; padding-block: 0.5rem 1.5rem; }
+.pf-avatar { width: 88px; height: 88px; border-radius: 50%; background: var(--panel); border: 3px solid var(--tier); display: grid; place-items: center; font: 750 2rem var(--display); color: var(--tier); overflow: hidden; }
+.pf-avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.pf-who { min-width: 0; }
+.pf-who h1 { font-size: clamp(1.8rem, 4vw, 2.6rem); font-weight: 750; letter-spacing: -0.02em; color: var(--tier); overflow-wrap: anywhere; }
+.pf-sub { display: flex; gap: 0.3rem 1rem; flex-wrap: wrap; color: var(--dim); font-size: 0.92rem; margin-top: 0.35rem; }
+.pf-follow { margin: 0.6rem 0 0; }
+.pf-big { text-align: right; }
+.pf-big .n { font: 750 clamp(2.6rem, 7vw, 4.2rem)/1 var(--display); letter-spacing: -0.03em; font-variant-numeric: tabular-nums; color: var(--tier); }
+.pf-big .t { font: 650 1.05rem var(--display); color: var(--tier); }
+.pf-big .t.plain { color: var(--dim); }
+.pf-facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(9.5rem, 1fr)); border-block: 1px solid var(--line); }
+.pf-facts div { padding: 0.8rem 1rem 0.9rem 0; }
+.pf-facts b { display: block; font: 650 1.25rem var(--display); font-variant-numeric: tabular-nums; }
+.pf-facts b small { font: 400 0.85rem var(--body); color: var(--dim); }
+.pf-banner { margin: 1.25rem 0 0; padding: 0.7rem 1rem; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; }
+
+.pf-sheet { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr); gap: 2.5rem; padding-block: 2rem 1rem; }
+.pf-sheet > div { display: flex; flex-direction: column; gap: 2.25rem; min-width: 0; }
+.pf-head { display: flex; justify-content: space-between; align-items: baseline; gap: 0.5rem 1rem; flex-wrap: wrap; }
+
+.pf-chart { position: relative; }
+.pf-chart svg { width: 100%; height: auto; display: block; }
+.pf-chart a:focus-visible circle { outline: 2px solid var(--carrot); outline-offset: 2px; }
+.pf-tip { position: absolute; pointer-events: none; background: var(--ink); color: var(--paper); font-size: 0.8rem; padding: 0.35rem 0.55rem; border-radius: 4px; white-space: nowrap; transform: translate(-50%, -130%); z-index: 1; }
+.pf-seg { display: inline-flex; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+.pf-seg button { font: inherit; font-size: 0.85rem; background: none; color: var(--dim); border: 0; padding: 0.4rem 0.8rem; cursor: pointer; }
+.pf-seg button[aria-pressed="true"] { background: var(--ink); color: var(--paper); }
+.pf-seg button:disabled { opacity: 0.55; cursor: default; }
+
+.pf-disc { display: grid; gap: 0.7rem; }
+.pf-disc .row { display: grid; grid-template-columns: 5.2rem minmax(0, 1fr) minmax(0, 9rem); gap: 0.8rem; align-items: center; }
+.pf-disc .bar { height: 10px; background: var(--panel); border-radius: 5px; position: relative; }
+.pf-disc .bar i { position: absolute; inset: 0 auto 0 0; border-radius: 5px; }
+.pf-disc .v { text-align: right; font-weight: 600; }
+
+.pf-scroll { overflow-x: auto; position: relative; }
+.pf table { width: 100%; border-collapse: collapse; font-size: 0.92rem; }
+.pf th { text-align: left; font-weight: 600; color: var(--dim); font-size: 0.72rem; letter-spacing: 0.08em; text-transform: uppercase; padding: 0.4rem 0.6rem 0.4rem 0; border-bottom: 1px solid var(--line); }
+.pf td { padding: 0.5rem 0.6rem 0.5rem 0; border-bottom: 1px solid var(--line); white-space: nowrap; }
+.pf .r { text-align: right; }
+.pf .up { color: var(--up); } .pf .down { color: var(--down); }
+.pf td .pinbtn { font: inherit; font-size: 0.8rem; background: none; border: 1px solid var(--line); color: var(--ink); border-radius: 4px; padding: 0.15rem 0.45rem; cursor: pointer; margin-left: 0.5rem; }
+
+.pf-garden { display: grid; grid-auto-flow: column; grid-template-rows: repeat(7, 1fr); gap: 3px; }
+.pf-garden i, .pf-key i { aspect-ratio: 1; border-radius: 2px; background: var(--panel); border: 1px solid var(--line); min-width: 0; box-sizing: border-box; }
+.pf-garden i[data-l="1"], .pf-key i[data-l="1"] { background: color-mix(in srgb, var(--leaf) 30%, var(--panel)); }
+.pf-garden i[data-l="3"], .pf-key i[data-l="3"] { background: var(--leaf); }
+.pf-garden i[data-l="4"], .pf-key i[data-l="4"] { background: var(--pf-gold); }
+.pf-garden i[data-l="x"] { visibility: hidden; }
+.pf-key { display: flex; gap: 0.4rem 0.9rem; flex-wrap: wrap; font-size: 0.8rem; color: var(--dim); }
+.pf-key i { display: inline-block; width: 10px; height: 10px; margin-right: 0.3rem; vertical-align: -1px; }
+
+.pf-medals { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.5rem; }
+.pf-medals div { border: 1px solid var(--line); border-radius: 8px; padding: 0.7rem 0.8rem; }
+.pf-medals b { font: 650 1.6rem var(--display); display: block; font-variant-numeric: tabular-nums; }
+
+.pf-ladder { display: grid; gap: 2px; }
+.pf-ladder div { display: flex; justify-content: space-between; gap: 0.5rem; padding: 0.3rem 0.6rem; border-left: 4px solid currentColor; font-weight: 600; font-size: 0.9rem; }
+.pf-ladder span { color: var(--dim); font-weight: 400; font-family: var(--mono); font-size: 0.8rem; white-space: nowrap; }
+.pf-ladder .me { background: var(--panel); }
+
+.pf-farms { display: flex; gap: 1rem; flex-wrap: wrap; }
+.pf-farms figure { margin: 0; }
+.pf-farms figcaption { font-size: 0.8rem; color: var(--dim); margin-top: 0.3rem; max-width: 7.5rem; }
+
+.pf-pins { display: grid; gap: 1.2rem; }
+.pf-pin { display: grid; gap: 0.4rem; min-width: 0; }
+.pf-pin pre { margin: 0; background: var(--code-bg); border: 1px solid var(--line); border-radius: 8px; padding: 0.9rem 1rem; overflow-x: auto; font: 0.82rem/1.55 var(--mono); max-height: 22rem; }
+
+@media (max-width: 760px) {
+  .pf-id { grid-template-columns: auto minmax(0, 1fr); }
+  .pf-big { grid-column: 1 / -1; text-align: left; }
+  .pf-sheet { grid-template-columns: minmax(0, 1fr); }
+  .pf-disc .row { grid-template-columns: 4.2rem minmax(0, 1fr) minmax(0, 7rem); }
+}
+</style>

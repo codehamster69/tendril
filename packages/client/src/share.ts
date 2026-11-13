@@ -40,3 +40,16 @@ export async function copyText(text: string): Promise<boolean> {
   document.body.append(area); area.select();
   try { return document.execCommand('copy'); } catch { return false; } finally { area.remove(); }
 }
+
+export interface RatingShareInput { label: string; place: number; field: number; delta: number; rating: number; tier: string; provisional: boolean; promotedTo?: string | null; login: string }
+export const ordinal = (n: number): string => { const v = n % 100; return n + (['th', 'st', 'nd', 'rd'][(v - 20) % 10] ?? ['th', 'st', 'nd', 'rd'][v] ?? 'th'); };
+export const signed = (n: number): string => (n >= 0 ? '+' : '\u2212') + Math.abs(n).toLocaleString('en-US');
+
+/** The text behind the morning card's "Copy result". */
+export function ratingShareText(r: RatingShareInput): string {
+  const lines = [`Tendril ${r.label}: ${ordinal(r.place)} of ${r.field.toLocaleString('en-US')} \u00b7 ${signed(r.delta)}`,
+    `Rating ${r.rating.toLocaleString('en-US')}${r.provisional ? '?' : ''} \u00b7 ${r.tier}`];
+  if (r.promotedTo) lines.push(`Promoted to ${r.promotedTo}`);
+  lines.push(`${SHARE_HOST}/u/${r.login}`);
+  return lines.join('\n');
+}

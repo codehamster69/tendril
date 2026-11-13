@@ -3,6 +3,8 @@
 import { deflateSync } from 'node:zlib';
 import type { Db } from './db.ts';
 import { percentileOf } from './arena.ts';
+import { loadRatingCard, thousands, tierColor } from './players.ts';
+import type { RatingCardData } from './players.ts';
 
 export const CARD_W = 1200;
 export const CARD_H = 630;
@@ -128,6 +130,59 @@ export function renderCard(d: CardData): Buffer {
   return encodePng(cv.data, CARD_W, CARD_H);
 }
 
+// ---------- R5: profile preview (/og/u/<login>.png) ----------
+const TIER_RGB = (key: string): RGB => hex(tierColor(key, true));
+
+const contestLabel = (id: string): string => {
+  const d = /^d-(\d{4}-\d{2}-\d{2})$/.exec(id), s = /^s-\d{4}-(W\d{2})$/.exec(id);
+  return d ? `DAILY ${d[1]}` : s ? `SEASON ${s[1]}` : 'RATED DAY';
+};
+
+/** The profile link preview: the rating, or the promotion when the newest result crossed a tier floor in the last week. */
+export function renderProfileCard(d: RatingCardData, host: string): Buffer {
+  const cv = new Canvas();
+  const promo = d.promotion;
+  const accent = d.tier ? TIER_RGB(d.tier.key) : GREEN;
+  cv.rect(0, 0, CARD_W, CARD_H, BG);
+  cv.rect(0, 0, CARD_W, 10, promo ? GOLD : accent);
+  if (promo) { cv.rect(0, 620, CARD_W, 10, GOLD); cv.rect(0, 10, 6, 610, GOLD); cv.rect(CARD_W - 6, 10, 6, 610, GOLD); }
+  const T = 56, GAP = 4, MX = 60, MY = 77, side = 8 * T + 7 * GAP;
+  cv.rect(MX - 12, MY - 12, side + 24, side + 24, PANEL);
+  const mosaic = d.mosaic && d.mosaic.length === 64 ? d.mosaic : '00tt1100t11t2200tt2t3300t3t3440t44t5500t5t5660tB6t6hc';
+  for (let i = 0; i < 64; i++) cv.rect(MX + (i % 8) * (T + GAP), MY + Math.floor(i / 8) * (T + GAP), T, T, TILE[mosaic[i]!] ?? TILE['0']!);
+  const X = 580, maxW = CARD_W - X - 40;
+  const fit = (s: string, scale: number): string => { let t = s.toUpperCase(); while (t.length > 1 && textWidth(t, scale) > maxW) t = t.slice(0, -1); return t; };
+  cv.text('TENDRIL', X, 52, 6, GREEN);
+  if (d.state === 'rated' || d.state === 'placement') {
+    const rating = thousands(d.rating!);
+    if (promo) {
+      cv.text('PROMOTED TO', X, 128, 5, GOLD);
+      cv.text(fit(promo.tier.name, 12), X, 176, 12, TIER_RGB(promo.tier.key));
+      cv.text(`${thousands(promo.rating)} AFTER`, X, 292, 5, WHITE);
+      cv.text(fit(contestLabel(promo.challengeId), 5), X, 340, 5, DIM);
+      if (d.topPercent !== null) cv.text(fit(`TOP ${d.topPercent}% OF RATED`, 4), X, 396, 4, GOLD);
+    } else {
+      cv.text(d.state === 'placement' ? 'PROVISIONAL RATING' : 'RATING', X, 118, 5, DIM);
+      cv.text(fit(rating, 16), X, 166, 16, d.state === 'placement' ? DIM : accent);
+      if (d.state === 'placement') {
+        cv.text(`PLACEMENT ${d.events} OF 5`, X, 316, 6, GOLD);
+      } else {
+        cv.text(fit(d.tier!.name, 7), X, 316, 7, accent);
+        let y = 390;
+        if (d.topPercent !== null) { cv.text(`TOP ${d.topPercent}%`, X, y, 5, GOLD); y += 54; }
+        if (d.streak > 0) cv.text(`STREAK ${d.streak}`, X, y, 4, GREEN);
+      }
+    }
+  } else {
+    cv.text('NOT RATED YET', X, 190, 6, WHITE);
+    cv.text('PLAY THE DAILY CHALLENGE', X, 290, 4, DIM);
+    cv.text('TO GET A RATING.', X, 340, 4, DIM);
+  }
+  cv.text(fit(d.name, 5), X, 520, 5, WHITE);
+  cv.text(host.toUpperCase().slice(0, 28), X, 586, 3, DIM);
+  return encodePng(cv.data, CARD_W, CARD_H);
+}
+
 // ---------- data ----------
 interface ShareRow {
   user_id: string; net_worth: number; mosaic: string | null; author_kind: string; display_name: string; login: string;
@@ -198,6 +253,8 @@ export function genericCardPng(host: string): Buffer {
 
 /** Handles /r/<id> and /api/og/<id>.png (also reached as /og/...). Returns null for any other path. */
 export async function handleShare(path: string, method: string, c: ShareCtx): Promise<Response | null> {
+  const profile = /^(?:\/api)?\/og\/u\/([^/]+)\.png$/.exec(path);
+  if (profile) return handleProfileCard(profile[1]!, path, method, c);
   const page = /^(?:\/api)?\/r\/([^/]+)$/.exec(path);
   const card = /^(?:\/api)?\/og\/([^/]+)\.png$/.exec(path);
   if (!page && !card) return null;
@@ -216,4 +273,15 @@ export async function handleShare(path: string, method: string, c: ShareCtx): Pr
   return new Response(method === 'HEAD' ? null : new Uint8Array(png), { status: 200, headers: {
     ...base, 'Content-Type': 'image/png', 'Content-Length': String(png.length),
     'Cache-Control': info ? 'public, max-age=3600, s-maxage=86400' : 'public, max-age=300, s-maxage=3600' } });
+}
+
+/** GET /og/u/<login>.png: always a valid 1200x630 image (unknown logins get the generic card), cached an hour. */
+async function handleProfileCard(login: string, path: string, method: string, c: ShareCtx): Promise<Response> {
+  const base = { 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer' };
+  if (method !== 'GET' && method !== 'HEAD') return new Response('Method not allowed', { status: 405, headers: { Allow: 'GET, HEAD' } });
+  if (c.search) return new Response(null, { status: 308, headers: { Location: path, 'Cache-Control': 'public, max-age=3600, s-maxage=3600', ...base } });
+  const d = await loadRatingCard(c.db, login, c.now);
+  const png = d.state === 'unknown' ? genericCardPng(c.host) : renderProfileCard(d, c.host);
+  return new Response(method === 'HEAD' ? null : new Uint8Array(png), { status: 200, headers: {
+    ...base, 'Content-Type': 'image/png', 'Content-Length': String(png.length), 'Cache-Control': 'public, max-age=3600, s-maxage=3600' } });
 }

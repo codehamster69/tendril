@@ -29,7 +29,7 @@ let github: ReturnType<typeof githubStub>;
 let user: Login;
 let farm: FarmResponse;
 
-function githubStub(profile: Record<string, unknown> = { id: 4242, login: 'octo-cat', name: 'Octo Cat', avatar_url: 'https://avatars.githubusercontent.com/u/4242' }) {
+function githubStub(profile: Record<string, unknown> = { id: 4242, login: 'octo-cat', name: 'Octo Cat', avatar_url: 'https://avatars.githubusercontent.com/u/4242', created_at: '2020-05-17T08:30:00Z' }) {
   const calls: { url: string; body: string; authorization: string | null }[] = [];
   const fetchStub: FetchFn = async (url, init) => {
     calls.push({ url, body: String(init?.body ?? ''), authorization: new Headers(init?.headers).get('authorization') });
@@ -109,13 +109,13 @@ afterEach(() => { db.close(); });
 
 describe('migrations', () => {
   it('are idempotent, recorded in schema_version, and applied lazily on the first request', async () => {
-    expect(await db.query('SELECT version FROM schema_version')).toEqual([{ version: 1 }, { version: 2 }, { version: 3 }, { version: 4 }, { version: 5 }, { version: 6 }, { version: 7 }]);
+    expect(await db.query('SELECT version FROM schema_version')).toEqual([{ version: 1 }, { version: 2 }, { version: 3 }, { version: 4 }, { version: 5 }, { version: 6 }, { version: 7 }, { version: 8 }]);
     expect(await migrate(db)).toEqual([]);
     const fresh = createDb({ url: ':memory:' });
     try {
       const lazy = createApp({ db: fresh, env, fetch: github.fetch, setupVersion: 0, now: () => time });
       expect((await lazy(new Request('http://localhost:8787/api/stats'))).status).toBe(200);
-      expect(await fresh.query('SELECT version FROM schema_version')).toEqual([{ version: 1 }, { version: 2 }, { version: 3 }, { version: 4 }, { version: 5 }, { version: 6 }, { version: 7 }]);
+      expect(await fresh.query('SELECT version FROM schema_version')).toEqual([{ version: 1 }, { version: 2 }, { version: 3 }, { version: 4 }, { version: 5 }, { version: 6 }, { version: 7 }, { version: 8 }]);
     } finally { fresh.close(); }
   });
   it('persist in a file database across reopen', async () => {
@@ -258,6 +258,7 @@ describe('GitHub OAuth', () => {
     const again = await begin();
     await cb(again.state, again.cookie);
     expect(await db.query('SELECT * FROM users WHERE github_id = 4242')).toHaveLength(1);
+    expect(await db.query('SELECT github_created_at AS g FROM users WHERE github_id = 4242')).toEqual([{ g: Date.UTC(2020, 4, 17, 8, 30, 0) }]); // R2: account age for ratings
     // Logout needs the CSRF header for cookie auth, then ends the session.
     expect((await request('/auth/logout', { method: 'POST', cookie: sessionCookie })).status).toBe(403);
     const out = await request('/auth/logout', { method: 'POST', cookie: sessionCookie, csrf: true });

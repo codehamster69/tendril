@@ -153,7 +153,13 @@ export async function startGithub(ctx: Ctx, url: URL): Promise<Redirect> {
   return { location: authorize.toString(), setCookies: [stateCookie(state)] };
 }
 
-interface GithubUser { id: number; login: string; name: string | null; avatar_url: string | null }
+interface GithubUser { id: number; login: string; name: string | null; avatar_url: string | null; created_at: number | null }
+
+/** GitHub's `created_at` (ISO 8601) as epoch ms, or null when absent or unparseable. Ratings need it (account age). */
+function githubCreatedAt(value: unknown): number | null {
+  const ms = typeof value === 'string' && value.length <= 40 ? Date.parse(value) : NaN;
+  return Number.isSafeInteger(ms) && ms > 0 ? ms : null;
+}
 
 async function fetchGithubUser(ctx: Ctx, config: { clientId: string; clientSecret: string; origin: string }, code: string): Promise<GithubUser> {
   const fail = (): never => { throw new HttpError(502, 'GitHub sign-in failed'); };
@@ -181,7 +187,7 @@ async function fetchGithubUser(ctx: Ctx, config: { clientId: string; clientSecre
   }
   const u = user as Partial<GithubUser> | null;
   if (!u || !Number.isSafeInteger(u.id) || (u.id as number) <= 0 || typeof u.login !== 'string' || !/^[A-Za-z0-9-]{1,39}$/.test(u.login)) return fail();
-  return { id: u.id as number, login: u.login, name: typeof u.name === 'string' ? u.name : null, avatar_url: typeof u.avatar_url === 'string' && u.avatar_url.startsWith('https://') && u.avatar_url.length <= 512 ? u.avatar_url : null };
+  return { id: u.id as number, login: u.login, name: typeof u.name === 'string' ? u.name : null, avatar_url: typeof u.avatar_url === 'string' && u.avatar_url.startsWith('https://') && u.avatar_url.length <= 512 ? u.avatar_url : null, created_at: githubCreatedAt(u.created_at) };
 }
 
 
@@ -206,9 +212,10 @@ export async function finishGithub(ctx: Ctx, request: Request, url: URL): Promis
   if (url.searchParams.get('error') || !code || code.length > 512) throw new HttpError(400, 'Sign-in was cancelled');
   const github = await fetchGithubUser(ctx, config, code);
   const users = await ctx.db.query<{ id: string }>(
-    `INSERT INTO users (id, github_id, login, display_name, avatar_url, created_at) VALUES (?, ?, ?, ?, ?, ?)
-     ON CONFLICT (github_id) DO UPDATE SET login = excluded.login, display_name = excluded.display_name, avatar_url = excluded.avatar_url RETURNING id`,
-    [randomUUID(), github.id, github.login, github.login, github.avatar_url, ctx.now()],
+    `INSERT INTO users (id, github_id, login, display_name, avatar_url, created_at, github_created_at) VALUES (?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT (github_id) DO UPDATE SET login = excluded.login, display_name = excluded.display_name, avatar_url = excluded.avatar_url,
+       github_created_at = COALESCE(excluded.github_created_at, github_created_at) RETURNING id`,
+    [randomUUID(), github.id, github.login, github.login, github.avatar_url, ctx.now(), github.created_at],
   );
   const userId = users[0]!.id;
   if (row.desktop_nonce_hash !== null) {

@@ -2,6 +2,7 @@
 // The site is static: everything here fetches from /api at view time and fails soft.
 
 import { challengeSetup, describeMarket, describeModifiers, SETUP_LEGACY } from '@tendril/sim';
+import { tierCss } from '../data/tier-colors';
 
 export interface Challenge {
   id: string; kind: 'daily' | 'season' | 'duel'; number: number; seed: number; ticks: number; par: number | null;
@@ -12,7 +13,10 @@ export interface Row {
   rank: number; entryId: string; userId?: string; login: string; displayName: string; avatarUrl?: string;
   value: number; mosaic?: string | null; authorKind?: string; model?: string | null; createdAt?: string | number;
   percentile?: number;
+  /** Closed boards only: the player's rating after that contest, tier, and change (null when unrated). */
+  rating?: number | null; tier?: TierRef | null; delta?: number | null;
 }
+export interface TierRef { key: string; name: string }
 export interface Board {
   medal: Medal; entries: Row[]; total: number; me: Row | null;
   histogram: { min: number; max: number; width: number; counts: number[] };
@@ -99,11 +103,21 @@ export function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, 
   return e;
 }
 
-/** Link to a player's page. */
-export function playerLink(login: string, label: string): HTMLAnchorElement {
-  const a = el('a', 'player', label);
+/** Link to a player's page. Given a tier, the name takes the tier colour (class `tier-<key>`, defined in arenaCss). */
+export function playerLink(login: string, label: string, tier?: TierRef | null): HTMLAnchorElement {
+  const a = el('a', tier && /^[a-z]+$/.test(tier.key) ? `player tier-${tier.key}` : 'player', label);
+  if (tier) a.title = tier.name;
   a.href = `/u/?login=${encodeURIComponent(login)}`;
   return a;
+}
+
+/** Rating change beside a rank, e.g. "+12" / "−21"; null when the run was unrated. The sign is text, not only colour. */
+export function deltaEl(delta: number | null | undefined, rating?: number | null): HTMLElement | null {
+  if (delta == null) return null;
+  const up = delta > 0, down = delta < 0;
+  const e = el('span', `delta ${up ? 'up' : down ? 'down' : ''}`, `${up ? '+' : down ? '\u2212' : '\u00b1'}${Math.abs(delta)}`);
+  e.title = `Rating change${rating != null ? `, now ${fmt.format(rating)}` : ''}`;
+  return e;
 }
 
 /** Histogram bars; the viewer's bar (if any) is marked. */
@@ -126,6 +140,7 @@ export function histogramEl(b: Board, medal: Medal): HTMLElement {
 }
 
 export const arenaCss = `
+${tierCss}
 .mosaic { display: grid; grid-template-columns: repeat(8, 1fr); width: var(--size, 4.5rem); aspect-ratio: 1; gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: 4px; overflow: hidden; flex: none; }
 .mosaic i { display: block; }
 `;
