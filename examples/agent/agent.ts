@@ -8,6 +8,20 @@ import type { Challenge, LastRun } from '../../packages/lang/src/arena-cli.ts';
 import { countTokens } from '../../packages/lang/src/tokens.ts';
 
 export type Ask = (prompt: { system: string; user: string }) => Promise<string>;
+
+/** Free tiers answer 429/503 when busy; try again a few times with a growing pause before giving up. */
+export function withRetry(ask: Ask, delaysMs: number[] = [5_000, 15_000, 30_000, 60_000]): Ask {
+  return async (p) => {
+    for (let i = 0; ; i++) {
+      try { return await ask(p); }
+      catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        if (i >= delaysMs.length || !/failed: (429|5\d\d)\b/.test(msg)) throw e;
+        await new Promise((r) => setTimeout(r, delaysMs[i]));
+      }
+    }
+  };
+}
 export interface Attempt { n: number; source: string; netWorth: number; parTick: number | null; tokens: number; errors: string[]; run: LastRun }
 export interface AgentResult { challenge: Challenge; attempts: Attempt[]; best: Attempt | null; system: string; prompts: string[] }
 
@@ -55,7 +69,9 @@ export async function runAgent(o: { challenge: Challenge; ask: Ask; attempts: nu
   for (let n = 1; n <= o.attempts; n++) {
     const user = challengePrompt(o.challenge, attempts.slice(-1));
     prompts.push(user);
-    const source = extractProgram(await o.ask({ system, user }));
+    let source: string;
+    try { source = extractProgram(await o.ask({ system, user })); }
+    catch (e) { attempts.push({ n, source: '', netWorth: 0, parTick: null, tokens: 0, errors: [e instanceof Error ? e.message : String(e)], run: null as unknown as LastRun }); continue; }
     let played;
     try { played = playLocal(o.challenge, source); }
     catch (e) { attempts.push({ n, source, netWorth: 0, parTick: null, tokens: 0, errors: [e instanceof Error ? e.message : String(e)], run: null as unknown as LastRun }); continue; }

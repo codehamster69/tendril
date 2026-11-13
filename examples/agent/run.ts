@@ -9,7 +9,7 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { anthropicAsk, geminiAsk, getChallenge, offlineChallenge, runAgent } from './agent.ts';
+import { anthropicAsk, geminiAsk, getChallenge, withRetry, offlineChallenge, runAgent } from './agent.ts';
 import type { Ask } from './agent.ts';
 
 const args = process.argv.slice(2);
@@ -29,7 +29,7 @@ const ask: Ask = replyFile
   ? async () => '```sprout\n' + readFileSync(replyFile, 'utf8') + '\n```'
   : askCmd
     ? async (p) => execFileSync('/bin/sh', ['-c', askCmd], { input: JSON.stringify(p), encoding: 'utf8', maxBuffer: 1 << 20 })
-    : opt('--provider') === 'gemini' ? geminiAsk(model) : anthropicAsk(model);
+    : withRetry(opt('--provider') === 'gemini' ? geminiAsk(model) : anthropicAsk(model));
 
 const challenge = dry ? offlineChallenge() : await getChallenge(opt('--challenge') ?? 'today');
 const result = await runAgent({ challenge, ask, attempts });
