@@ -1,0 +1,117 @@
+---
+layout: ../../layouts/Docs.astro
+title: How rating works
+description: A skill rating for Tendril players. The exact formula, every setting, and the tiers, in plain words.
+---
+
+import TierTable from '../../components/TierTable.astro';
+import { RELEASES_REPO } from '../../data/downloads';
+import * as R from '../../data/rating-rules';
+
+## What it is
+
+Your rating is a number that says how well your programs do against other players. It starts at {R.START_RATING}, goes up when you
+finish above where the field expects you to, and goes down when you finish below. It only reads final ranks on the
+[leaderboard](/docs/leaderboard/), so a score is never changed by it. Every run is still checked by the server, which replays the moves.
+
+The system is Elo adapted for many players at once, the same family Codeforces uses. It was chosen over a percentile score for one reason:
+beating a weak account is worth almost nothing, so fake accounts cannot lift anyone.
+
+There are three ratings, one for each medal: **Overall** (best net worth), **Speed** (reached par soonest) and **Brevity** (fewest tokens). Your
+headline rating is Overall. Each one is worked out separately from that medal's board.
+
+## What gets rated
+
+- Every daily, and the weekly season when it closes on Monday. A season counts {R.SEASON_WEIGHT} times a daily. Duels and Endless are never rated.
+- A contest is rated after it closes and its late submissions have settled, so the number can appear a little after the board closes.
+- Only your best entry on the board stands for you that day. A run below par keeps your streak and leaves your rating alone.
+- Your GitHub account must be at least {R.MIN_ACCOUNT_AGE_DAYS} days old when the contest closes. One rating per GitHub account.
+- The entry must be declared as written by a human, must not be an identical log or the same program as an earlier player's, and must have reached par.
+- Declared model runs have their own lane: they are shown as ghosts on the models board and never move a human's rating.
+- If fewer than {R.MIN_FIELD} players qualify in a discipline, that contest is left unrated.
+
+What this cannot do: it cannot tell whether a person or a model wrote an undeclared program. No site can. The rating measures what
+your program did.
+
+## The maths
+
+For every rated contest, take each rated player's best entry on the board, in board order. Ties share the average of their places.
+
+**Chance of beating.** For two ratings, the chance that A finishes above B is the standard Elo curve:
+
+```text
+P(A beats B) = 1 / (1 + 10 ^ ((R_B - R_A) / 400))
+```
+
+**Expected place.** Your expected place is 1 plus the sum, over every other player in the field, of their chance of beating you.
+
+```text
+E = 1 + sum over other players B of  P(B beats you)
+```
+
+**Performance.** Take the geometric mean of your expected place and your actual place. Your performance rating is the rating at which that
+place would have been expected, found by binary search between {R.MIN_RATING} and {R.MAX_RATING}.
+
+```text
+target      = sqrt(E x actual place)
+performance = the rating whose expected place equals the target
+```
+
+**Change.** Your rating moves 1/{R.HALF_STEP_DIVISOR} of the way toward your performance, then is scaled by three weights and capped.
+
+```text
+change = (performance - rating) / 2  x  placement  x  field-size  x  contest weight
+change is limited to plus or minus the cap (daily or season)
+```
+
+After that, the changes of established players are shifted by a whole-point amount so they add up to zero: points are never created
+among established players. Everything is whole numbers, so the same standings always give the same result on any machine.
+
+## Every setting
+
+| Setting | Value | Why |
+| --- | --- | --- |
+| Starting rating | {R.START_RATING}, marked provisional | A new player lands mid-table and climbs or sinks quickly |
+| Placement | First {R.PLACEMENT_EVENTS} rated events, multipliers {R.PLACEMENT_MULTIPLIERS.map((m) => m.toFixed(1)).join(', ')} | Finds a new player's level in a week. After that the multiplier is 1.0 |
+| Weekly season weight | {R.SEASON_WEIGHT} times a daily | A week of effort should count for more than one day |
+| Smallest rated field | {R.MIN_FIELD} players | Below that, a rank is mostly luck |
+| Field-size weight | {R.MIN_FIELD_WEIGHT} at {R.MIN_FIELD} players, rising evenly to 1 at {R.FULL_WEIGHT_FIELD} | Small early fields move ratings gently |
+| Largest change in one event | {R.DAILY_CAP} points daily, {R.SEASON_CAP} for a season | One freak day cannot wreck or make a rating |
+| Who counts in the field | Established players only, once {R.ESTABLISHED_FIELD_MIN} exist | Placement accounts cannot be used to feed points to others |
+| Leaderboard | Players with {R.PLACEMENT_EVENTS} or more rated events who played in the last {R.ACTIVE_WINDOW_DAYS} days | The ladder shows people who are playing now |
+| Account age | At least {R.MIN_ACCOUNT_AGE_DAYS} days old on GitHub | A fresh start gains nothing, and fresh fakes cannot count |
+| Rating range | {R.MIN_RATING} to {R.MAX_RATING} | Ratings are kept inside this range |
+
+The field-size weight is not a round number at in-between sizes; the engine's source has the exact whole-number steps. The engine version is
+{R.ALGO_VERSION}. If the maths ever changes, the version rises and every rating is recomputed from stored standings, so a bug is fixed by a rerun
+and never leaves a wrong number standing.
+
+## Tiers
+
+Eight tiers, named for how a plant grows. Each has its own colour, used for the player's name everywhere it appears: on every board,
+on the daily page and on profiles. The tier is also written out in words next to the rating, so colour is never the only signal.
+
+<TierTable />
+
+The shares are what an Elo ladder usually settles into, not measurements. They will be checked after a month and the bands moved once if they
+are far off. The title is shown only after placement. Until then a profile says "In placement, 3 of 5".
+
+## Fair play
+
+| Abuse | Defence |
+| --- | --- |
+| Fake accounts placed below you to lift your rank | Beating a low-rated account is worth almost nothing. Accounts in placement do not count in anyone else's field. A fake must also reach par and be {R.MIN_ACCOUNT_AGE_DAYS} days old to be rated at all |
+| A second account to start fresh | One rating per GitHub account, and a new start gains nothing anyway |
+| Losing on purpose to lower a rating | Nothing is gained by a low rating |
+| Copying a friend's run | Identical logs are refused, and the same program from a second player is unrated for that day |
+| Trading wins | Duels are unrated |
+| Flooding with model runs | Declared models are ghosts and cannot move human ratings |
+| Copying the leader during the day | Replays and sources stay sealed until the challenge closes |
+
+## Check the work
+
+The engine is open: every number on this page is a constant in [`packages/rating`](https://github.com/{RELEASES_REPO}/tree/main/packages/rating/src)
+(`constants.ts` holds the settings, `rate.ts` the maths). A test fails the build if this page and the engine ever disagree. Each line of your
+rating history links to that day's replay, so anyone can watch the run that earned the points.
+
+See the [rating ladder](/leaderboard/#rating).

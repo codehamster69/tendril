@@ -7,12 +7,13 @@ import { board, challengeInfo, createDuel, entryReplay, entrySource, entrySummar
 import type { AuthorKind, Medal } from './arena.ts';
 import { createFarm, dailyInfo, getFarm, getReplay, isValidDate, leaderboard, reserveAttempt, utcDate, verifyChunk } from './game.ts';
 import type { Board } from './game.ts';
-import { badgeFor, follow, listFollowing, playerPage, unfollow } from './players.ts';
+import { badgeFor, follow, setPinned, listFollowing, playerPage, ratingBadgeFor, statsCardFor, unfollow } from './players.ts';
 import { handleShare } from './share.ts';
 import { handleDailyPages } from './daily-pages.ts';
 import { createGuard, dropReplaysOutsideTop, pruneOncePerDay, rateScale, refreshGuard, prune, syncScale, withCacheHeaders } from './housekeeping.ts';
 import type { SourceVerifier } from './verify-client.ts';
 import { reportProgram } from './moderation.ts';
+import { createRater, decorateBoard, disciplineParam, latestChange, ratingBoard, ratingModels } from './ratings.ts';
 import { migrate } from './migrations.ts';
 import type { Migration } from './migrations.ts';
 import { chunkInput, displayName, duelInput, entryIdParam, entryInput, HttpError, objectWithKeys, readJson, rejectQuery, validateActions, uuid } from './validation.ts';
@@ -68,6 +69,8 @@ function createInnerApp(options: AppOptions): (request: Request) => Promise<Resp
   };
   const ctx: Ctx = { db, env, fetch: options.fetch ?? ((input, init) => fetch(input, init)), now };
   const guard = createGuard(db, env, now);
+  // Rating pauses at 'tight' (before play pauses at 'readonly'); the backlog is rated when the guard releases.
+  const rater = createRater(db, env, now, async () => { const m = await guard.mode(); return m === 'normal' || m === 'lean'; });
   let prunedDay = ''; // this instance has already checked today's prune claim
   let ready: Promise<unknown> | undefined;
   // Lazy migration, guarded by schema_version; a failure is retried by the next request.
@@ -84,7 +87,7 @@ function createInnerApp(options: AppOptions): (request: Request) => Promise<Resp
     try {
       const url = new URL(request.url);
       // ---- B4 share links and preview cards (public GET pages; no cookies, no CORS) ----
-      if (/^(\/api)?\/(r\/[^/]+|og\/[^/]+\.png)$/.test(url.pathname)) {
+      if (/^(\/api)?\/(r\/[^/]+|og\/(?:u\/)?[^/]+\.png)$/.test(url.pathname)) {
         await ensureMigrated();
         const shareOrigin = publicOriginOf(env, url);
         const res = await handleShare(url.pathname, request.method, { db, now: now(), origin: shareOrigin, host: new URL(shareOrigin).host, search: url.search, count: (await guard.mode()) === 'normal' });
@@ -140,6 +143,9 @@ function createInnerApp(options: AppOptions): (request: Request) => Promise<Resp
         headers.set('Retry-After', '1800');
         throw new HttpError(503, 'Tendril is read-only for a while to stay inside its free limits. Your result is safe on your device; try again later.');
       }
+
+      // Lazy rating: the first request after a close rates it (under a lock). Rating routes wait for it; others check at most once a minute.
+      await rater.tick(method === 'GET' && /^\/(players\/[^/]+|ratings\/.+|challenges\/[^/]+\/board)$/.test(route));
 
       /** Requires a session; cookie-authenticated mutations also need the CSRF header. */
       const requireUser = async (): Promise<Identity> => {
@@ -307,7 +313,8 @@ function createInnerApp(options: AppOptions): (request: Request) => Promise<Resp
           const viewer = await viewerId();
           if (scope === 'friends' && !viewer) throw new HttpError(401, 'Authentication required');
           const challenge = await loadChallenge(db, ref!, now(), options.verifySource, options.setupVersion);
-          return json(await board(db, challenge, { medal: medal as Medal, friends: scope === 'friends', author: (author ?? undefined) as AuthorKind | undefined, limit: limitParam(url), viewerId: viewer, now: now() }));
+          const result = await board(db, challenge, { medal: medal as Medal, friends: scope === 'friends', author: (author ?? undefined) as AuthorKind | undefined, limit: limitParam(url), viewerId: viewer, now: now() });
+          return json(await decorateBoard(db, challenge, result, now()));
         }
       }
       if (route === '/seasons' && method === 'GET') {
@@ -366,6 +373,30 @@ function createInnerApp(options: AppOptions): (request: Request) => Promise<Resp
           return json(action === 'follow' ? await follow(db, identity.userId, login!, now()) : await unfollow(db, identity.userId, login!));
         }
       }
+      if (route === '/players/me/pinned' && method === 'PUT') {
+        const identity = await requireUser();
+        await reserveAttempt(db, identity.userId, 'follow', now(), undefined, scale);
+        rejectQuery(url);
+        const body = objectWithKeys(await readJson(request), ['entryIds']);
+        const ids = body.entryIds;
+        if (!Array.isArray(ids) || ids.some((x) => typeof x !== 'string' || x.length > 64)) throw new HttpError(400, 'entryIds must be an array of entry ids');
+        return json(await setPinned(db, identity.userId, ids as string[], now()));
+      }
+      // ---- ratings (R2) ----
+      if (route === '/ratings/board' && method === 'GET') {
+        rejectQuery(url, ['discipline', 'limit', 'cursor']);
+        return json(await ratingBoard(db, disciplineParam(url.searchParams.get('discipline')), limitParam(url), url.searchParams.get('cursor'), now()));
+      }
+      if (route === '/ratings/models' && method === 'GET') {
+        rejectQuery(url);
+        return json(await ratingModels(db, now()));
+      }
+      if (route === '/ratings/me/latest' && method === 'GET') {
+        rejectQuery(url, ['seen']);
+        const seen = url.searchParams.get('seen');
+        if (seen !== null && !/^(?:d-\d{4}-\d{2}-\d{2}|s-\d{4}-W\d{2})$/.test(seen)) throw new HttpError(400, 'Invalid seen');
+        return json(await latestChange(db, (await requireUser()).userId, seen));
+      }
       if (route === '/me/following' && method === 'GET') {
         rejectQuery(url);
         return json(await listFollowing(db, (await requireUser()).userId));
@@ -374,6 +405,16 @@ function createInnerApp(options: AppOptions): (request: Request) => Promise<Resp
       if (badgeRoute && method === 'GET') {
         rejectQuery(url);
         const svg = await badgeFor(db, badgeRoute[1]!, utcDate(now()));
+        headers.set('Content-Type', 'image/svg+xml; charset=utf-8');
+        headers.set('Cache-Control', 'public, max-age=3600, s-maxage=3600');
+        headers.set('Content-Security-Policy', "default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'");
+        return new Response(svg, { status: 200, headers });
+      }
+      // ---- R5 rating badge and README stats card (public SVG, an hour of caching) ----
+      const ratingSvg = /^\/badge\/rating\/([^/]+)\.svg$/.exec(route) ?? /^\/card\/([^/]+)\.svg$/.exec(route);
+      if (ratingSvg && method === 'GET') {
+        rejectQuery(url);
+        const svg = route.startsWith('/card/') ? await statsCardFor(db, ratingSvg[1]!, now()) : await ratingBadgeFor(db, ratingSvg[1]!, now());
         headers.set('Content-Type', 'image/svg+xml; charset=utf-8');
         headers.set('Cache-Control', 'public, max-age=3600, s-maxage=3600');
         headers.set('Content-Security-Policy', "default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'");

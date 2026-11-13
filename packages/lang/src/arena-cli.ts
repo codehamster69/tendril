@@ -65,6 +65,53 @@ export async function login(): Promise<void> {
   throw new Error('Sign-in timed out.');
 }
 
+// ---- tendril me ----
+const PLACEMENT_EVENTS = 5; // mirrors the server's placement length (packages/server/src/ratings.ts)
+type Tier = { key: string; name: string; floor: number; next: number | null };
+type ChangeView = { place: number; field: number; delta: number; rating: number; tier: Tier; previousTier: Tier; promoted: boolean; events: number };
+type Discipline = 'overall' | 'speed' | 'brevity';
+const LABEL: Record<Discipline, string> = { overall: 'Overall', speed: 'Speed', brevity: 'Brevity' };
+const DISCIPLINES: Discipline[] = ['overall', 'speed', 'brevity'];
+
+/** `tendril me`: your ratings, tier, last rated contest and streak. Needs a sign-in; reads GET /me, /players/:login and /ratings/me/latest. */
+export async function me(): Promise<void> {
+  const token = loadToken();
+  if (!token) throw new Error('Not signed in. Run: tendril login');
+  const who = await api<{ profile: { login: string; displayName: string } }>('/me', { token });
+  if (who.status === 401) throw new Error('Your sign-in has expired. Run: tendril login');
+  if (who.status !== 200) fail('Profile', who);
+  const { login, displayName } = who.json.profile;
+  const [page, latest] = await Promise.all([
+    api<{ streak: { current: number; best: number }; rating: Record<Discipline, { rating: number; tier: Tier; provisional: boolean; events: number; rank: number | null } | null> }>(`/players/${encodeURIComponent(login)}`),
+    api<{ latest: { kind: string; closesAt: number; challengeId: string; overall: ChangeView | null; speed: ChangeView | null; brevity: ChangeView | null } | null }>('/ratings/me/latest', { token }),
+  ]);
+  if (page.status !== 200) fail('Player', page);
+  if (latest.status !== 200) fail('Ratings', latest);
+  const { rating, streak } = page.json;
+  const lines: string[] = [`${displayName} (${login})`, ''];
+  for (const d of DISCIPLINES) {
+    const r = rating?.[d];
+    const label = LABEL[d].padEnd(9);
+    if (!r) lines.push(`${label}unrated`);
+    else if (r.provisional) lines.push(`${label}In placement, ${r.events} of ${PLACEMENT_EVENTS}`);
+    else lines.push(`${label}${r.rating}  ${r.tier.name}${r.tier.next === null ? ' (top tier)' : ` (next at ${r.tier.next})`}${r.rank === null ? '' : `, rank ${r.rank}`}`);
+  }
+  if (!DISCIPLINES.some((d) => rating?.[d])) lines.push('', 'No rating yet. A daily is rated once it closes, if your run reaches par and your GitHub account is at least 14 days old.');
+  const change = latest.json.latest;
+  if (change) {
+    const when = new Date(change.closesAt).toISOString().slice(0, 10);
+    lines.push('', `Last rated: ${change.kind === 'season' ? 'season' : 'daily'} ${change.challengeId} (closed ${when})`);
+    for (const d of DISCIPLINES) {
+      const c = change[d];
+      if (!c) continue;
+      const delta = c.delta > 0 ? `+${c.delta}` : `${c.delta}`;
+      lines.push(`  ${LABEL[d].padEnd(9)}place ${c.place} of ${c.field}, ${c.rating} (${delta})${c.promoted ? `, promoted to ${c.tier.name}` : ''}`);
+    }
+  }
+  lines.push('', `Streak: ${streak.current === 0 ? 'none' : `${streak.current} ${streak.current === 1 ? 'day' : 'days'}`} (best ${streak.best})`);
+  console.log(lines.join('\n'));
+}
+
 export async function getChallenge(id: string): Promise<Challenge> {
   const r = await api<Challenge>(`/challenges/${encodeURIComponent(id)}`);
   return r.status === 200 ? r.json : fail('Challenge', r);

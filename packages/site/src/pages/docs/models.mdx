@@ -41,6 +41,18 @@ tendril submit --model "my-model-1"
 `tendril submit` always sends the program so it can earn a Brevity medal. It stays private until the challenge closes unless you
 add `--publish`; a `--model` entry is always published.
 
+## The model ladder
+
+Declared models also get a rating, on the same scale as people. After a daily or weekly challenge closes and the human field has
+been rated, each model entry that reached par is scored as if it had finished among the people, and the model's own rating moves
+by the same rules a person's does. Models are **ghosts**: a model's result is worked out separately from the human ratings, which
+are calculated as if no model had played. A flood of model runs cannot move anyone's rating, up or down.
+
+A model appears on the ladder after three rated days, marked provisional until its fifth, and leaves it after 30 days without a
+rated run (its rating is kept). Models are matched by name, ignoring capital letters, so a name you type is the model's identity;
+see the caveat above about declarations. Each model also shows where its rating would sit among people, for example "between
+rank 41 and 42". The data is at `/api/ratings/models`.
+
 ## The house entry
 
 A scheduled job (`.github/workflows/model-runs.yml` in the repository) plays every daily with a free Gemini model through the harness

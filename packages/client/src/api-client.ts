@@ -36,6 +36,15 @@ export interface DuelPage {
   entry: { entryId: string; netWorth: number; parTick: number | null; mosaic: string | null } | null;
   accepted: number; viewer: { isChallenger: boolean; accepted: boolean; entryId: string | null } | null;
 }
+export interface RatingTier { key: string; name: string; floor: number; next: number | null }
+export interface RatingChange {
+  place: number; field: number; delta: number; before: number; rating: number; tier: RatingTier; previousTier: RatingTier;
+  promoted: boolean; provisional: boolean; events: number; entryId: string;
+}
+export interface LatestRating {
+  challengeId: string; kind: 'daily' | 'season'; closesAt: number;
+  overall: RatingChange | null; speed: RatingChange | null; brevity: RatingChange | null;
+}
 export class ApiError extends Error {
   constructor(readonly status: number, message: string) { super(message); this.name = 'ApiError'; }
 }
@@ -95,6 +104,8 @@ export class FarmApi {
   submitEntry(id: string, body: { rulesVersion: number; actions: LogEntry[]; source?: string; sourcePublic?: boolean; authorKind?: 'human' | 'model'; model?: string }): Promise<EntryResult> {
     return this.request(`/challenges/${encodeURIComponent(id)}/entries`, 'POST', body);
   }
+  /** Newest rated contest for the signed-in player; `latest` is null before the first rated close. */
+  ratingLatest(): Promise<{ latest: LatestRating | null }> { return this.request('/ratings/me/latest'); }
   daily(): Promise<{ date: string; seed: number; ticks: number; rulesVersion: number }> { return this.request('/daily'); }
   submitDaily(body: { date: string; rulesVersion: number; actions: LogEntry[] }): Promise<{ netWorth: number; rank: number; best: number }> {
     return this.request('/daily/submit', 'POST', body);

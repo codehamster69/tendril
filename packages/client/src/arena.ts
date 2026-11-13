@@ -10,6 +10,7 @@ import { el, toast } from './palette';
 import { createPendingRuns } from './pending-run';
 import { createDuelPanel } from './duel';
 import { copyText, shareText } from './share';
+import { rateLine } from './rating';
 import { declaredModel, modelBox, publishBox, submitWithProgram } from './publish';
 import type { ProgramStatus } from './publish';
 
@@ -169,7 +170,8 @@ export function mountArena({ loop, api, challenge: c }: { loop: GameLoop; api: F
       copy.addEventListener('click', async () => { const ok = await copyText(text); toast(ok ? 'Result copied' : 'Could not copy', ok ? 'Paste it anywhere.' : text); });
       const actionsRow: HTMLElement[] = [copy];
       if (!signedIn) { const si = el('button', { id: 'btn-arena-signin', text: 'Sign in to submit' }); si.addEventListener('click', () => startSignIn()); actionsRow.push(si); }
-      result.replaceChildren(facts, el('pre', { id: 'arena-mosaic', text: text.split('\n').slice(-9, -1).join('\n') }), el('p', { id: 'arena-note', class: 'muted', text: note }), el('div', {}, ...actionsRow), duel.el);
+      const rated = rateLine(c, signedIn, entry ? entry.parTick : local.parTick);
+      result.replaceChildren(facts, ...(rated ? [el('p', { id: 'arena-rated', class: 'muted', text: rated })] : []), el('pre', { id: 'arena-mosaic', text: text.split('\n').slice(-9, -1).join('\n') }), el('p', { id: 'arena-note', class: 'muted', text: note }), el('div', {}, ...actionsRow), duel.el);
       duel.update({ signedIn, netWorth: entry?.netWorth ?? local.netWorth ?? snapshot.netWorth, entry });
       result.hidden = false;
     };

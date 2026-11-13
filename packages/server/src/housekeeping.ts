@@ -241,6 +241,8 @@ export async function pruneOncePerDay(db: Db, now: number): Promise<PruneReport 
 export function edgeSeconds(route: string): number | null {
   if (route === '/leaderboard' || route === '/daily/leaderboard') return 30;
   if (route === '/stats') return 300;
+  if (route === '/ratings/board') return 60;
+  if (route === '/ratings/models') return 300;
   if (route === '/daily') return 60;
   if (/^\/challenges\/[^/]+$/.test(route)) return 30;
   if (/^\/challenges\/[^/]+\/board$/.test(route)) return 30;

@@ -219,3 +219,52 @@ POST /api/verify (verify function only) header X-Tendril-Verify = sha256("tendri
 **Humans vs models (D1).** `authorKind: 'model'` needs `model` (F3 pattern) and a verified, published program: no `source`, or `sourcePublic` not `true`, is **422** `Model entries must include a program and publish it`; a source mismatch is 422 and an unavailable check is 503, and nothing is stored. Resending an earlier plain entry's log with a published program converts that entry to the model entry. Boards filter with `author=human|model` (unset = both); the leaderboard page defaults to Humans. CLI: `tendril submit [--publish] [--model <name>]` always sends the program. Declaration is honour-system (`docs/models.mdx`).
 
 Client: `submitRun(api, c, actions, source?)`; a refused program is resent without it so a score is never lost. Tick box key `tendril.publishSource`.
+
+## Ratings (R2; `packages/server/src/ratings.ts`, migration 008_rating.sql, engine `packages/rating`)
+Tables. `users.github_created_at` (epoch ms, set at GitHub sign-in; NULL for dev logins, the model runner and accounts not signed in since 008).
+**rating_profiles**(user_id PK, data JSON, updated_at, r_/n_/l_ x overall|speed|brevity): one row per player, one write per participant per contest.
+`data = {v:1, d:{overall|speed|brevity: {r rating, n events, pk peak, h:[{c challenge, k 'd'|'s', at closes_at, p place, f field, pf performance, d delta, b before, r after, e entryId}]}}}`
+(history capped at 400 rows per discipline). The `r_/n_/l_` columns (rating, events, closes_at of the last rated contest) mirror it for the ladder index.
+**rating_contests**(challenge_id, discipline, algo_version, field_size, rated_at, summary): three rows per rated-or-deliberately-unrated contest; `summary` JSON
+holds counts, exclusions and `dupSource` (user ids, needed by recompute because program text is pruned). Presence of a row = "this contest is done".
+Meta keys in arena_meta: `rating_lock` (claim `<ms>:<uuid>`, 2 min TTL), `rating_through` (closes_at watermark), `rating_recompute` (only during a rebuild).
+
+Lazy rater. `createRater` ticks on every API request (rating routes: always; others: at most once a minute per instance). `rateDue` finds closed daily/season
+challenges with entries and no rating_contests row, takes the lock (a loser returns `locked`), and rates up to 4 per run in closing order (`closes_at`, a daily before a
+season that closes with it). It stops at the first contest not yet `isSettled` (a daily accepts legacy-alias submissions for a day), so a season is never rated ahead of an
+earlier daily. Season weight 1.5, daily 1. Paused (nothing written) when the budget guard is `tight` or `readonly`; the backlog is rated after it releases.
+Env: `TENDRIL_RATING=off` disables; `TENDRIL_RATING_FROM=YYYY-MM-DD` skips contests closing at or before that instant (launch gate).
+Eligibility, per contest and discipline: signed-in GitHub account with `github_created_at` at least 14 days before the contest closed; an entry that reached par
+(`par_tick` set; Brevity also needs `tokens`); `author_kind = 'human'`; not a duplicate (an entry with the log hash of an earlier player's entry, or the same normalised
+program (`normalizeSource`: comments, spacing, indentation width stripped; names not normalised), is out and the first submitter keeps the place). A player's best entry for the
+discipline stands for them (board order); equal tie key (value, then net worth) shares a place. Fewer than 8 in the engine field: the contest is recorded unrated.
+Field-size rule (R1 caveat): only players passing every rule above are given to the engine, and the engine then keeps established players only once 30 exist, so
+the field-size weight cannot be raised by padding with young, below-par, duplicate or model accounts. Established-but-fake accounts (14+ day GitHub, reached par) still count: see R9.
+Recompute: `pnpm --filter @tendril/server ratings:recompute [-- --algo N]` (N must equal the engine's `ALGO_VERSION`); wipes profiles and contests and re-rates every settled
+contest from stored entries, keeping each contest's old `rated_at` and `dupSource`, so unchanged code reproduces every stored byte. Takes the lock.
+
+Routes (under /api; JSON; errors `{error}`):
+```
+GET /players/:login            + rating:{overall,speed,brevity}, each null (no rated run in it) or
+                                 {rating, tier:{key,name,floor,next}, provisional (events<5), events, peak, rank, percentile,
+                                  history:[{challengeId, kind, closesAt, place, field, performance, delta, before, rating, entryId}]}
+                                 rank/percentile: among established (5+ events) players rated in the last 30 days; null in placement or when inactive
+GET /ratings/board?discipline=overall|speed|brevity&limit=20(<=100)&cursor=
+                               -> {discipline, entries:[{rank, login, displayName, avatarUrl, rating, tier, events, lastRatedAt}], nextCursor|null}
+                                  established players active in the last 30 days, rating desc then user id; keyset cursor (opaque, carries the next rank). Edge cache 60 s.
+GET /ratings/models            -> {models:[]}  (R7 fills it). Edge cache 300 s.
+GET /ratings/me/latest?seen=<challengeId>   (session) -> {latest: null | {challengeId, kind, closesAt,
+                                  overall|speed|brevity: null | {place, field, delta, before, rating, tier, previousTier, promoted, provisional, events, entryId}}}
+                                  newest rated contest; `latest:null` when `seen` is already it. Nothing is written: the client remembers what it showed.
+GET /challenges/:id/board      closed daily/season boards: every row (and `me`) gains rating, tier:{key,name} and delta (null when unrated). Open boards unchanged.
+```
+Not in R2: `/card/:login.svg`, `/og/u/:login.png` (R5). `field` in history is the number of rated entrants that day (the "of 312"), `rating_contests.field_size` is the engine's field.
+
+## Portfolio additions (R3b)
+GET /players/:login            + pinned:[{entryId, challengeId, kind, number, rank, players, tokens, netWorth, parTick}] (0-3, owner's order;
+                                 only programs public now: own, source_public, verified, challenge settled, not hidden; rank = wealth place among
+                                 `players` distinct players) and days:["YYYY-MM-DD",...] (ascending UTC dates with a daily/season entry in the last
+                                 140 days; a season counts for its last open day).
+PUT /players/me/pinned         {entryIds:[<=3 ids]} (session; cookie needs X-Tendril-Client: 1; shares the 'follow' attempt budget, 200/day)
+                                 -> {pinned:[...]} replaces the list; [] clears. 400 shape/extra fields, 401, 422 >3, duplicates, or any id that is not the
+                                 caller's own public program. Stored as JSON in arena_meta key `pins:<userId>` (no migration; stale ids drop out at read).

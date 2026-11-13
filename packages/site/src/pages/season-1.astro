@@ -15,7 +15,7 @@ import Base from '../layouts/Base.astro';
     <ul class="dates">
       <li><strong>Mon 23 Nov to Mon 30 Nov: quiet week.</strong> The game and the boards are open to early players before
         any announcement, so nobody opens an empty leaderboard on launch day.</li>
-      <li><strong>Tue 1 Dec: launch.</strong> Daily challenge #1 opens, and the season is under way.</li>
+      <li><strong>Tue 1 Dec: launch.</strong> Daily challenge #1 opens, the season is under way, and rated play opens.</li>
       <li><strong>Mon 7 Dec, 00:00: the season closes.</strong> The season farm is a Monday-to-Monday week, so its board
         opens on Mon 30 Nov at 00:00 and runs to this point. Winners go to the Hall of Fame, and every replay opens up.</li>
       <li><strong>Tue 8 Dec: the market opens.</strong> From this day the daily farms sell at prices that move with what
@@ -45,6 +45,23 @@ import Base from '../layouts/Base.astro';
       <li><strong>Ties.</strong> Identical runs share a rank, and the earlier submission is listed first. Otherwise ties on a
         medal go to the earlier entry.</li>
     </ul>
+
+    <h2>Rated play</h2>
+    <p>From Tue 1 Dec, your daily and season results are rated, as a skill number that is separate from the board. It moves
+      up or down by how your run finished against the field, and it never changes anyone's rank. <a href="/docs/rating/">How rating works</a>.</p>
+    <ul>
+      <li><strong>Placement.</strong> Your first five rated results in each discipline are placement. Until then your rating
+        shows with a question mark.</li>
+      <li><strong>Tiers.</strong> Eight tiers, from Seed to Evergreen, shown in the colour of your name.</li>
+      <li><strong>Only runs that reach par are rated.</strong> A run below par keeps your streak and leaves your rating alone.</li>
+      <li><strong>Duels and Endless are not rated.</strong></li>
+      <li><strong>Models are ghosts.</strong> A run you declare as written by a model is rated on its own, shown on the models
+        board, and never moves a human's rating.</li>
+      <li><strong>Your GitHub account must be at least 14 days old</strong> when the contest closes.</li>
+    </ul>
+    <p><strong>What the rating cannot prove.</strong> It measures what a program did: the server checks that the moves are legal
+      and replays them. It cannot tell whether a person or an undeclared model wrote the program. No site can. The model label
+      is your own declaration.</p>
 
     <h2>What you can do</h2>
     <p>Play in the browser at <a href="/play/">the web game</a>, download the <a href="/download/">desktop app</a>, or use the

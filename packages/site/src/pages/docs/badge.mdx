@@ -1,7 +1,7 @@
 ---
 layout: ../../layouts/Docs.astro
 title: README badge and streaks
-description: Show your daily streak and best rank on your GitHub profile.
+description: Show your rating, streak and best rank on your GitHub profile, and what your profile link looks like when shared.
 ---
 
 ## Streaks
@@ -24,3 +24,43 @@ Add this to your GitHub profile README, with your GitHub login in place of `YOUR
 It shows your current streak and your best rank (for example `top 8%`) on any daily or weekly board. The badge is
 cached for an hour, so it can lag a little behind the game. An unknown login shows a grey "unknown player" badge
 instead of a broken image.
+
+## The rating badge
+
+The same small badge, showing your overall rating and tier:
+
+```md
+![Tendril rating](https://tendril.hokora.xyz/api/badge/rating/YOUR-LOGIN.svg)
+```
+
+It reads for example `1,842 Orchard`. While you are still in placement it shows your provisional rating and
+`placement 2/5`; before your first rated day it says `unrated`. How the rating works is explained on the
+[rating page](/docs/rating/).
+
+## The stats card
+
+A larger card for your profile README: rating, tier, top percent, streak, your Brevity and Speed ratings and a small line
+of your rating over your last rated days.
+
+```md
+![Tendril stats](https://tendril.hokora.xyz/api/card/YOUR-LOGIN.svg)
+```
+
+To make it a link to your profile page, wrap it:
+
+```md
+[![Tendril stats](https://tendril.hokora.xyz/api/card/YOUR-LOGIN.svg)](https://tendril.hokora.xyz/u/YOUR-LOGIN)
+```
+
+The card is a plain image with no scripts, fonts or outside requests, so GitHub shows it as is. Unknown logins show a
+grey "unknown player" card, and players who are not rated yet see "Not rated yet", so the image never breaks.
+
+## Preview image of your profile link
+
+When you paste your profile link into a chat or a social post, the preview is
+`https://tendril.hokora.xyz/api/og/u/YOUR-LOGIN.png`: your rating and tier next to the farm of your latest run. In the
+week after you move up a tier it becomes a promotion card ("Promoted to Orchard"). You can also use it directly as an
+image.
+
+All of these are cached for an hour, so a new rating can take up to an hour to show. Adding a query string such as
+`?v=2` to the badge or card is refused; use the plain URL.

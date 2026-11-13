@@ -1,7 +1,7 @@
 ---
 import Base from '../layouts/Base.astro';
 ---
-<Base title="Leaderboard" description="Today's Tendril farm, this week's season and the endless farm: medal boards where every score was proven by replaying the moves on the server.">
+<Base title="Leaderboard" description="Today's Tendril farm, this week's season, the endless farm and the rating ladder: boards where every score was proven by replaying the moves on the server.">
   <section class="wrap page">
     <h1>Leaderboard</h1>
     <p class="lede">Every score here was checked by replaying its moves on the server. <a href="/docs/leaderboard/">How that works</a></p>
@@ -10,6 +10,7 @@ import Base from '../layouts/Base.astro';
       <button role="tab" aria-selected="true" data-scope="daily">Daily</button>
       <button role="tab" aria-selected="false" data-scope="week" tabindex="-1">Week</button>
       <button role="tab" aria-selected="false" data-scope="endless" tabindex="-1">Endless</button>
+      <button role="tab" aria-selected="false" data-scope="rating" tabindex="-1">Rating</button>
     </div>
 
     <div class="controls">
@@ -27,6 +28,11 @@ import Base from '../layouts/Base.astro';
         <button data-author="model" aria-pressed="false">Models</button>
         <button data-author="all" aria-pressed="false">Both</button>
       </div>
+      <div class="seg" role="group" aria-label="Rating discipline" data-rating-group hidden>
+        <button data-disc="overall" aria-pressed="true">Overall</button>
+        <button data-disc="speed" aria-pressed="false">Speed</button>
+        <button data-disc="brevity" aria-pressed="false">Brevity</button>
+      </div>
       <div class="seg" role="group" aria-label="Endless board" data-endless hidden>
         <button data-end="networth" aria-pressed="true">Net worth</button>
         <button data-end="growth" aria-pressed="false">Growth today</button>
@@ -38,16 +44,29 @@ import Base from '../layouts/Base.astro';
       <div data-histo></div>
       <div class="table-scroll">
         <table>
-          <thead><tr><th class="rank">Rank</th><th>Farmer</th><th class="num" data-col>Net worth</th></tr></thead>
+          <thead><tr data-head><th class="rank">Rank</th><th>Farmer</th><th class="num" data-col>Net worth</th></tr></thead>
           <tbody data-rows></tbody>
         </table>
       </div>
+      <nav class="pager-row" aria-label="Rating pages" data-pager hidden>
+        <button type="button" data-prev>Previous</button>
+        <span class="dim" data-page></span>
+        <button type="button" data-next>Next</button>
+      </nav>
       <p class="state" data-state>Loading…</p>
     </div>
 
     <section class="yesterday" aria-labelledby="yh" data-yesterday hidden>
       <h2 id="yh">Yesterday's winners</h2>
       <ul class="winners" role="list" data-winners></ul>
+      <details class="yboard" data-yboard>
+        <summary>Full board with rating changes</summary>
+        <table>
+          <thead><tr><th class="rank">Rank</th><th>Farmer</th><th class="num">Net worth</th></tr></thead>
+          <tbody data-yrows></tbody>
+        </table>
+        <p class="state" data-ystate></p>
+      </details>
     </section>
 
     <section class="hall" aria-labelledby="hf" data-hall hidden>
@@ -76,25 +95,33 @@ import Base from '../layouts/Base.astro';
 </Base>
 
 <script>
-  import { api, arenaCss, el, fmt, histogramEl, medalValue, MEDALS, mosaicEl, playerLink, timeLeft, msUntil, utcDay } from '../scripts/arena';
-  import type { Board, Challenge, Medal, Row } from '../scripts/arena';
+  import { api, arenaCss, el, fmt, histogramEl, medalValue, MEDALS, mosaicEl, deltaEl, playerLink, timeLeft, msUntil, utcDay } from '../scripts/arena';
+  import type { Board, Challenge, Medal, Row, TierRef } from '../scripts/arena';
 
-  type Scope = 'daily' | 'week' | 'endless';
+  type Scope = 'daily' | 'week' | 'endless' | 'rating';
+  type Disc = 'overall' | 'speed' | 'brevity';
+  type RatingRow = { rank: number; login: string; displayName: string; rating: number; tier: TierRef; events: number; lastRatedAt?: number };
+  type GhostStat = { rating: number; tier: TierRef; events: number; humanRank: number };
+  type Ghost = GhostStat & { name: string; disciplines?: Partial<Record<Disc, GhostStat | null>> };
   type Season = { id: string; number: number | null; closesAt: number; players: number; winners: Record<Medal, Row | null> };
   type EndRow = { rank: number; displayName: string; netWorth: number; growth24h?: number };
 
   const $ = <T extends HTMLElement>(s: string) => document.querySelector<T>(s)!;
-  const rows = $('[data-rows]'), state = $('[data-state]'), about = $('[data-about]'), col = $('[data-col]'), histo = $('[data-histo]');
+  const rows = $('[data-rows]'), state = $('[data-state]'), about = $('[data-about]'), histo = $('[data-histo]');
+  let col = $('[data-col]');
   const scopeTabs = [...document.querySelectorAll<HTMLButtonElement>('[data-scope]')];
   const medalBtns = [...document.querySelectorAll<HTMLButtonElement>('[data-medal]')];
   const whoBtns = [...document.querySelectorAll<HTMLButtonElement>('button[data-who]')];
   const authorBtns = [...document.querySelectorAll<HTMLButtonElement>('button[data-author]')];
+  const discBtns = [...document.querySelectorAll<HTMLButtonElement>('[data-disc]')];
+  const head = $('[data-head]'), pager = $('[data-pager]'), pageLbl = $('[data-page]');
+  const prevBtn = $<HTMLButtonElement>('[data-prev]'), nextBtn = $<HTMLButtonElement>('[data-next]');
   const endBtns = [...document.querySelectorAll<HTMLButtonElement>('[data-end]')];
 
-  const st = { scope: 'daily' as Scope, medal: 'wealth' as Medal, who: 'global', author: 'human', end: 'networth' };
+  const st = { scope: 'daily' as Scope, disc: 'overall' as Disc, medal: 'wealth' as Medal, who: 'global', author: 'human', end: 'networth' };
   if (/^(human|model|all)$/.test(new URLSearchParams(location.search).get('author') ?? '')) st.author = new URLSearchParams(location.search).get('author')!;
   const hash = location.hash.slice(1);
-  if (hash === 'daily' || hash === 'week' || hash === 'endless') st.scope = hash;
+  if (hash === 'daily' || hash === 'week' || hash === 'endless' || hash === 'rating') st.scope = hash;
   let token = 0;
 
   const style = document.createElement('style');
@@ -122,8 +149,10 @@ import Base from '../layouts/Base.astro';
     const wrap = el('span', 'farmer');
     const m = mosaicEl(r.mosaic, '2.25rem');
     if (m) wrap.append(m);
-    const name = playerLink(r.login, r.displayName || r.login);
+    const name = playerLink(r.login, r.displayName || r.login, r.tier);
     wrap.append(name);
+    const d = deltaEl(r.delta, r.rating);
+    if (d) wrap.append(d);
     if (r.authorKind === 'model') wrap.append(el('span', 'tag', r.model ? `model: ${r.model}` : 'model'));
     return wrap;
   }
@@ -136,11 +165,21 @@ import Base from '../layouts/Base.astro';
     pressed(whoBtns, 'who', st.who);
     pressed(authorBtns, 'author', st.author);
     pressed(endBtns, 'end', st.end);
-    const endless = st.scope === 'endless';
-    $('[data-medals]').hidden = endless;
-    $('[data-who-group]').hidden = endless;
-    $('[data-author-group]').hidden = endless;
+    pressed(discBtns, 'disc', st.disc);
+    const endless = st.scope === 'endless', ratingTab = st.scope === 'rating';
+    $('[data-medals]').hidden = endless || ratingTab;
+    $('[data-who-group]').hidden = endless || ratingTab;
+    $('[data-author-group]').hidden = endless || ratingTab;
     $('[data-endless]').hidden = !endless;
+    $('[data-rating-group]').hidden = !ratingTab;
+    rows.classList.toggle('rated', ratingTab);
+    pager.hidden = true;
+    head.replaceChildren(...(ratingTab ? ['Rank', 'Player', 'Tier', 'Events', 'Rating'] : ['Rank', 'Farmer', endless ? (st.end === 'growth' ? 'Growth' : 'Net worth') : 'Net worth']).map((t, i, a) => {
+      const th = el('th', i === 0 ? 'rank' : i === a.length - 1 ? 'num' : '', t);
+      if (i === a.length - 1) th.setAttribute('data-col', '');
+      return th;
+    }));
+    col = head.lastElementChild as HTMLElement;
     $('[data-yesterday]').hidden = true;
     $('[data-hall]').hidden = st.scope !== 'week';
     history.replaceState(null, '', `#${st.scope}`);
@@ -149,11 +188,78 @@ import Base from '../layouts/Base.astro';
     state.hidden = false;
     state.textContent = 'Loading…';
     try {
-      if (endless) await showEndless(mine); else await showChallenge(mine);
+      if (endless) await showEndless(mine); else if (ratingTab) await showRating(mine); else await showChallenge(mine);
       if (st.scope === 'week') void hallOfFame(mine);
     } catch {
       if (mine === token) { about.textContent = ''; state.textContent = "The leaderboard can't be reached right now. Your farm is safe; try again in a minute."; }
     }
+  }
+
+  /** Cursor for each page shown so far; cursors[i] fetches page i (the first is empty). */
+  let cursors: string[] = [''];
+  let page = 0;
+  /** Last human rank on each page shown so far, so a ghost lands on exactly one page. */
+  const lastRank: number[] = [];
+  /** Model ghosts from /ratings/models, fetched once. */
+  let ghosts: Ghost[] | null = null;
+
+  async function loadGhosts(): Promise<Ghost[]> {
+    if (ghosts) return ghosts;
+    try {
+      const d = await api<{ models?: Ghost[] }>('/ratings/models');
+      if (!d?.models) return [];
+      ghosts = d.models;
+    } catch { return []; }
+    return ghosts;
+  }
+
+  /** One ghost row; it sits just before human rank `humanRank` and takes no number. */
+  function ghostRow(g: Ghost, s: GhostStat) {
+    const tr = el('tr', 'ghost');
+    tr.title = "A model, rated on the same scale. It takes no numbered place and does not change any person's rating.";
+    const tk = /^[a-z]+$/.test(s.tier.key) ? `tier-${s.tier.key}` : '';
+    const name = el('span', tk, `model: ${g.name}`);
+    name.style.fontWeight = '600';
+    const cells: Node[] = [el('span', 'tag', 'ghost'), name, el('span', tk, `${s.tier.name} level`), document.createTextNode(String(s.events)), document.createTextNode(fmt.format(s.rating))];
+    cells.forEach((c, i) => { const td = el('td', i === 0 ? 'rank' : i === cells.length - 1 ? 'num' : ''); td.append(c); tr.append(td); });
+    return tr;
+  }
+
+  async function showRating(mine: number) {
+    about.textContent = `Established players (5 or more rated runs) who played in the last 30 days, highest rating first. Names take the colour of their tier. `;
+    about.append(Object.assign(el('a', undefined, 'How rating works'), { href: '/docs/rating/' }), '.');
+    const data = await api<{ entries?: RatingRow[]; nextCursor?: string | null }>(`/ratings/board?discipline=${st.disc}&limit=20${cursors[page] ? `&cursor=${encodeURIComponent(cursors[page]!)}` : ''}`);
+    if (mine !== token) return;
+    if (!data) throw new Error('down');
+    const list = data.entries ?? [];
+    if (!list.length) {
+      state.textContent = page > 0 ? 'No more players on this page.' : 'Nobody is on the ladder yet. Players appear here after 5 rated runs.';
+      pager.hidden = page === 0;
+      pageLbl.textContent = `Page ${page + 1}`; prevBtn.disabled = page === 0; nextBtn.disabled = true;
+      return;
+    }
+    state.hidden = true;
+    fill(list.map((e) => [String(e.rank), playerLink(e.login, e.displayName || e.login, e.tier), el('span', /^[a-z]+$/.test(e.tier.key) ? `tier-${e.tier.key}` : '', e.tier.name), String(e.events), fmt.format(e.rating)]));
+    [...rows.children].forEach((tr, i) => { (tr as HTMLElement).dataset.rank = String(list[i]!.rank); if (list[i]!.rank <= 3) tr.classList.add('podium'); });
+    const nxt = data.nextCursor ?? null;
+    lastRank[page] = list[list.length - 1]!.rank;
+    const lo = page > 0 ? (lastRank[page - 1] ?? 0) : 0;
+    const placed = (await loadGhosts())
+      .map((g) => [g, st.disc === 'overall' ? g : g.disciplines?.[st.disc]] as const)
+      .filter((p): p is readonly [Ghost, GhostStat] => !!p[1] && p[1].humanRank > lo && (!nxt || p[1].humanRank <= lastRank[page]!))
+      .sort((a, b) => a[1].humanRank - b[1].humanRank || b[1].rating - a[1].rating);
+    if (mine !== token) return;
+    const trs = [...rows.children] as HTMLElement[];
+    for (const [g, s] of placed) {
+      const at = trs.find((t) => Number(t.dataset.rank) >= s.humanRank);
+      const gr = ghostRow(g, s);
+      if (at) at.before(gr); else rows.append(gr);
+    }
+    if (nxt) cursors[page + 1] = nxt; else cursors = cursors.slice(0, page + 1);
+    pager.hidden = page === 0 && !nxt;
+    pageLbl.textContent = `Page ${page + 1}`;
+    prevBtn.disabled = page === 0;
+    nextBtn.disabled = !nxt;
   }
 
   async function showEndless(mine: number) {
@@ -233,7 +339,7 @@ import Base from '../layouts/Base.astro';
         const pic = mosaicEl(r.mosaic, '4rem');
         if (pic) item.append(pic);
         const txt = el('div');
-        txt.append(el('strong', undefined, MEDALS[m].label), el('br'), playerLink(r.login, r.displayName || r.login), el('br'), el('span', 'dim', medalValue(m, r.value)));
+        txt.append(el('strong', undefined, MEDALS[m].label), el('br'), playerLink(r.login, r.displayName || r.login, r.tier), el('br'), el('span', 'dim', medalValue(m, r.value)));
         item.append(txt);
         medals.append(item);
       }
@@ -260,27 +366,57 @@ import Base from '../layouts/Base.astro';
       const pic = mosaicEl(r.mosaic, '5rem');
       if (pic) li.append(pic);
       const txt = el('div');
-      txt.append(el('strong', undefined, MEDALS[m].label), el('br'), playerLink(r.login, r.displayName || r.login), el('br'), el('span', 'dim', medalValue(m, r.value)));
+      const who = el('span');
+      who.append(playerLink(r.login, r.displayName || r.login, r.tier));
+      const dl = deltaEl(r.delta, r.rating);
+      if (dl) who.append(dl);
+      txt.append(el('strong', undefined, MEDALS[m].label), el('br'), who, el('br'), el('span', 'dim', medalValue(m, r.value)));
       li.append(txt);
       list.append(li);
     });
     if (!list.children.length) return;
     $('#yh').textContent = ch.number != null && ch.number > 0 ? `Yesterday's winners (daily #${ch.number})` : `Yesterday's winners (practice day)`;
     $('[data-yesterday]').hidden = false;
+    yBoardId = id;
+    yLoaded = '';
+    if ((document.querySelector('[data-yboard]') as HTMLDetailsElement).open) void loadYBoard();
   }
 
+  let yBoardId = '', yLoaded = '';
+  /** Top 20 of the closed daily with each player's rating change. */
+  async function loadYBoard() {
+    if (!yBoardId || yLoaded === yBoardId) return;
+    const id = yBoardId, body = $('[data-yrows]'), ys = $('[data-ystate]');
+    ys.hidden = false; ys.textContent = 'Loading…';
+    const b = await api<Board>(`/challenges/${id}/board?medal=wealth&limit=20`);
+    if (id !== yBoardId) return;
+    if (!b || !b.entries.length) { ys.textContent = b ? 'No entries.' : "The board can't be reached right now."; return; }
+    yLoaded = id; ys.hidden = true;
+    body.replaceChildren(...b.entries.map((r) => {
+      const tr = el('tr');
+      const farmer = el('td');
+      farmer.append(farmerCell(r));
+      tr.append(el('td', 'rank', String(r.rank)), farmer, el('td', 'num', medalValue('wealth', r.value)));
+      return tr;
+    }));
+  }
+  document.querySelector('[data-yboard]')!.addEventListener('toggle', () => { if ((document.querySelector('[data-yboard]') as HTMLDetailsElement).open) void loadYBoard(); });
+
   scopeTabs.forEach((t, i) => {
-    t.addEventListener('click', () => { st.scope = t.dataset.scope as Scope; void show(); });
+    t.addEventListener('click', () => { st.scope = t.dataset.scope as Scope; cursors = ['']; page = 0; void show(); });
     t.addEventListener('keydown', (ev) => {
       const d = ev.key === 'ArrowRight' ? 1 : ev.key === 'ArrowLeft' ? -1 : 0;
       if (!d) return;
       const n = scopeTabs[(i + d + scopeTabs.length) % scopeTabs.length]!;
-      n.focus(); st.scope = n.dataset.scope as Scope; void show();
+      n.focus(); st.scope = n.dataset.scope as Scope; cursors = ['']; page = 0; void show();
     });
   });
   medalBtns.forEach((b) => b.addEventListener('click', () => { st.medal = b.dataset.medal as Medal; void show(); }));
   whoBtns.forEach((b) => b.addEventListener('click', () => { st.who = b.dataset.who!; void show(); }));
   authorBtns.forEach((b) => b.addEventListener('click', () => { st.author = b.dataset.author!; void show(); }));
+  discBtns.forEach((b) => b.addEventListener('click', () => { st.disc = b.dataset.disc as Disc; cursors = ['']; page = 0; void show(); }));
+  prevBtn.addEventListener('click', () => { if (page > 0) { page--; void show(); } });
+  nextBtn.addEventListener('click', () => { if (cursors[page + 1]) { page++; void show(); } });
   endBtns.forEach((b) => b.addEventListener('click', () => { st.end = b.dataset.end!; void show(); }));
   void show();
 </script>
@@ -347,12 +483,22 @@ import Base from '../layouts/Base.astro';
       if (mine !== pToken) return;
       if (!data.entries.length) { pState.textContent = 'Nobody has published a program for this challenge yet.'; return; }
       pState.hidden = true;
+      const tiers = new Map<string, string>();
+      try {
+        const bd = await fetch(`/api/challenges/${id}/board?limit=100`, { headers: { accept: 'application/json' } });
+        if (bd.ok) for (const r of ((await bd.json()) as { entries?: { entryId: string; tier?: { key: string } | null }[] }).entries ?? []) if (r.tier && /^[a-z]+$/.test(r.tier.key)) tiers.set(r.entryId, r.tier.key);
+      } catch { /* names stay uncoloured */ }
+      if (mine !== pToken) return;
       for (const e of data.entries) {
         const li = document.createElement('li');
         const btn = document.createElement('button');
         btn.type = 'button';
         const who = e.authorKind === 'model' && e.model ? `${e.displayName} (${e.model})` : e.displayName;
-        btn.textContent = `${who} · ${fmt.format(e.netWorth)} coins${e.tokens === null ? '' : ` · ${fmt.format(e.tokens)} tokens`}`;
+        const nm = document.createElement('span');
+        nm.textContent = who;
+        const tk = tiers.get(e.entryId);
+        if (tk) nm.className = `tier-${tk}`;
+        btn.append(nm, ` · ${fmt.format(e.netWorth)} coins${e.tokens === null ? '' : ` · ${fmt.format(e.tokens)} tokens`}`);
         btn.addEventListener('click', () => void readProgram(e, who, btn));
         li.append(btn);
         pList.append(li);
@@ -407,7 +553,10 @@ import Base from '../layouts/Base.astro';
   .about { color: var(--dim); margin: 0 0 1rem; }
   td.rank, th.rank { width: 4.5rem; }
   .num { text-align: right; padding-right: 0; }
-  tbody tr:nth-child(-n + 3) td.rank { color: var(--leaf); font-weight: 700; }
+  tbody:not(.rated) tr:nth-child(-n + 3) td.rank, tbody.rated tr.podium td.rank { color: var(--leaf); font-weight: 700; }
+  tr.ghost td { font-style: italic; border-top: 1px dashed var(--line); border-bottom: 1px dashed var(--line); background: color-mix(in srgb, var(--line) 25%, transparent); }
+  tr.ghost td.rank { font-style: normal; }
+  tr.ghost .tag { color: var(--ink); }
   .state { color: var(--dim); padding: 1.5rem 0; }
   .farmer { display: inline-flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; }
   .tag { font-size: 0.75rem; border: 1px solid var(--line); border-radius: 999px; padding: 0 0.5rem; color: var(--dim); }
@@ -420,6 +569,11 @@ import Base from '../layouts/Base.astro';
   .yesterday { margin-top: 3rem; }
   .winners { list-style: none; padding: 0; margin: 1rem 0 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr)); gap: 1rem; }
   .hall { margin-top: 3rem; }
+  .yboard { margin-top: 1.25rem; }
+  .yboard summary { cursor: pointer; font-weight: 600; margin-bottom: 0.75rem; }
+  .pager-row { display: flex; align-items: center; gap: 1rem; margin: 1rem 0; }
+  .pager-row button { background: none; border: 1.5px solid var(--line); color: var(--ink); border-radius: 8px; padding: 0.35rem 0.9rem; font: 600 0.92rem var(--display); cursor: pointer; }
+  .pager-row button:disabled { opacity: 0.45; cursor: default; }
   .seasons { list-style: none; padding: 0; margin: 1rem 0 0; display: grid; gap: 1.5rem; }
   .season h3 { margin: 0; }
   .winner { display: flex; gap: 0.8rem; align-items: center; }
