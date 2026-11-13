@@ -9,6 +9,7 @@ import { createFarm, dailyInfo, getFarm, getReplay, isValidDate, leaderboard, re
 import type { Board } from './game.ts';
 import { badgeFor, follow, listFollowing, playerPage, unfollow } from './players.ts';
 import { handleShare } from './share.ts';
+import { handleDailyPages } from './daily-pages.ts';
 import { createGuard, dropReplaysOutsideTop, pruneOncePerDay, rateScale, refreshGuard, prune, syncScale, withCacheHeaders } from './housekeeping.ts';
 import type { SourceVerifier } from './verify-client.ts';
 import { reportProgram } from './moderation.ts';
@@ -87,6 +88,12 @@ function createInnerApp(options: AppOptions): (request: Request) => Promise<Resp
         await ensureMigrated();
         const shareOrigin = publicOriginOf(env, url);
         const res = await handleShare(url.pathname, request.method, { db, now: now(), origin: shareOrigin, host: new URL(shareOrigin).host, search: url.search, count: (await guard.mode()) === 'normal' });
+        if (res) return res;
+      }
+      // ---- G2 public daily pages (/daily/, /daily/<n>, /sitemap-daily.xml): server-rendered HTML, long CDN cache ----
+      if (/^(\/daily\/?|\/daily\/\d{1,5}\/?|\/sitemap-daily\.xml)$/.test(url.pathname) && (request.method === 'GET' || request.method === 'HEAD')) {
+        await ensureMigrated();
+        const res = await handleDailyPages(url.pathname, request.method, { db, now: now(), origin: publicOriginOf(env, url), search: url.search });
         if (res) return res;
       }
       const origin = request.headers.get('origin');

@@ -79,6 +79,8 @@ const TILE: Record<string, RGB> = {
   B: hex('#a0522d'), h: hex('#f2c230'), c: hex('#5b6b3a'), '1': hex('#e8c547'), '2': hex('#e0803f'), '3': hex('#d94f4f'),
   '4': hex('#8bc34a'), '5': hex('#b06fd1'), '6': hex('#4fb3d9'), t: hex('#6b4a2f'), '0': hex('#2f3f33'),
 };
+/** The mosaic palette as CSS colours (for HTML mosaics). */
+export const TILE_HEX: Record<string, string> = Object.fromEntries(Object.entries(TILE).map(([k, [r, g, b]]) => [k, `#${[r, g, b].map((v) => v.toString(16).padStart(2, '0')).join('')}`]));
 const BG = hex('#12201a'), PANEL = hex('#0b1410'), GREEN = hex('#7bc96f'), WHITE = hex('#f4f1e6'), GOLD = hex('#f2c230'), DIM = hex('#9fb3a4');
 
 export interface CardData {
