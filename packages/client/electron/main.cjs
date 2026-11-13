@@ -1,7 +1,7 @@
 const { app, BrowserWindow, ipcMain, session, shell } = require('electron');
 const path = require('node:path');
 const { appendFileSync, statSync } = require('node:fs');
-const { entryURL, hardenContents, isAllowedExternalURL } = require('./navigation.cjs');
+const { entryURL, hardenContents, isAllowedExternalURL, isAllowedSiteURL } = require('./navigation.cjs');
 const { apiOrigin } = require('./config.cjs');
 const { registerScheme, serveApp } = require('./app-protocol.cjs');
 const { setupUpdates } = require('./updater.cjs');
@@ -41,6 +41,8 @@ async function createWindow() {
   const win = new BrowserWindow({
     width: 1400,
     height: 900,
+    minWidth: 1100,
+    minHeight: 680,
     backgroundColor: '#14171c',
     webPreferences: {
       contextIsolation: true,
@@ -59,7 +61,7 @@ async function createWindow() {
   const origin = apiOrigin();
   const ipcHandler = (event, url) => {
     if (event.sender !== win.webContents) return;
-    if (isAllowedExternalURL(url, origin)) openExternal(url);
+    if (isAllowedExternalURL(url, origin) || isAllowedSiteURL(url, origin)) openExternal(url);
   };
   ipcMain.on('tendril:open-external', ipcHandler);
   win.on('closed', () => ipcMain.removeListener('tendril:open-external', ipcHandler));

@@ -6,3 +6,6 @@ Installed dependencies locally. Sim correctness works but a wall-clock timing as
 
 ## 2026-11-11 — first results / independent checks
 AB and AC agents returned; coordinator read reports/source and inspected bot/barn/market and mature-crop previews. Validator checked all39currentGLBs against sidecars/budgets and256pxPNGs:17582triangles total. AT may still revise its outputs; repeat final validation after completion. Server returned59tests; coordinator repeated59pass, types/lint pass with patchedVitest4.1.12. Dedicated S-review security agent launched read-only. Runtime and full dependency audits now clean after DOMPurify/Vitest/minimatch patches. Core client/renderer/packaging/golden-test agents still working. Added standalone API client module pending ranked-sync integration.
+
+## 2026-11-13 — final review and 0.2.0
+UI/UX bundle landed with review fixes (mobile mode bar overflow, Join duel parser test, favicon, dev server runs lang with transform-types). Full gate, real-server flows and live site checked; see STATUS.md.

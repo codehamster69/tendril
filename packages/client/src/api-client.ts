@@ -155,3 +155,13 @@ export async function signIn(signal: AbortSignal = new AbortController().signal)
   }
   throw new Error('Sign-in timed out.');
 }
+
+/** Desktop: site links (docs, leaderboard, home) open in the system browser; the main process only allows fixed pages. Web: normal links. */
+export function wireSiteLinks(): void {
+  const bridge = (window as unknown as { tendrilDesktop?: { openExternal(u: string): void } }).tendrilDesktop;
+  if (!bridge) return;
+  for (const link of document.querySelectorAll<HTMLAnchorElement>('a[data-site-link]')) {
+    const path = link.getAttribute('href')!.replace(/^\.\.\//, '/');
+    link.addEventListener('click', (event) => { event.preventDefault(); bridge.openExternal(`${API_ORIGIN}${path}`); });
+  }
+}

@@ -43,3 +43,8 @@
 #arena-market .m-down td:nth-child(3) { color: #b3261e; }
 .market-soon { margin: 0.25rem 0 0.5rem; font-size: 0.85rem; opacity: 0.8; }
 #arena-mods { margin: 0.25rem 0 0.5rem; font-size: 0.85rem; opacity: 0.8; }
+
+#lesson-card { flex: 0 0 auto; max-height: 46vh; overflow-y: auto; }
+#lesson-card #arena-body[hidden] { display: none; }
+#arena-head .arena-head-actions { display: flex; gap: 8px; align-items: center; }
+#join-duel-input { width: 100%; box-sizing: border-box; margin: 4px 0 10px; padding: 8px 10px; background: rgba(0,0,0,.3); color: var(--mist); border: 1px solid var(--line); border-radius: 8px; font: inherit; }

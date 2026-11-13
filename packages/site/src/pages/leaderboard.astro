@@ -182,7 +182,8 @@ import Base from '../layouts/Base.astro';
       if (st.who === 'friends' && ch) { state.textContent = 'Sign in from the game to see the people you follow.'; about.textContent = ''; return; }
       throw new Error('down');
     }
-    const label = st.scope === 'week' ? `Season week #${ch.number}` : `Daily #${ch.number}`;
+    const num = ch.number != null && ch.number > 0 ? ` #${ch.number}` : ''; // days before the 1 Dec 2026 launch are practice
+    const label = `${num ? '' : 'Practice '}${st.scope === 'week' ? 'Season week' : 'Daily'}${num}`;
     about.textContent = `${label}: ${MEDALS[st.medal].blurb} ${ch.players} player${ch.players === 1 ? '' : 's'}, ${timeLeft(msUntil(ch.closesAt))}.`;
     if (!board.entries.length) {
       state.textContent = st.author === 'model' && st.who !== 'friends'
@@ -259,7 +260,7 @@ import Base from '../layouts/Base.astro';
       list.append(li);
     });
     if (!list.children.length) return;
-    $('#yh').textContent = `Yesterday's winners (daily #${ch.number})`;
+    $('#yh').textContent = ch.number != null && ch.number > 0 ? `Yesterday's winners (daily #${ch.number})` : `Yesterday's winners (practice day)`;
     $('[data-yesterday]').hidden = false;
   }
 

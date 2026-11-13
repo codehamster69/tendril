@@ -27,6 +27,8 @@ export const DOCS_NAV: NavGroup[] = [
       { href: '/docs/daily/', title: 'Daily challenge' },
       { href: '/docs/market/', title: 'The daily market' },
       { href: '/docs/rules/', title: 'Rules and moderation' },
+      { href: '/docs/cli/', title: 'Play from the terminal' },
+      { href: '/docs/models/', title: 'Humans vs models' },
       { href: '/docs/badge/', title: 'README badge and streaks' },
       { href: '/docs/faq/', title: 'FAQ' },
     ],

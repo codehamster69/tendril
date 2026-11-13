@@ -38,25 +38,15 @@ Update this after every workstream lands. Do not explore the whole repo: find th
 - `test/cli.test.ts`, `perf.test.ts`, `helpers.ts`: CLI, benchmarks, common test helpers.
 
 ## Client: packages/client
-- `src/main.ts`: bootstrap editor/view/loop. Still imports deleted MockSim; integration agent fixes it.
-- `src/game-loop.ts`: button wiring, tick pacing, HUD render, console. Still uses old MockSim API; integration agent replaces it.
-- `src/real-sim.ts`: main-thread worker wrapper, IndexedDB persistence, log chunks, request FIFO. Existing WIP.
-- `src/sim-worker.ts`: owns World and LuaRun, serial request handling, sliced stepping, snapshots, action logs, periodic checkpoint.
-- `src/sim-protocol.ts`: ToWorker and FromWorker tagged unions.
-- `src/sim-types.ts`: SimSource interface; re-exports sim Snapshot and Order.
-- `src/clock.ts`: live vs sandbox mode, 10 ticks/s targetTick(meta, now).
-- `src/store.ts`: IndexedDB kv wrapper.
-- `src/editor.ts`: Monaco, autocomplete via API_SPEC, persisted source, examples, error markers.
-- `src/api-spec.ts`: Lua API documentation, action tick costs derived from rules.ts and examples, shared by Monaco and reference.
-- `src/reference.ts`, `reference.css`: searchable generated API dialog; coordinator owns; mountReference() awaits bootstrap integration.
-- `src/inspectors.ts`, `inspectors.css`: snapshot-driven read-only stock/order/crew/tile panel and overlay/focus controls; mountInspectors(view) awaits integration.
-- `src/farm-view.ts`: Three.js camera, lighting, instanced tiles/crops, interpolated bots, placeholder barn (221 lines). Moisture colour bug: uses 0..1 when engine returns 0..100.
-- `src/style.css`, `index.html`: layout and HUD DOM.
-- `vite.config.ts`: base './' for Electron, large Monaco chunk allowance.
-- `playwright.config.ts`: PW_PORT and PW_OUT for independent agents' tests (default 4173 and dist).
-- `e2e/app.spec.ts`: canvas, Monaco autocomplete, run/pause, console checks. Assumes tick 0 on load; needs sandbox URL.
-- `e2e/shot.spec.ts`: opt-in screenshot via SHOT=1.
-- `electron/main.cjs`: Electron BrowserWindow. Loads dist/index.html or VITE_DEV_URL. Context isolation true, node integration false.
+- `src/main.ts`: bootstrap. Picks the mode (live/Endless, sandbox, campaign, daily, `?mode=challenge&id=` for season and duels), mounts editor, view, loop, arena card, account, auto sync, Join duel and site links.
+- `src/game-loop.ts`, `real-sim.ts`, `sim-worker.ts`, `sim-protocol.ts`: buttons and pacing, worker wrapper with reply watchdog, the Sprout worker.
+- `src/autosync.ts`: Endless ranked farm sync (every 15 s, back-to-back while far behind).
+- `src/arena.ts`: daily/season/duel card (run to end, submit, result, Hide/Show details, market panel). `duel.ts`: Challenge a friend and the duel panel. `join-duel.ts` + `duel-id.ts`: Join duel dialog and link parser.
+- `src/replay-main.ts`, `replay-view.ts`, `clip.ts`: `replay.html` (replay, ghost race `?e=&vs=`, Export clip). `room-main.ts`, `room.ts`, `room-core.ts`: `room.html` (up to 16 farms on one clock).
+- `src/account.ts`, `api-client.ts`: sign-in (web cookie, desktop token), `wireSiteLinks` opens site pages in the system browser on desktop.
+- `src/progression.ts`: campaign, research, achievements (anything true at a challenge's first snapshot is not awarded).
+- `electron/`: hardened main process; `navigation.cjs` allows app navigation, `isAllowedExternalURL` and `isAllowedSiteURL` for the system browser; `updater.cjs` self-update.
+- `e2e/*.spec.ts`: Playwright (mocked API); `e2e/electron-smoke.mjs`: desktop smoke.
 
 ## Server: packages/server (workstream S)
 - `package.json`: sim workspace dependency, PGlite/Vitest/TS dev deps.

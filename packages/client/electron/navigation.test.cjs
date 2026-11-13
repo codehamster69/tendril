@@ -1,7 +1,7 @@
 const assert = require('node:assert/strict');
 const { EventEmitter } = require('node:events');
 const { test } = require('node:test');
-const { entryURL, allowsNavigation, hardenContents, isAllowedExternalURL } = require('./navigation.cjs');
+const { entryURL, allowsNavigation, hardenContents, isAllowedExternalURL, isAllowedSiteURL } = require('./navigation.cjs');
 const { DEFAULT_API_ORIGIN, apiOrigin } = require('./config.cjs');
 const { readFileSync } = require('node:fs');
 const nodePath = require('node:path');
@@ -131,4 +131,19 @@ test('the API origin is defined once and the renderer default matches it', () =>
   assert.ok(match, 'renderer default constant not found');
   assert.equal(match[1], DEFAULT_API_ORIGIN);
   assert.ok(!renderer.includes('vercel.app'));
+});
+
+test('site links: only fixed public pages and the GitHub releases page open externally', () => {
+  const site = 'https://tendril.hokora.xyz';
+  for (const url of [`${site}/`, `${site}/docs/`, `${site}/docs/cli/`, `${site}/leaderboard/`, `${site}/season-1/`, `${site}/download/`, `${site}/r/abc_DEF-123`,
+    'https://github.com/codehamster69/tendril/releases', 'https://github.com/codehamster69/tendril/releases/latest', 'https://github.com/codehamster69/tendril/releases/tag/v0.1.2']) {
+    assert.equal(isAllowedSiteURL(url, site), true, url);
+  }
+  for (const url of [`${site}/api/me`, `${site}/docs/?x=1`, `${site}/docs/../api/me`, `${site}/docs`, `${site}/play/`, `${site}/r/`,
+    'http://tendril.hokora.xyz/docs/', 'https://tendril.hokora.xyz:8443/docs/', 'https://user:pw@tendril.hokora.xyz/docs/', 'https://tendril.hokora.xyz.evil.com/docs/',
+    'https://github.com/evil/tendril/releases', 'https://github.com/codehamster69/tendril/issues', 'https://github.com/codehamster69/tendril/releases/download/v1/x.exe',
+    'file:///etc/passwd', 'javascript:alert(1)', 42, null]) {
+    assert.equal(isAllowedSiteURL(url, site), false, String(url));
+  }
+  assert.equal(isAllowedSiteURL(`${site}/docs/`, 'http://tendril.hokora.xyz'), false);
 });

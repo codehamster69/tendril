@@ -124,7 +124,7 @@ const bot = art('bot_tender');
   const q = (s: string) => root.querySelector<HTMLElement>(s)!;
   void api<Challenge>('/challenges/today').then((c) => {
     if (!c) { q('[data-num]').textContent = ''; q('.facts').textContent = 'A new farm every day, the same for everyone.'; return; }
-    q('[data-num]').textContent = `#${c.number}`;
+    q('[data-num]').textContent = c.number != null && c.number > 0 ? `#${c.number}` : '(practice)'; // days before the 1 Dec 2026 launch
     q('[data-players]').textContent = fmt.format(c.players);
     q('[data-best]').textContent = c.best == null ? 'none yet' : fmt.format(c.best);
     q('[data-left]').textContent = timeLeft(msUntil(c.closesAt));

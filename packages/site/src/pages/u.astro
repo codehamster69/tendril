@@ -65,7 +65,7 @@ import Base from '../layouts/Base.astro';
       const li = el('li', 'entry');
       const pic = mosaicEl(r.mosaic, '3.5rem');
       if (pic) li.append(pic);
-      const label = r.kind === 'duel' ? 'Duel' : `${r.kind === 'season' ? 'Season week' : 'Daily'} #${r.number ?? '?'}`;
+      const label = r.kind === 'duel' ? 'Duel' : `${r.kind === 'season' ? 'Season week' : 'Daily'} ${r.number != null && r.number > 0 ? `#${r.number}` : '(practice)'}`;
       const t = el('div');
       t.append(el('strong', undefined, label), el('br'));
       const bits = [`${fmt.format(r.netWorth)} net worth`];

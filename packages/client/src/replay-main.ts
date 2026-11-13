@@ -54,7 +54,7 @@ async function main(): Promise<void> {
   });
   const total = Math.max(...runs.map((r) => r.timeline.ticks));
   const c = runs[0]!.entry.challenge;
-  $('meta').textContent = `${c.kind === 'daily' && c.number != null ? `Daily #${c.number}` : c.id} · ${runs.map((r) => r.entry.player.displayName || r.entry.player.login).join(' vs ')}`;
+  $('meta').textContent = `${c.kind === 'daily' && c.number != null ? (c.number > 0 ? `Daily #${c.number}` : 'Practice daily') : c.id} · ${runs.map((r) => r.entry.player.displayName || r.entry.player.login).join(' vs ')}`;
   $<HTMLAnchorElement>('play-link').href = `./?mode=${c.kind === 'daily' ? 'daily' : 'live'}`;
 
   const scrub = $<HTMLInputElement>('scrub');
@@ -92,7 +92,7 @@ async function main(): Promise<void> {
     setPlaying(false);
     const resume = tick;
     clipBtn.disabled = true;
-    const label = c.kind === 'daily' && c.number != null ? `Daily #${c.number}` : c.id;
+    const label = c.kind === 'daily' && c.number != null ? (c.number > 0 ? `Daily #${c.number}` : 'Practice daily') : c.id;
     const worth = Math.max(...runs.map((r) => r.timeline.finalNetWorth));
     exportClip({
       canvases: panes.map((p) => p.querySelector('canvas')!),

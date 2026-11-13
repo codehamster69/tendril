@@ -1,0 +1,2 @@
+# Sprout programs are compared byte for byte (reference program, Brevity), so keep LF on every OS, Windows runners included.
+*.sprout text eol=lf

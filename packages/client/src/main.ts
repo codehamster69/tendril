@@ -14,12 +14,15 @@ import { mountUpdates } from './updates';
 import { isFirstRun, mountFirstRun } from './firstrun';
 import { mountProgression, selectedLesson } from './progression';
 import { challengeScenario, loadChallenge, mountArena } from './arena';
-import { FarmApi, signedInHint } from './api-client';
+import { FarmApi, signedInHint, wireSiteLinks } from './api-client';
+import { mountJoinDuel } from './join-duel';
 import { mountAutoSync } from './autosync';
 import { el } from './palette';
 import type { Mode } from './clock';
 import type { Scenario } from './sim-protocol';
 
+wireSiteLinks();
+mountJoinDuel();
 const query = new URLSearchParams(location.search);
 const requested = query.get('mode');
 // ?mode=challenge&id=<challenge id> plays any challenge; it shares the daily sim mode.

@@ -13,7 +13,9 @@ version keeps it in the browser you play in.
 ## What you start with
 
 Every new farm gets one 8 by 8 plot of land, a barn in the corner at position `(0, 0)`, one bot standing on
-the barn, no coins, and this program:
+the barn and no coins. The first time you open Endless mode, a short tour has you type three lines of your own (`move east`, `till`,
+`plant carrot`). The game's built-in starter program, which Sandbox mode opens with and the **Examples** menu offers
+anywhere, is a longer version of this simple one:
 
 ```sprout
 # Start with carrots. Questions are free; actions cost ticks.
@@ -35,7 +37,7 @@ repeat forever:
     wait 100
 ```
 
-Press **Run** and watch. The bot walks every tile, plants carrots, harvests the ripe ones, and sells them at
+Type or paste it into the editor and press **Run**. The bot walks every tile, plants carrots, harvests the ripe ones, and sells them at
 the barn. Coins start coming in after about a minute.
 
 ## The screen
@@ -45,6 +47,18 @@ the barn. Coins start coming in after about a minute.
 - **The console** under the editor shows anything your program prints with `say`, plus runtime errors.
 - **Run, Pause, Step** control the program. Breakpoints pause on a line so you can look at every bot's variables.
 - **The top bar** shows the tick, your coins, your net worth and the weather.
+
+## The five modes
+
+The tabs at the top of the game switch between them.
+
+- **Endless** is your long-lived farm. It keeps running in real time, is saved on your computer, and once you sign in it syncs to the [leaderboard](/docs/leaderboard/).
+- **Sandbox** is a throwaway farm for experiments, separate from Endless, with speed controls and single-stepping.
+- **Campaign** is a short series of lessons that teach Sprout one idea at a time.
+- **Daily** is [one farm, the same for everyone, once a day](/docs/daily/).
+- **Season** is the same idea over a week, with three medals: Wealth, Speed and Brevity.
+
+Under the farm, the **Research** tab shows what you can unlock and the **Achievements** tab tracks small goals.
 
 ## Make your first change
 
@@ -77,3 +91,6 @@ again. Every bot restarts from the top of the new program, and the farm carries 
 - [Sprout for Python programmers](/docs/python/): common Python constructs and their Sprout equivalents.
 - [Reference](/docs/reference/): every command and question your bots can use.
 - [Example programs](/docs/examples/): bigger programs to read and borrow from.
+- [Daily challenge](/docs/daily/) and [Season 1](/season-1/): compete on a shared farm.
+- [Play from the terminal](/docs/cli/): run and submit a program without opening the game.
+- [Humans vs models](/docs/models/): how AI-written programs enter the boards.
