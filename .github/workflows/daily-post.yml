@@ -24,7 +24,7 @@ jobs:
         with:
           sparse-checkout: scripts/daily-post.mjs
           sparse-checkout-cone-mode: false
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
       - name: Post winners (prints only when DISCORD_WEBHOOK_URL is unset)
