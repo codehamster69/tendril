@@ -113,7 +113,7 @@ jobs:
       contents: write
     steps:
       - name: Download every installer artifact
-        uses: actions/download-artifact@v4 # UNPINNED: coordinator to pin to a full SHA
+        uses: actions/download-artifact@v8 # UNPINNED: coordinator to pin to a full SHA
         with:
           pattern: Tendril-unsigned-*
           merge-multiple: true
