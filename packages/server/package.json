@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "node --experimental-strip-types src/dev.ts",
+    "dev": "node --experimental-transform-types src/dev.ts",
     "test": "vitest run --reporter=dot",
     "typecheck": "tsc --noEmit",
     "migrate": "node --experimental-strip-types src/migrate.ts"

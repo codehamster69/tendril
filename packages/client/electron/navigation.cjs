@@ -89,4 +89,23 @@ function isAllowedExternalURL(destination, apiOrigin) {
   }
 }
 
-module.exports = { entryURL, allowsNavigation, hardenContents, isAllowedExternalURL };
+// Pages the app may open in the system browser: the site's public pages and this project's GitHub releases.
+const SITE_PATHS = [/^\/$/, /^\/(?:docs|leaderboard|season-1|download|blog)\/(?:[a-z0-9-]+\/)*$/, /^\/r\/[A-Za-z0-9_-]{1,64}$/];
+const GITHUB_RELEASES = /^\/codehamster69\/tendril\/releases(?:\/(?:latest|tag\/v[0-9][A-Za-z0-9.-]{0,30}))?$/;
+
+/** Fixed, query-free https pages on the site origin, or the project's GitHub releases page. Nothing else. */
+function isAllowedSiteURL(destination, siteOrigin) {
+  try {
+    if (typeof destination !== 'string') return false;
+    const url = new URL(destination);
+    const site = new URL(siteOrigin);
+    if (url.protocol !== 'https:' || site.protocol !== 'https:') return false;
+    if (url.username || url.password || url.port || url.search) return false;
+    if (url.origin === site.origin) return SITE_PATHS.some((re) => re.test(url.pathname)) && !url.pathname.includes('..');
+    return url.origin === 'https://github.com' && GITHUB_RELEASES.test(url.pathname);
+  } catch {
+    return false;
+  }
+}
+
+module.exports = { entryURL, allowsNavigation, hardenContents, isAllowedExternalURL, isAllowedSiteURL };

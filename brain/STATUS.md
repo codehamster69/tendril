@@ -1,33 +1,25 @@
 # Status / takeover
 
-Updated 2026-11-11. Working root: `/Users/rohan/Documents/Qoder/2026-11-11/ca45f3b8` (not ~/Developer/tendril).
+Updated 2026-11-13 (final review before 0.2.0). Repo: codehamster69/tendril, `main` deploys the site, web game and API to https://tendril.hokora.xyz.
 
 ## Current phase
-All eight initial workers returned. Wave 2 in progress: C2 verifier/worker recovery, S2 backend review fixes; stable-code review agent checking Lua/renderer/desktop. Coordinator: main chat. Branch `dev`; no more commits, merges or pushes without explicit user request. The initial import commit was created without asking; acknowledged to the user.
+Everything in the viral launch plan is built and merged: A1-A2, B1-B7, C1-C6, D1-D3, E1 (rules v4 shared daily market, switches on by date at MARKET_EPOCH 2026-12-08), E2 (room race), F1-F5. D4 (0.2.0) is this release. Season 0 target: 1 Dec 2026.
 
-## Ownership
-- Coordinator: root package/deps/lockfile, brain shared files, config, integration, final verification.
-- C: main.ts, game-loop.ts, real-sim.ts, sim-worker.ts, sim-protocol.ts, sim-types.ts, clock.ts, store.ts, editor.ts, index.html, style.css, e2e/app.spec.ts + integration.spec.ts; client integration + polished interface.
-- S: returned server/src+migrations+tests. Coordinator independently verified59tests/typecheck/lint. S-review agent now reviewing security read-only; zero-span chunk issue awaiting coordinator fix.
-- G: complete20goldens+replay/security/perf tests. Coordinator fixed privateglobals/nestedcoroutine/pcallguard; full84tests and9.73sexpander benchmark passed, goldenhashesunchanged.
-- AT: complete10assets; final39modelvalidator+Pythoncompile passed. notes/AT.md.
-- AC: complete20crop assets; coordinator checked exported triangle parity/budgets and mature previews. notes/AC.md records stage geometry decisions.
-- AB: complete9assets; coordinator checked actualgeometry/budgets and hero previews. notes/AB.md records modeling decisions.
-- V: returned renderer/assetloader;8Vtests passed per report. Coordinator mountedinspector/reference; stable-review now reviewing V/P/Lua.
-- P: returned hardenedElectron+unsignedconfig+releaseworkflow;4policytests and macarm64appsmoke passed per report. No remote execution/publication.
-- C2: owns main/RealSim/worker/protocol/types/loop/clock/store plus verifierUI/recovery tests; implements namespaces+ack+boundedmanualsync+watchdog.
-- S2: owns server/src+test review fixes (strictadvancingchunks,pagedreplays,native413flush). No schema/config edits.
-Agents write only brain/notes/<workstream>.md for reports; coordinator integrates.
+## Verified in the final review (2026-11-13, cloud container)
+- Gate: lint, typecheck, unit (sim 96, server 551, lang 44+1 skipped, client 13), production build, browser E2E 61 passed / 2 skipped, Electron smoke under xvfb (sandboxed app:// entry, real Sprout worker, 39 GLBs, navigation blocked).
+- Real client build against the real local server (`pnpm dev:server`, dev auth): Endless ranked farm auto-syncs and appears verified on the leaderboard; daily and season runs submit and verify (with Brevity); Challenge a friend creates a duel; Join duel accepts a pasted link and rejects junk; duel panel compares, auto-follows and links the ghost race; room page ranks both farms; replay page and Export clip render; signed-out daily keeps the run local and offers sign in; a mocked market day (server and browser clock at 2026-12-10) plays and verifies under rules v4 with the market panel.
+- Live site: 48 pages crawled, no broken links; /api/cron/housekeeping refuses calls without CRON_SECRET; Health watch run passes; daily post script works (prints only while DISCORD_WEBHOOK_URL is unset).
+- F5: the Dependabot job holds major bumps for a person (label needs-human), as designed.
 
-## Baseline
-- Original sim: 57 passed before copy.
-- Copied full unit run: 56 passed, 1 timing failure (expander 28.6 s < 20 s assertion). Isolated test passed at 18.4 s. Correctness fine; timing must leave unit suite (D-008).
-- Client does not compile yet: main imports deleted mock, game-loop uses old API. Agent C fixes.
-- Blender live endpoint works (localhost:9876, Blender 5.3); headless common.py pipeline smoke passed; thumbnail checked visually. Smoke outputs removed.
-- pnpm deps installed, including PGlite, ESLint, electron-builder. Browser Chromium cached.
+## Known items
+- CI Playwright on GitHub runners is timing-flaky on five heavy specs (worker boot, live clock catch-up, golden path, clip export, 16-replay room); being hardened without retries in its own thread.
+- LEGACY_GRACE_MS goes to 0 only once desktop 0.1.x is gone (also ends the 24 h replay delay on dailies).
+- The humans vs models board needs real model runs (API keys). The Hall of Fame counts models too.
+- Discord: the daily post needs a DISCORD_WEBHOOK_URL repository secret to actually post.
+- Running Playwright in these cloud containers needs the pre-installed Chromium (`/opt/pw-browsers/chromium-1243`) passed as executablePath; Electron must run as a non-root user.
 
-## Remaining
-Wave 1 core. Then renderer GLB loader/overlays and backend connection screens. Then client/server attack and replay tests plus review/full gate. Tier 5 and league services deferred, per D-010; no hosted authentication or publication without approval.
+## Release
+Pushing a `v*` tag runs `release.yml`, which checks the tag matches `packages/client/package.json` and publishes installers. The monthly release workflow bumps and tags by itself when the client changed.
 
-## Gate (coordinator runs, not agent reports)
-Lint, typecheck, all unit tests, golden replay tests, production build, Playwright E2E without retries, Electron smoke. Repeat after fixes. A timing pass obtained only on retry does not count. No main integration without full green gate AND user permission to commit/merge.
+## Gate
+Lint, typecheck, all unit tests, golden replay tests, production build, Playwright E2E without retries, Electron smoke. A pass obtained only on retry does not count.

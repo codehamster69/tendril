@@ -126,13 +126,17 @@ export function mountArena({ loop, api, challenge: c }: { loop: GameLoop; api: F
   const beat = el('b', { id: 'arena-beat', text: '' });
   const runEnd = el('button', { id: 'btn-run-end', class: 'primary', text: 'Run to end' });
   runEnd.addEventListener('click', () => { void loop.runToEnd(); });
-  const head = el('header', { id: 'arena-head' }, el('span', { class: 'eyebrow', text: title }), runEnd);
+  const fold = el('button', { id: 'btn-arena-fold', class: 'quiet', 'aria-expanded': 'true', 'aria-controls': 'arena-body', text: 'Hide details' });
+  const head = el('header', { id: 'arena-head' }, el('span', { class: 'eyebrow', text: title }), el('span', { class: 'arena-head-actions' }, fold, runEnd));
   const mods = describeModifiers(setupOf(c).modifiers, c.kind);
   const modLine = mods.length ? el('p', { id: 'arena-mods', title: "Today's modifiers", text: `Today: ${mods.join(' · ')}` }) : null;
   const stats = el('p', { id: 'arena-stats' }, 'Time left ', left, ' · Score to beat ', beat);
   const result = el('section', { id: 'arena-result', class: 'daily-result', hidden: '' });
   const marketEl = marketPanel(c);
-  host.append(head, publishBox(), modelBox(), el('h3', { text: `One seed. ${c.ticks.toLocaleString('en-US')} ticks. Your best program.` }), ...(modLine ? [modLine] : []), ...(marketEl ? [marketEl] : []), stats, result);
+  const body = el('div', { id: 'arena-body' }, publishBox(), modelBox(), el('h3', { text: `One seed. ${c.ticks.toLocaleString('en-US')} ticks. Your best program.` }), ...(modLine ? [modLine] : []), ...(marketEl ? [marketEl] : []), stats, result);
+  host.append(head, body);
+  // The card can be folded away so the editor always has room; it also scrolls if it is taller than the panel allows.
+  fold.addEventListener('click', () => { const open = body.hidden; body.hidden = !open; fold.setAttribute('aria-expanded', String(open)); fold.textContent = open ? 'Hide details' : 'Show details'; });
 
   const draw = (): void => {
     left.textContent = c.closesAt === null ? 'open' : c.closesAt <= Date.now() ? 'closed' : clock(c.closesAt - Date.now());

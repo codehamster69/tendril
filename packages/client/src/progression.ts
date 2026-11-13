@@ -17,7 +17,7 @@ const ACHIEVEMENTS: Achievement[] = [
   { id: 'planted', title: 'A small beginning', detail: 'Plant your first crop.', test: (s) => s.tiles.some((t) => t.crop > 0) },
   { id: 'harvest', title: 'Hands full', detail: 'Carry your first harvest.', test: (s) => s.bots.some((b) => b.load > 0) },
   { id: 'deposit', title: 'Homeward bound', detail: 'Store produce in the barn.', test: (s) => s.stock.some((n) => n > 0) },
-  ...[1, 100, 1000, 10_000].map((n): Achievement => ({ id: `coins-${n}`, title: n === 1 ? 'Market day' : `${n.toLocaleString()} coins`, detail: `Reach ${n.toLocaleString()} coins.`, test: (s) => s.coins >= n })),
+  ...[1, 100, 1000, 10_000].map((n): Achievement => ({ id: `coins-${n}`, title: n === 1 ? 'Market day' : `${n.toLocaleString()} coins`, detail: `Reach ${n.toLocaleString()} ${n === 1 ? 'coin' : 'coins'}.`, test: (s) => s.coins >= n })),
   ...[2, 4, 8].map((n): Achievement => ({ id: `bots-${n}`, title: `${n} helping hands`, detail: `Own ${n} bots.`, test: (s) => s.bots.length >= n })),
   ...[2, 4].map((n): Achievement => ({ id: `plots-${n}`, title: `${n} plots of possibility`, detail: `Own ${n} plots.`, test: (s) => s.plots.length >= n })),
   ...UNLOCKS.slice(1).map((u, i): Achievement => ({ id: `research-${u.name}`, title: `${cap(u.name)} researcher`, detail: `Research ${u.name}.`, test: (s) => !!(s.unlocks & (1 << (i + 1))) })),
@@ -64,8 +64,11 @@ export function mountProgression({ loop, editor }: { loop: GameLoop; editor: Edi
       }
     });
   }
+  // Whatever is already true when the farm first appears (starting coins, a pre-researched crop in a challenge) was not earned by play.
+  let baseline: Set<string> | null = null;
   window.addEventListener('tendril:snapshot', (event) => {
     const s = (event as CustomEvent<Snapshot>).detail, log = loop.logChunks().flatMap((c) => c.actions);
+    if (!baseline) baseline = new Set(loop.mode !== 'daily' && loop.mode !== 'challenge' ? [] : ACHIEVEMENTS.filter((a) => a.test(s, log)).map((a) => a.id));
     const tree = el('div', { class: 'research-grid' });
     UNLOCKS.forEach((u, i) => {
       const unlocked = !!(s.unlocks & (1 << i)), insert = el('button', { class: `research-node${unlocked ? ' unlocked' : ''}`, title: `Insert unlock ${u.name}` });
@@ -74,7 +77,7 @@ export function mountProgression({ loop, editor }: { loop: GameLoop; editor: Edi
     });
     research.replaceChildren(el('p', { class: 'muted', text: 'Buy research with code: unlock wheat. Click an upgrade to insert its command. Research is separate from campaign language lessons.' }), tree);
     let changed = false;
-    for (const a of ACHIEVEMENTS) if (!earned.has(a.id) && a.test(s, log)) { earned.add(a.id); changed = true; toast(a.title, a.detail); }
+    for (const a of ACHIEVEMENTS) if (!earned.has(a.id) && !baseline.has(a.id) && a.test(s, log)) { earned.add(a.id); changed = true; toast(a.title, a.detail); }
     if (changed) { saveSet('tendril.achievements.v1', earned); renderGoals(); }
   });
 }

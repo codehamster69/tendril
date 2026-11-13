@@ -317,7 +317,9 @@ export class RealSim implements SimSource {
 
   private onMessage(m: FromWorker): void {
     if (!this.waiting || m.id !== this.waiting.id) return;
-    if (m.type === 'progress') { this.onProgress?.(m.done, m.total); return; }
+    if (m.type === 'progress') { this.armWatchdog(); this.onProgress?.(m.done, m.total); return; }
+    // The worker answered: stop the countdown, or an idle (paused) farm would be reported as a dead worker 30 s later.
+    this.clearWatchdog();
     const waiting = this.waiting;
     this.waiting = null;
     if (m.type === 'fatal') waiting.reject(new Error(m.message));
