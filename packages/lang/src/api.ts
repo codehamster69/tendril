@@ -6,6 +6,9 @@ export interface ApiEntry {
 }
 export const KEYWORDS = 'if elif else while repeat forever times for each in from to step define def return break continue pass stop and or not is true false none set global'.split(' ');
 export const CONSTANTS = 'north east south west carrot wheat clover pumpkin berry apple honey compost hive composter satchel barn all shared'.split(' ');
+/** Actions and statement helpers are written as commands (`move east`), so the reference shows that form first. */
+const command = (name: string, args: string): string => (args === '' ? name : `${name} ${args}`);
+const COMMAND_UTILITIES = ['go_to', 'say', 'print', 'append', 'insert', 'remove'];
 const actions: [string, keyof typeof OP, string, string, string][] = [
   ['move', 'move', 'direction', 'Move one tile on owned land; returns true on success.', 'move east'],
   ['till', 'till', '', 'Prepare an empty tile for planting. The barn and buildings cannot be tilled.', 'till'],
@@ -26,7 +29,7 @@ const actions: [string, keyof typeof OP, string, string, string][] = [
 ];
 export const API: ApiEntry[] = actions.map(([name, op, args, doc, example]) => ({
   name, kind: ['buy_plot', 'buy_bot', 'unlock'].includes(name) ? 'farm' : 'action',
-  signature: `${name}(${args})`, doc, example, ticks: name === 'wait' ? 'n' : COST[OP[op]]!,
+  signature: command(name, args), doc, example, ticks: name === 'wait' ? 'n' : COST[OP[op]]!,
   feature: ['build', 'clear', 'compost', 'fertilize'].includes(name) ? 'buildings' : ['sell'].includes(name) ? 'market' : name === 'deliver' ? 'orders' : ['buy_plot', 'unlock'].includes(name) ? 'farm' : name === 'buy_bot' ? 'crew' : 'commands',
 }));
 const queries: [string, string, string, string][] = [
@@ -59,7 +62,7 @@ const utilities: [string, string, string, string][] = [
   ['str', 'value', 'Convert a value to readable text.', 'say str(42)'], ['int', 'value', 'Convert a decimal string to an integer, or none.', 'say int("42")'],
   ['random', 'upper', 'Seeded random integer from zero to upper minus one.', 'say random(4)'], ['distance', 'a, b', 'Manhattan distance between tile positions.', 'say distance(position(), barn)'],
 ];
-for (const [name, args, doc, example] of utilities) API.push({ name, kind: 'utility', signature: `${name}(${args})`, doc, ticks: name === 'go_to' ? 'n' : 0, example, feature: name === 'go_to' || name === 'say' || name === 'print' ? 'commands' : 'utilities' });
+for (const [name, args, doc, example] of utilities) API.push({ name, kind: 'utility', signature: COMMAND_UTILITIES.includes(name) ? command(name, args) : `${name}(${args})`, doc, ticks: name === 'go_to' ? 'n' : 0, example, feature: name === 'go_to' || name === 'say' || name === 'print' ? 'commands' : 'utilities' });
 for (const name of CONSTANTS.filter((n) => n !== 'compost')) API.push({ name, kind: 'constant', signature: name, doc: name === 'shared' ? 'One record visible to every bot. Not stored in the farm checkpoint.' : name === 'barn' ? 'The position {x: 0, y: 0}.' : `The name ${name}.`, ticks: 0, example: name === 'shared' ? 'shared.ready = true' : `say ${name}`, feature: name === 'shared' ? 'crew' : 'commands' });
 export function monarchTokens(): object {
   return { keywords: KEYWORDS, constants: CONSTANTS, builtins: API.filter((a) => a.kind !== 'constant').map((a) => a.name), tokenizer: { root: [

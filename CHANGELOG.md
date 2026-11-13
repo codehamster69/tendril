@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Keyboard: focus the farm and use arrow keys to select tiles (read out to screen readers), skip link to the editor, tab `aria-controls`.
+- Site: phone menu, Season 1 in the header. Reference shows commands the way you type them. Starter code wraps in the editor, shorter toolbar labels, roomier instrument panel at 800 px height, market prices fold away once a result shows.
+- Server: the late-submit grace for old desktop 0.1.x clients ends automatically after a quiet month (no earlier than 31 Dec 2026, no later than 1 Mar 2027).
+
 ## 0.2.2 (2026-11-13)
 
 The Arena release. (Tags v0.2.0 and v0.2.1 never published installers: the first pointed at an old commit, the second failed the Windows build.) Desktop players get everything the web game has had since 0.1.2.

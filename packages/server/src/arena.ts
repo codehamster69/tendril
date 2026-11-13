@@ -28,6 +28,52 @@ export const MAX_SOURCE_BYTES = 32 * 1024;
  * sealed replay before submitting (the brief's D2 attack review should look at this).
  */
 export const LEGACY_GRACE_MS = DAY_MS;
+
+/**
+ * The grace ends by itself (nobody has to remember). Desktop 0.1.x is the only client that calls POST /api/daily/submit
+ * (0.2.x and the web game use /challenges/:id/entries), so that route is the telemetry: each use stamps `legacy_submit_last`.
+ * Once it is at least LEGACY_SUNSET_NOT_BEFORE and no 0.1.x submit has been seen for LEGACY_QUIET_MS, or once
+ * LEGACY_SUNSET_AT_LATEST passes whatever happens, the grace ends for good (`legacy_grace_ended`, never undone: a
+ * replay that has been made public must not be followed by new submissions).
+ */
+export const LEGACY_SUNSET_NOT_BEFORE = Date.UTC(2026, 11, 31);
+export const LEGACY_SUNSET_AT_LATEST = Date.UTC(2027, 2, 1);
+export const LEGACY_QUIET_MS = 30 * DAY_MS;
+let legacyEnded = false;
+/** The grace in force right now: LEGACY_GRACE_MS until the sunset has happened, then 0. */
+export const legacyGraceMs = (): number => (legacyEnded ? 0 : LEGACY_GRACE_MS);
+/** Test hook. */
+export const resetLegacyGrace = (): void => { legacyEnded = false; lastLegacyStamp = 0; };
+
+/** Pure sunset rule. `quietSince` is the later of the last 0.1.x submit and the time this telemetry started. */
+export const legacySunsetDue = (now: number, quietSince: number): boolean =>
+  now >= LEGACY_SUNSET_AT_LATEST || (now >= LEGACY_SUNSET_NOT_BEFORE && now - quietSince >= LEGACY_QUIET_MS);
+
+const getArenaMeta = async (db: Db, key: string): Promise<string | null> => (await db.query<{ value: string }>('SELECT value FROM arena_meta WHERE key = ?', [key]))[0]?.value ?? null;
+
+let lastLegacyStamp = 0;
+/** Called on every POST /daily/submit. At most one write per instance per hour. */
+export async function noteLegacySubmit(db: Db, now: number): Promise<void> {
+  if (legacyEnded || now - lastLegacyStamp < 60 * 60 * 1000) return;
+  lastLegacyStamp = now;
+  await db.execute("INSERT INTO arena_meta (key, value) VALUES ('legacy_submit_last', ?1) ON CONFLICT(key) DO UPDATE SET value = ?1", [String(now)]);
+}
+
+/** Run once a day (first request and the cron). Ends the grace when due; returns the state for the cron report. */
+export async function refreshLegacyGrace(db: Db, now: number): Promise<{ ended: boolean; lastSubmitAt: number | null; endedAt: number | null }> {
+  const endedAt = await getArenaMeta(db, 'legacy_grace_ended');
+  const last = await getArenaMeta(db, 'legacy_submit_last');
+  const lastSubmitAt = last === null ? null : Number(last);
+  if (endedAt !== null) { legacyEnded = true; return { ended: true, lastSubmitAt, endedAt: Number(endedAt) }; }
+  let since = await getArenaMeta(db, 'legacy_telemetry_since');
+  if (since === null) { since = String(now); await db.execute("INSERT OR IGNORE INTO arena_meta (key, value) VALUES ('legacy_telemetry_since', ?)", [since]); }
+  const quietSince = Math.max(lastSubmitAt ?? 0, Number(since));
+  if (!legacySunsetDue(now, quietSince)) return { ended: false, lastSubmitAt, endedAt: null };
+  await db.execute("INSERT OR IGNORE INTO arena_meta (key, value) VALUES ('legacy_grace_ended', ?)", [String(now)]);
+  legacyEnded = true;
+  console.warn(`Legacy grace ended: no desktop 0.1.x submit since ${lastSubmitAt === null ? 'telemetry began' : new Date(lastSubmitAt).toISOString()}. Yesterday's replays now open at close.`);
+  return { ended: true, lastSubmitAt, endedAt: now };
+}
 export const BOARD_BUCKETS = 10;
 
 // ---- ids and calendar ----
@@ -81,7 +127,7 @@ export const isClosed = (c: ChallengeRow, now: number): boolean => c.closes_at !
  * Closed AND no longer open to the legacy alias. Replays, programs and final histograms wait for this, never just for closing:
  * while /api/daily/submit still takes yesterday, a public replay could be copied into a submission.
  */
-export const isSettled = (c: ChallengeRow, now: number): boolean => c.closes_at !== null && now >= c.closes_at + (c.kind === 'daily' ? LEGACY_GRACE_MS : 0);
+export const isSettled = (c: ChallengeRow, now: number): boolean => c.closes_at !== null && now >= c.closes_at + (c.kind === 'daily' ? legacyGraceMs() : 0);
 
 function newDailyRow(date: string, setupV: number): ChallengeRow {
   const seed = dailySeed(date);
@@ -663,7 +709,7 @@ export async function legacySubmit(db: Db, userId: string, date: string, actions
   if (date !== utcDate(now) && date !== utcDate(now - DAY_MS)) throw new HttpError(422, 'Only today or yesterday (UTC) can be submitted');
   const c = await loadChallenge(db, dailyId(date), now, undefined, setupV);
   const input: EntryInput = { rulesVersion, actions, source: null, sourcePublic: false, authorKind: 'human', model: null };
-  const result = await submitEntry(db, userId, c, input, actions, now, { graceMs: LEGACY_GRACE_MS, repeatOk: true });
+  const result = await submitEntry(db, userId, c, input, actions, now, { graceMs: legacyGraceMs(), repeatOk: true });
   const [best] = await db.query<{ best: number }>('SELECT MAX(net_worth) AS best FROM entries WHERE challenge_id = ? AND user_id = ?', [c.id, userId]);
   return { netWorth: result.netWorth, rank: result.ranks.wealth!, best: best!.best };
 }

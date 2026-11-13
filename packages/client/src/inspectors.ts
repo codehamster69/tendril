@@ -12,8 +12,10 @@ export function mountInspectors(view: FarmView, seed: () => number): void {
   lens.addEventListener('change', () => view.setOverlay(lens.value as Overlay));
   const frame = el('button', { id: 'btn-focus-farm', type: 'button', text: 'Frame farm' });
   frame.addEventListener('click', () => view.focusFarm());
-  const tile = el('p', { id: 'tile-inspector', text: 'Click a tile to read its soil.' });
-  tools.append(el('div', { id: 'farm-inspector' }, el('label', {}, 'Soil lens', lens), frame, tile));
+  const tile = el('p', { id: 'tile-inspector', text: 'Click a tile, or focus the farm and use the arrow keys, to read its soil.' });
+  // Read out once per selection (the visible line above changes every snapshot, which would be too chatty for a live region).
+  const announce = el('p', { id: 'tile-announce', class: 'sr-only', role: 'status' });
+  tools.append(el('div', { id: 'farm-inspector' }, el('label', {}, 'Soil lens', lens), frame, tile, announce));
 
   const deck = document.getElementById('deck-farm')!;
   const soil = el('section', { class: 'card' });
@@ -63,6 +65,7 @@ export function mountInspectors(view: FarmView, seed: () => number): void {
   window.addEventListener('tendril:tile', (event) => {
     selected = (event as CustomEvent<{ x: number; y: number }>).detail;
     updateTile();
+    announce.textContent = tile.textContent;
   });
   window.addEventListener('tendril:snapshot', (event) => {
     const s = (event as CustomEvent<Snapshot>).detail;

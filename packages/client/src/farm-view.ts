@@ -91,6 +91,8 @@ export class FarmView {
     canvas.addEventListener('pointerdown', this.pointerDown);
     canvas.addEventListener('pointerup', this.pointerUp);
     canvas.addEventListener('pointercancel', this.pointerCancel);
+    canvas.tabIndex = 0;
+    canvas.addEventListener('keydown', this.keyDown);
     canvas.dataset.overlay = 'none';
     canvas.dataset.modelsLoaded = '0';
     canvas.dataset.sceneReady = 'false';
@@ -376,11 +378,31 @@ export class FarmView {
     const hit = this.raycaster.ray.intersectPlane(this.ground, new THREE.Vector3());
     if (!hit) return;
     const x = Math.floor(hit.x + 0.5), y = Math.floor(hit.z + 0.5);
+    this.selectTile(x, y);
+  };
+
+  /** Selects an owned tile and tells the inspector. Scenery and unowned holes are never selectable simulation cells. */
+  private selectTile(x: number, y: number): boolean {
     const tile = this.tileLookup.get(key(x, y));
-    if (!tile) return; // Scenery and unowned holes are never selectable simulation cells.
+    if (!tile) return false;
     this.selectedTile = { x, y };
     this.updateSelection();
     this.canvas.dispatchEvent(new CustomEvent('tendril:tile', { detail: { x, y, scan: { ...tile } }, bubbles: true }));
+    return true;
+  }
+
+  /** Keyboard access: arrows move the selection to the next owned tile (north is up, as on screen), Enter or Space selects the barn first. */
+  private keyDown = (event: KeyboardEvent): void => {
+    if (this.disposed || event.altKey || event.ctrlKey || event.metaKey) return;
+    const step = ({ ArrowUp: [0, -1], ArrowDown: [0, 1], ArrowLeft: [-1, 0], ArrowRight: [1, 0] } as Record<string, [number, number]>)[event.key];
+    if (!step) {
+      if ((event.key === 'Enter' || event.key === ' ') && !this.selectedTile && this.selectTile(0, 0)) event.preventDefault();
+      return;
+    }
+    event.preventDefault();
+    const from = this.selectedTile;
+    if (!from) { this.selectTile(0, 0); return; }
+    for (let i = 1; i <= 24; i++) if (this.selectTile(from.x + step[0] * i, from.y + step[1] * i)) return; // skips short gaps between plots
   };
 
   private cameraStatus = (): void => {
@@ -456,6 +478,7 @@ export class FarmView {
     this.canvas.removeEventListener('pointerdown', this.pointerDown);
     this.canvas.removeEventListener('pointerup', this.pointerUp);
     this.canvas.removeEventListener('pointercancel', this.pointerCancel);
+    this.canvas.removeEventListener('keydown', this.keyDown);
     this.controls.removeEventListener('change', this.cameraStatus);
     this.controls.removeEventListener('start', this.cancelReframe);
     this.controls.dispose();

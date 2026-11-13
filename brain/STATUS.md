@@ -13,7 +13,7 @@ Everything in the viral launch plan is built and merged: A1-A2, B1-B7, C1-C6, D1
 
 ## Known items
 - CI Playwright on GitHub runners is timing-flaky on five heavy specs (worker boot, live clock catch-up, golden path, clip export, 16-replay room); being hardened without retries in its own thread.
-- LEGACY_GRACE_MS goes to 0 only once desktop 0.1.x is gone (also ends the 24 h replay delay on dailies).
+- Legacy grace (24 h late daily submits, 24 h replay delay) ends by itself: `POST /api/daily/submit` is only called by desktop 0.1.x, so each use stamps `arena_meta.legacy_submit_last`. After 31 Dec 2026 with 30 quiet days, or on 1 Mar 2027 regardless, `refreshLegacyGrace` (daily, and in the cron report as `legacyGrace`) stores `legacy_grace_ended` for good and logs a warning. Nothing to do by hand; to end it early, insert that key into `arena_meta`.
 - The humans vs models board needs real model runs (API keys). The Hall of Fame counts models too.
 - Discord: the daily post needs a DISCORD_WEBHOOK_URL repository secret to actually post.
 - Running Playwright in these cloud containers needs the pre-installed Chromium (`/opt/pw-browsers/chromium-1243`) passed as executablePath; Electron must run as a non-root user.

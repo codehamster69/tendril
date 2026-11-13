@@ -9,6 +9,7 @@
     <title>Tendril · farm by code</title>
   </head>
   <body>
+    <a class="skip-link" href="#editor">Skip to the code editor</a>
     <header id="topbar">
       <a class="identity" href="../" title="Tendril home" data-site-link>
         <svg class="mark" viewBox="0 0 32 32" aria-hidden="true"><path d="M16 29c0-9 0-15 0-18" /><path d="M16 15c-6 0-10-4-10-10 6 0 10 4 10 10Z" /><path d="M16 12c0-5 3-8 9-8 0 5-3 8-9 8Z" /></svg>
@@ -42,19 +43,19 @@
           <div id="forecast" aria-label="Weather forecast"></div>
         </header>
         <div id="farm-stage">
-          <canvas id="farm-canvas" aria-label="Three-dimensional farm. Drag to orbit, scroll to zoom, click a tile to inspect it."></canvas>
+          <canvas id="farm-canvas" aria-label="Three-dimensional farm. Drag to orbit, scroll to zoom, click a tile to inspect it. With the keyboard, press the arrow keys to move between tiles; the tile is read out."></canvas>
           <div id="stage-tools"></div>
           <div class="farm-caption"><span id="mode-note">10 ticks per second, saved on this device.</span><span><b id="hud-plots">1</b> plot · <b id="hud-bots">1</b> bot</span></div>
           <div id="toast-host" aria-live="polite"></div>
         </div>
         <nav class="deck-tabs" role="tablist" aria-label="Farm instruments">
-          <button role="tab" aria-selected="true" data-tab="farm">Farm</button>
-          <button role="tab" aria-selected="false" data-tab="research">Research</button>
-          <button role="tab" aria-selected="false" data-tab="goals">Achievements</button>
+          <button role="tab" id="tab-farm" aria-controls="deck-farm" aria-selected="true" data-tab="farm">Farm</button>
+          <button role="tab" id="tab-research" aria-controls="deck-research" aria-selected="false" data-tab="research">Research</button>
+          <button role="tab" id="tab-goals" aria-controls="deck-goals" aria-selected="false" data-tab="goals">Achievements</button>
         </nav>
-        <div class="deck" id="deck-farm" role="tabpanel"></div>
-        <div class="deck" id="deck-research" role="tabpanel" hidden></div>
-        <div class="deck" id="deck-goals" role="tabpanel" hidden></div>
+        <div class="deck" id="deck-farm" role="tabpanel" aria-labelledby="tab-farm"></div>
+        <div class="deck" id="deck-research" role="tabpanel" aria-labelledby="tab-research" hidden></div>
+        <div class="deck" id="deck-goals" role="tabpanel" aria-labelledby="tab-goals" hidden></div>
       </section>
       <section id="side" aria-labelledby="code-heading">
         <div id="lesson-card" hidden></div>
@@ -65,8 +66,8 @@
         <div id="toolbar" aria-label="Farm controls">
           <button id="btn-run" class="primary" disabled title="Run (Ctrl/Cmd+Enter)"><span class="icon">▶</span> Run</button>
           <button id="btn-pause" disabled title="Pause"><span class="icon">❚❚</span> Pause</button>
-          <button id="btn-step-line" hidden disabled title="Step one line (F10)">Step line</button>
-          <button id="btn-step" hidden disabled title="Advance 100 ticks">+100 ticks</button>
+          <button id="btn-step-line" hidden disabled title="Step one line (F10)">Step</button>
+          <button id="btn-step" hidden disabled title="Advance 100 ticks" aria-label="Advance 100 ticks">+100</button>
           <label class="speed-control"><span id="speed-label">Speed</span><select id="speed"><option value="1">1×</option><option value="2">2×</option><option value="4">4×</option><option value="8">8×</option><option value="16">16×</option><option value="32">32×</option><option value="64">64×</option></select></label>
           <span class="spacer"></span>
           <button id="btn-reset" class="quiet" disabled>Reset</button>
@@ -74,8 +75,8 @@
         <div id="editor"></div>
         <div class="editor-footer"><span>Actions cost ticks · questions are free · <kbd>F9</kbd> breakpoint · <kbd>F10</kbd> step</span><span id="editor-save">Saved on this device</span></div>
         <nav class="dock-tabs" role="tablist" aria-label="Program output">
-          <button role="tab" aria-selected="true" data-dock="console">Console</button>
-          <button role="tab" aria-selected="false" data-dock="debugger">Debugger</button>
+          <button role="tab" id="dock-tab-console" aria-controls="console" aria-selected="true" data-dock="console">Console</button>
+          <button role="tab" id="dock-tab-debugger" aria-controls="debugger" aria-selected="false" data-dock="debugger">Debugger</button>
         </nav>
         <div id="console" class="dock" role="log" aria-label="Program console" aria-live="polite" tabindex="0"></div>
         <div id="debugger" class="dock" hidden></div>

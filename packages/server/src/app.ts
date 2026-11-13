@@ -3,7 +3,7 @@ import { authenticate, clearSessionCookie, devAuthEnabled, devLogin, finishGithu
 import type { Ctx, Env, FetchFn, Identity } from './auth.ts';
 import type { Db } from './db.ts';
 import { acceptDuel, duelCounts, duelPage } from './duels.ts';
-import { board, challengeInfo, createDuel, entryReplay, entrySource, entrySummary, hallOfFame, publishedSources, KIND_LIMITS, legacyLeaderboard, legacySubmit, loadChallenge, MAX_SOURCE_BYTES, moveLegacyDaily, stats, submitEntry } from './arena.ts';
+import { board, challengeInfo, createDuel, entryReplay, entrySource, entrySummary, hallOfFame, publishedSources, KIND_LIMITS, legacyLeaderboard, legacySubmit, noteLegacySubmit, refreshLegacyGrace, loadChallenge, MAX_SOURCE_BYTES, moveLegacyDaily, stats, submitEntry } from './arena.ts';
 import type { AuthorKind, Medal } from './arena.ts';
 import { createFarm, dailyInfo, getFarm, getReplay, isValidDate, leaderboard, reserveAttempt, utcDate, verifyChunk } from './game.ts';
 import type { Board } from './game.ts';
@@ -112,7 +112,11 @@ function createInnerApp(options: AppOptions): (request: Request) => Promise<Resp
       await ensureMigrated();
       // Housekeeping: the first request of each UTC day prunes (the cron does the same; whichever comes first wins).
       const today = new Date(now()).toISOString().slice(0, 10);
-      if (prunedDay !== today) { prunedDay = today; await pruneOncePerDay(db, now()).catch(() => { console.error('Housekeeping prune failed'); }); }
+      if (prunedDay !== today) {
+        prunedDay = today;
+        await pruneOncePerDay(db, now()).catch(() => { console.error('Housekeeping prune failed'); });
+        await refreshLegacyGrace(db, now()).catch(() => { console.error('Legacy grace check failed'); });
+      }
 
       if (route === '/cron/housekeeping' && method === 'GET') {
         // Vercel Cron sends `Authorization: Bearer $CRON_SECRET`. Without the secret set the route is closed and the lazy path still prunes.
@@ -120,7 +124,7 @@ function createInnerApp(options: AppOptions): (request: Request) => Promise<Resp
         if (!secret || request.headers.get('authorization') !== `Bearer ${secret}`) throw new HttpError(401, 'Unauthorized');
         rejectQuery(url);
         const report = await prune(db, now());
-        return json({ report, guard: await refreshGuard(db, env, now()) });
+        return json({ report, guard: await refreshGuard(db, env, now()), legacyGrace: await refreshLegacyGrace(db, now()) });
       }
       // Budget guard: read-only mode refuses writes except sign-in/out, so the game keeps serving without growing.
       const mode = method === 'GET' || method === 'HEAD' || method === 'OPTIONS' ? 'normal' : await guard.mode();
@@ -250,6 +254,7 @@ function createInnerApp(options: AppOptions): (request: Request) => Promise<Resp
       }
       if (route === '/daily/submit' && method === 'POST') {
         const identity = await requireUser();
+        await noteLegacySubmit(db, now()).catch(() => {}); // telemetry for the LEGACY_GRACE sunset
         await reserveAttempt(db, identity.userId, 'daily', now(), undefined, scale);
         rejectQuery(url);
         const body = objectWithKeys(await readJson(request), ['date', 'rulesVersion', 'actions'], 422);
