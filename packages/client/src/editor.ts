@@ -18,7 +18,7 @@ export const EXAMPLES: Record<string, { title: string; source: string }> = {
   daily: { title: 'Daily challenge strategy', source: daily },
 };
 export const DEFAULT_SCRIPT = starter;
-export const BOT_COLORS = ['#D5B65B', '#D97742', '#8EA98B', '#7FB7D9', '#C792EA', '#F28FAD', '#A6E3A1', '#F9E2AF'];
+export const BOT_COLORS = ['#EDC77D', '#D97742', '#8EA98B', '#7FB7D9', '#C792EA', '#F28FAD', '#A6E3A1', '#F9E2AF'];
 
 const LANG = 'sprout';
 (self as unknown as { MonacoEnvironment: monaco.Environment }).MonacoEnvironment = {
@@ -96,7 +96,7 @@ function register(): void {
     base: 'vs-dark', inherit: true,
     rules: [
       { token: 'comment', foreground: '8EA98B', fontStyle: 'italic' },
-      { token: 'keyword', foreground: 'D5B65B', fontStyle: 'bold' },
+      { token: 'keyword', foreground: 'E8C468', fontStyle: 'bold' },
       { token: 'string', foreground: 'B8E0C8' },
       { token: 'number', foreground: 'D97742' },
       { token: 'constant', foreground: 'F2A97E' },
@@ -104,11 +104,11 @@ function register(): void {
       { token: 'identifier', foreground: 'DCEBEC' },
     ],
     colors: {
-      'editor.background': '#0F2C31', 'editor.foreground': '#DCEBEC',
-      'editorLineNumber.foreground': '#5F8784', 'editorLineNumber.activeForeground': '#D5B65B',
-      'editorCursor.foreground': '#D5B65B', 'editor.selectionBackground': '#315C60',
-      'editor.lineHighlightBackground': '#15393E', 'editorError.foreground': '#E8875A',
-      'editorGutter.background': '#0F2C31',
+      'editor.background': '#123338', 'editor.foreground': '#E7EEE7',
+      'editorLineNumber.foreground': '#5F8784', 'editorLineNumber.activeForeground': '#EDC77D',
+      'editorCursor.foreground': '#EDC77D', 'editor.selectionBackground': '#315C60',
+      'editor.lineHighlightBackground': '#133237', 'editorIndentGuide.background1': '#1C4146', 'editorIndentGuide.activeBackground1': '#2F6469', 'editorWidget.background': '#0F2C31', 'scrollbarSlider.background': '#2A5F6355', 'scrollbarSlider.hoverBackground': '#2A5F6399', 'editorError.foreground': '#E8875A',
+      'editorGutter.background': '#123338',
     },
   });
 }

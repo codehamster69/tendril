@@ -234,6 +234,10 @@ test('expansion re-frames automatically; same-count relocation does not pan; exp
     window.__view.update(window.__snapshot);
   });
   expect(await canvas.getAttribute('data-camera-target')).toBe(stable);
+  await page.evaluate(() => {
+    window.__snapshot.bots.forEach((bot) => { bot.x -= 8; });
+    window.__view.update(window.__snapshot);
+  });
   const translated = await page.evaluate(() => {
     const batch = (window.__view as unknown as ViewInspection).batches.get('tile_grass')!;
     return batch.meshes[0].instanceMatrix.array[12];
@@ -242,11 +246,27 @@ test('expansion re-frames automatically; same-count relocation does not pan; exp
   await page.evaluate(() => window.__view.selectBot(1));
   await expect(canvas).toHaveAttribute('data-selected-bot', '1');
   const botTarget = JSON.parse((await canvas.getAttribute('data-camera-target'))!) as number[];
-  [5, 0, 2].forEach((value, index) => expect(botTarget[index]).toBeCloseTo(value, 8));
+  [-3, 0, 2].forEach((value, index) => expect(botTarget[index]).toBeCloseTo(value, 8));
   const before = await page.evaluate(() => window.__tiles.length);
   const outside = await projectedTile(page, 7, 3);
   await page.mouse.click(outside.x, outside.y);
   expect(await page.evaluate(() => window.__tiles.length)).toBe(before);
+});
+
+test('wheel zoom holds the ground point under the cursor', async ({ page }) => {
+  await page.route('**/__view/models/manifest.json', (route) => route.fulfill({ status: 204 }));
+  await harness(page);
+  const box = (await page.locator('#farm-canvas').boundingBox())!;
+  const px = box.x + box.width * 0.32, py = box.y + box.height * 0.3;
+  await page.mouse.move(px, py);
+  const before = await page.evaluate(([x, y]) => window.__view.groundAtClient(x, y), [px, py] as [number, number]);
+  expect(before).not.toBeNull();
+  await page.mouse.wheel(0, -240);
+  // The rig eases shown pose towards the locked goal; wait for it to settle.
+  await page.waitForTimeout(800);
+  const after = await page.evaluate(([x, y]) => window.__view.groundAtClient(x, y), [px, py] as [number, number]);
+  expect(after).not.toBeNull();
+  expect(Math.hypot(after!.x - before!.x, after!.z - before!.z)).toBeLessThan(0.05);
 });
 
 test('malformed manifest and GLB errors surface status, while an absent named file keeps its fallback', async ({ page }) => {

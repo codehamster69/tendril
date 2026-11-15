@@ -10,11 +10,25 @@
   </head>
   <body>
     <a class="skip-link" href="#editor">Skip to the code editor</a>
-    <header id="topbar">
+    <aside id="game-rail" aria-label="Tendril navigation">
       <a class="identity" href="../" title="Tendril home" data-site-link>
         <svg class="mark" viewBox="0 0 32 32" aria-hidden="true"><path d="M16 29c0-9 0-15 0-18" /><path d="M16 15c-6 0-10-4-10-10 6 0 10 4 10 10Z" /><path d="M16 12c0-5 3-8 9-8 0 5-3 8-9 8Z" /></svg>
-        <h1>Tendril</h1>
+        <span class="brand-name">tendril</span>
       </a>
+      <p class="rail-caption">Your little world,<br />beautifully automated.</p>
+      <nav class="rail-nav" aria-label="Your island">
+        <button type="button" data-shell-tab="farm" aria-current="true"><span class="rail-icon" aria-hidden="true">♧</span><span>Island</span></button>
+        <a href="?mode=campaign" data-shell-mode="campaign"><span class="rail-icon" aria-hidden="true">⌘</span><span>Learn to grow</span></a>
+        <button type="button" data-shell-tab="research"><span class="rail-icon" aria-hidden="true">⚘</span><span>Research</span></button>
+        <a href="?mode=daily" data-shell-mode="arena"><span class="rail-icon" aria-hidden="true">⚑</span><span>Arena</span></a>
+        <button type="button" data-shell-tab="goals"><span class="rail-icon" aria-hidden="true">▤</span><span>Journal</span></button>
+      </nav>
+      <div class="rail-bottom">
+        <button type="button" id="shell-field-guide"><span class="rail-icon" aria-hidden="true">?</span><span>Field guide</span></button>
+        <span class="rail-footnote">A little code. A living world.</span>
+      </div>
+    </aside>
+    <header id="topbar">
       <nav id="mode-tabs" aria-label="Game mode">
         <a data-mode="live" href="?mode=live">Endless</a>
         <a data-mode="sandbox" href="?mode=sandbox">Sandbox</a>
@@ -23,12 +37,6 @@
         <a data-mode="season" href="?mode=challenge&amp;id=week">Season</a>
         <button id="btn-join-duel" type="button" class="tab-button">Join duel</button>
       </nav>
-      <dl class="top-readouts">
-        <div><dt>Tick</dt><dd id="hud-tick">0</dd></div>
-        <div><dt>Coins</dt><dd id="hud-coins">0</dd></div>
-        <div><dt>Net worth</dt><dd id="hud-networth">0</dd></div>
-        <div><dt>Weather</dt><dd id="hud-weather" data-weather="clear">—</dd></div>
-      </dl>
       <div class="top-actions">
         <a id="leaderboard-link" href="../leaderboard/" target="_blank" rel="noopener" data-site-link>Leaderboard</a>
         <a id="docs-link" href="../docs/" target="_blank" rel="noopener" data-site-link>Docs</a>
@@ -36,6 +44,15 @@
       </div>
     </header>
     <div id="unranked-notice" role="status" hidden></div>
+    <div id="island-heading">
+      <div><h1>Your island</h1><p>Farm overview</p></div>
+      <dl class="top-readouts">
+        <div><dt>Tick</dt><dd id="hud-tick">0</dd></div>
+        <div><dt>Coins</dt><dd id="hud-coins">0</dd></div>
+        <div><dt>Net worth</dt><dd id="hud-networth">0</dd></div>
+        <div><dt>Weather</dt><dd id="hud-weather" data-weather="clear">—</dd></div>
+      </dl>
+    </div>
     <main id="workbench">
       <section id="view" aria-labelledby="farm-heading">
         <header class="panel-heading">
@@ -43,8 +60,24 @@
           <div id="forecast" aria-label="Weather forecast"></div>
         </header>
         <div id="farm-stage">
-          <canvas id="farm-canvas" aria-label="Three-dimensional farm. Drag to orbit, scroll to zoom, click a tile to inspect it. With the keyboard, press the arrow keys to move between tiles; the tile is read out."></canvas>
+          <canvas id="farm-canvas" aria-label="Three-dimensional farm. Left-drag pans, scroll zooms to the cursor, right-drag orbits, click a tile to inspect it. With the keyboard, press the arrow keys to move between tiles; the tile is read out."></canvas>
           <div id="stage-tools"></div>
+          <div id="stage-bar">
+            <button id="btn-fit" type="button" title="Frame the whole farm (Home)">Fit</button>
+            <button id="btn-follow" type="button" aria-pressed="false" title="Follow a drone (F)">Follow</button>
+            <button id="btn-rot-l" type="button" title="Rotate left (Q)" aria-label="Rotate left">&#x27F2;</button>
+            <button id="btn-rot-r" type="button" title="Rotate right (E)" aria-label="Rotate right">&#x27F3;</button>
+            <label class="hud-pill" title="Time-of-day lighting">Light
+              <select id="light-preset">
+                <option value="gold" selected>Golden</option>
+                <option value="noon">Noon</option>
+                <option value="dawn">Dawn</option>
+                <option value="night">Night</option>
+              </select>
+            </label>
+            <span id="market-card" class="hud-pill" role="status" hidden></span>
+          </div>
+          <canvas id="farm-minimap" width="352" height="352" aria-label="Minimap of the owned land. Click or drag to move the camera there."></canvas>
           <div class="farm-caption"><span id="mode-note">10 ticks per second, saved on this device.</span><span><b id="hud-plots">1</b> plot · <b id="hud-bots">1</b> bot</span></div>
           <div id="toast-host" aria-live="polite"></div>
         </div>
@@ -60,7 +93,7 @@
       <section id="side" aria-labelledby="code-heading">
         <div id="lesson-card" hidden></div>
         <header class="panel-heading code-heading">
-          <div><span class="eyebrow">Bot program</span><h2 id="code-heading">Sprout workbench</h2></div>
+          <div><span class="eyebrow">Bot program</span><h2 id="code-heading">The growing code</h2></div>
           <label class="example-row"><span>Examples</span><select id="examples"><option value="">Your program</option></select></label>
         </header>
         <div id="toolbar" aria-label="Farm controls">

@@ -105,7 +105,10 @@ test('result panel says whether the run is on course to be rated', async ({ page
   await page.click('#btn-run-end');
   await expect(page.locator('#arena-rated')).toContainText('On course to be rated', { timeout: 15_000 });
   parTick = null;
-  await page.reload();
+  // Start an explicit second attempt; reloading can race the asynchronous checkpoint save.
+  await page.click('#btn-reset');
+  await expect(page.locator('#hud-tick')).toHaveText('0');
+  await expect(page.locator('#btn-run-end')).toBeEnabled();
   await page.click('#btn-run-end');
   await expect(page.locator('#arena-rated')).toContainText('Not on course to be rated', { timeout: 15_000 });
 });

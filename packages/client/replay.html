@@ -6,40 +6,14 @@
     <meta name="theme-color" content="#0F2C31" />
     <link rel="icon" href="favicon.svg" type="image/svg+xml" />
     <title>Tendril · replay</title>
-    <style>
-      :root { color-scheme: dark; --bg: #0F2C31; --ink: #EAF2E3; --soft: #9DB8B0; --line: #24474C; --gold: #FFD66A; }
-      * { box-sizing: border-box; }
-      html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); font: 15px/1.4 system-ui, sans-serif; }
-      body { display: flex; flex-direction: column; }
-      header.bar { display: flex; gap: 12px; align-items: center; padding: 8px 16px; border-bottom: 1px solid var(--line); }
-      header.bar a { color: var(--ink); text-decoration: none; font-weight: 700; }
-      header.bar .meta { color: var(--soft); flex: 1; }
-      main { flex: 1; display: grid; grid-template-columns: 1fr; min-height: 0; }
-      main.race { grid-template-columns: 1fr 1fr; }
-      .pane { display: flex; flex-direction: column; min-width: 0; min-height: 260px; border-right: 1px solid var(--line); }
-      .pane:last-child { border-right: 0; }
-      .pane-head { display: flex; justify-content: space-between; gap: 8px; padding: 6px 12px; }
-      .pane-worth { color: var(--gold); font-weight: 700; font-variant-numeric: tabular-nums; }
-      .stage { position: relative; flex: 1; background: #9EBB8E; min-height: 200px; }
-      .stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
-      #sealed { margin: auto; text-align: center; padding: 32px 16px; max-width: 28rem; }
-      #sealed h1 { margin: 0 0 8px; font-size: 1.3rem; }
-      #error { margin: auto; padding: 32px 16px; color: var(--soft); }
-      footer.controls { display: flex; gap: 10px; align-items: center; padding: 8px 16px; border-top: 1px solid var(--line); }
-      footer.controls input[type=range] { flex: 1; min-width: 0; }
-      footer.controls button, footer.controls select { background: #1b4147; color: var(--ink); border: 1px solid var(--line); border-radius: 6px; padding: 6px 12px; font: inherit; }
-      #clip-status { color: var(--soft); font-size: 13px; }
-      #clock { font-variant-numeric: tabular-nums; color: var(--soft); min-width: 7.5em; text-align: right; }
-      body.embed header.bar { display: none; }
-      [hidden] { display: none !important; }
-      @media (max-width: 640px) { main.race { grid-template-columns: 1fr; grid-auto-rows: 1fr; } .pane { border-right: 0; border-bottom: 1px solid var(--line); } }
-    </style>
+    <link rel="stylesheet" href="/src/replay-shell.css" />
   </head>
   <body>
     <header class="bar">
-      <a href="../">Tendril</a>
+      <a class="brand" href="./">Tendril</a>
+      <span class="bar-title">Replay</span>
       <span class="meta" id="meta">Loading replay…</span>
-      <a id="play-link" href="./?mode=daily">Play it yourself</a>
+      <a class="back-link" id="play-link" href="./?mode=daily">Back to game</a>
     </header>
     <main id="panes">
       <section class="pane" id="pane-a" hidden>

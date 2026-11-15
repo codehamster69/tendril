@@ -4,11 +4,11 @@
     "bot_tender": {
       "file": "bot_tender.glb",
       "group": "bot",
-      "tris": 1212,
+      "tris": 302,
       "size": [
-        0.557,
-        0.413,
-        0.657
+        0.481,
+        0.52,
+        0.569
       ]
     },
     "bot_tender_v1": {
@@ -41,204 +41,264 @@
         0.769
       ]
     },
+    "crop_apple_s0": {
+      "file": "crop_apple_s0.glb",
+      "group": "crop",
+      "tris": 16,
+      "size": [
+        0.149,
+        0.07,
+        0.046
+      ]
+    },
+    "crop_apple_s1": {
+      "file": "crop_apple_s1.glb",
+      "group": "crop",
+      "tris": 36,
+      "size": [
+        0.359,
+        0.384,
+        0.553
+      ]
+    },
+    "crop_apple_s2": {
+      "file": "crop_apple_s2.glb",
+      "group": "crop",
+      "tris": 76,
+      "size": [
+        0.452,
+        0.466,
+        0.68
+      ]
+    },
+    "crop_apple_s3": {
+      "file": "crop_apple_s3.glb",
+      "group": "crop",
+      "tris": 136,
+      "size": [
+        0.558,
+        0.579,
+        0.807
+      ]
+    },
     "crop_berry_s0": {
       "file": "crop_berry_s0.glb",
       "group": "crop",
-      "tris": 28,
+      "tris": 16,
       "size": [
-        0.199,
-        0.103,
-        0.157
+        0.149,
+        0.07,
+        0.046
       ]
     },
     "crop_berry_s1": {
       "file": "crop_berry_s1.glb",
       "group": "crop",
-      "tris": 96,
+      "tris": 60,
       "size": [
-        0.334,
-        0.341,
-        0.285
+        0.285,
+        0.209,
+        0.183
       ]
     },
     "crop_berry_s2": {
       "file": "crop_berry_s2.glb",
       "group": "crop",
-      "tris": 188,
+      "tris": 110,
       "size": [
-        0.454,
-        0.454,
-        0.461
+        0.456,
+        0.358,
+        0.293
       ]
     },
     "crop_berry_s3": {
       "file": "crop_berry_s3.glb",
       "group": "crop",
-      "tris": 268,
+      "tris": 160,
       "size": [
-        0.571,
-        0.571,
-        0.58
+        0.569,
+        0.439,
+        0.367
       ]
     },
     "crop_carrot_s0": {
       "file": "crop_carrot_s0.glb",
       "group": "crop",
-      "tris": 28,
+      "tris": 16,
       "size": [
-        0.19,
-        0.098,
-        0.15
+        0.186,
+        0.087,
+        0.06
       ]
     },
     "crop_carrot_s1": {
       "file": "crop_carrot_s1.glb",
       "group": "crop",
-      "tris": 152,
+      "tris": 62,
       "size": [
-        0.227,
-        0.231,
-        0.32
+        0.24,
+        0.246,
+        0.187
       ]
     },
     "crop_carrot_s2": {
       "file": "crop_carrot_s2.glb",
       "group": "crop",
-      "tris": 232,
+      "tris": 108,
       "size": [
-        0.406,
-        0.401,
-        0.49
+        0.306,
+        0.367,
+        0.26
       ]
     },
     "crop_carrot_s3": {
       "file": "crop_carrot_s3.glb",
       "group": "crop",
-      "tris": 272,
+      "tris": 172,
       "size": [
-        0.647,
-        0.626,
-        0.67
+        0.419,
+        0.384,
+        0.334
       ]
     },
     "crop_clover_s0": {
       "file": "crop_clover_s0.glb",
       "group": "crop",
-      "tris": 44,
+      "tris": 16,
       "size": [
-        0.174,
-        0.106,
-        0.127
+        0.149,
+        0.07,
+        0.046
       ]
     },
     "crop_clover_s1": {
       "file": "crop_clover_s1.glb",
       "group": "crop",
-      "tris": 120,
+      "tris": 72,
       "size": [
-        0.255,
-        0.255,
-        0.137
+        0.371,
+        0.378,
+        0.047
       ]
     },
     "crop_clover_s2": {
       "file": "crop_clover_s2.glb",
       "group": "crop",
-      "tris": 208,
+      "tris": 192,
       "size": [
-        0.408,
-        0.408,
-        0.272
+        0.594,
+        0.584,
+        0.36
       ]
     },
     "crop_clover_s3": {
       "file": "crop_clover_s3.glb",
       "group": "crop",
-      "tris": 296,
+      "tris": 288,
       "size": [
-        0.478,
-        0.478,
-        0.327
+        0.666,
+        0.72,
+        0.36
       ]
     },
     "crop_pumpkin_s0": {
       "file": "crop_pumpkin_s0.glb",
       "group": "crop",
-      "tris": 28,
+      "tris": 16,
       "size": [
-        0.205,
-        0.105,
-        0.162
+        0.149,
+        0.07,
+        0.046
       ]
     },
     "crop_pumpkin_s1": {
       "file": "crop_pumpkin_s1.glb",
       "group": "crop",
-      "tris": 128,
+      "tris": 120,
       "size": [
-        0.361,
-        0.2,
-        0.185
+        0.365,
+        0.366,
+        0.17
       ]
     },
     "crop_pumpkin_s2": {
       "file": "crop_pumpkin_s2.glb",
       "group": "crop",
-      "tris": 236,
+      "tris": 128,
       "size": [
-        0.482,
-        0.448,
-        0.232
+        0.469,
+        0.434,
+        0.276
       ]
     },
     "crop_pumpkin_s3": {
       "file": "crop_pumpkin_s3.glb",
       "group": "crop",
-      "tris": 280,
+      "tris": 220,
       "size": [
-        0.619,
-        0.587,
-        0.347
+        0.582,
+        0.543,
+        0.396
       ]
     },
     "crop_wheat_s0": {
       "file": "crop_wheat_s0.glb",
       "group": "crop",
-      "tris": 24,
+      "tris": 16,
       "size": [
-        0.152,
-        0.149,
-        0.19
+        0.167,
+        0.078,
+        0.053
       ]
     },
     "crop_wheat_s1": {
       "file": "crop_wheat_s1.glb",
       "group": "crop",
-      "tris": 100,
+      "tris": 40,
       "size": [
-        0.323,
-        0.313,
-        0.348
+        0.549,
+        0.569,
+        0.315
       ]
     },
     "crop_wheat_s2": {
       "file": "crop_wheat_s2.glb",
       "group": "crop",
-      "tris": 280,
+      "tris": 216,
       "size": [
-        0.446,
-        0.433,
-        0.736
+        0.515,
+        0.395,
+        0.753
       ]
     },
     "crop_wheat_s3": {
       "file": "crop_wheat_s3.glb",
       "group": "crop",
-      "tris": 288,
+      "tris": 296,
       "size": [
-        0.552,
-        0.549,
-        1.06
+        0.557,
+        0.537,
+        1.022
+      ]
+    },
+    "item_compost": {
+      "file": "item_compost.glb",
+      "group": "prop",
+      "tris": 88,
+      "size": [
+        0.181,
+        0.185,
+        0.2
+      ]
+    },
+    "item_honey": {
+      "file": "item_honey.glb",
+      "group": "prop",
+      "tris": 110,
+      "size": [
+        0.142,
+        0.14,
+        0.15
       ]
     },
     "prop_barn": {
@@ -261,6 +321,26 @@
         0.703
       ]
     },
+    "prop_bush": {
+      "file": "prop_bush.glb",
+      "group": "prop",
+      "tris": 160,
+      "size": [
+        0.801,
+        0.666,
+        0.522
+      ]
+    },
+    "prop_cart": {
+      "file": "prop_cart.glb",
+      "group": "prop",
+      "tris": 172,
+      "size": [
+        0.845,
+        0.448,
+        0.503
+      ]
+    },
     "prop_compost": {
       "file": "prop_compost.glb",
       "group": "prop",
@@ -274,21 +354,51 @@
     "prop_crate": {
       "file": "prop_crate.glb",
       "group": "prop",
-      "tris": 1156,
+      "tris": 144,
       "size": [
-        0.62,
-        0.576,
-        0.548
+        0.6,
+        0.54,
+        0.554
       ]
     },
     "prop_fence": {
       "file": "prop_fence.glb",
       "group": "prop",
-      "tris": 492,
+      "tris": 78,
       "size": [
-        0.977,
-        0.142,
-        0.77
+        0.96,
+        0.1,
+        0.57
+      ]
+    },
+    "prop_flowers": {
+      "file": "prop_flowers.glb",
+      "group": "prop",
+      "tris": 230,
+      "size": [
+        0.559,
+        0.58,
+        0.5
+      ]
+    },
+    "prop_hay": {
+      "file": "prop_hay.glb",
+      "group": "prop",
+      "tris": 74,
+      "size": [
+        0.814,
+        0.6,
+        0.55
+      ]
+    },
+    "prop_lamp": {
+      "file": "prop_lamp.glb",
+      "group": "prop",
+      "tris": 132,
+      "size": [
+        0.17,
+        0.17,
+        1.225
       ]
     },
     "prop_market": {
@@ -301,34 +411,54 @@
         0.921
       ]
     },
+    "prop_pond": {
+      "file": "prop_pond.glb",
+      "group": "prop",
+      "tris": 106,
+      "size": [
+        0.865,
+        0.85,
+        0.13
+      ]
+    },
     "prop_rocks": {
       "file": "prop_rocks.glb",
       "group": "prop",
-      "tris": 306,
+      "tris": 80,
       "size": [
-        0.869,
-        0.658,
-        0.44
+        0.92,
+        0.652,
+        0.418
+      ]
+    },
+    "prop_scarecrow": {
+      "file": "prop_scarecrow.glb",
+      "group": "prop",
+      "tris": 144,
+      "size": [
+        0.762,
+        0.34,
+        1.16
       ]
     },
     "prop_signpost": {
       "file": "prop_signpost.glb",
       "group": "prop",
-      "tris": 254,
+      "tris": 66,
       "size": [
         0.64,
-        0.142,
-        1.135
+        0.19,
+        1.07
       ]
     },
     "prop_tree": {
       "file": "prop_tree.glb",
       "group": "prop",
-      "tris": 668,
+      "tris": 180,
       "size": [
-        1.003,
-        0.91,
-        1.789
+        0.937,
+        0.984,
+        1.901
       ]
     },
     "prop_water_tank": {
@@ -341,54 +471,74 @@
         0.803
       ]
     },
+    "prop_well": {
+      "file": "prop_well.glb",
+      "group": "prop",
+      "tris": 132,
+      "size": [
+        0.6,
+        0.48,
+        0.96
+      ]
+    },
     "tile_grass": {
       "file": "tile_grass.glb",
       "group": "tile",
-      "tris": 66,
+      "tris": 34,
       "size": [
-        1,
-        1,
-        0.2
+        0.94,
+        0.94,
+        0.315
       ]
     },
     "tile_path": {
       "file": "tile_path.glb",
       "group": "tile",
-      "tris": 228,
+      "tris": 112,
       "size": [
-        1,
-        1,
-        0.2
+        0.94,
+        0.94,
+        0.225
       ]
     },
     "tile_soil": {
       "file": "tile_soil.glb",
       "group": "tile",
-      "tris": 214,
+      "tris": 76,
       "size": [
-        1,
-        1,
-        0.2
+        0.94,
+        0.94,
+        0.226
       ]
     },
     "tile_terrace_wall": {
       "file": "tile_terrace_wall.glb",
       "group": "tile",
-      "tris": 300,
+      "tris": 252,
       "size": [
-        1,
-        1,
+        0.95,
+        0.95,
         0.2
+      ]
+    },
+    "tile_water": {
+      "file": "tile_water.glb",
+      "group": "tile",
+      "tris": 64,
+      "size": [
+        0.94,
+        0.94,
+        0.16
       ]
     },
     "tile_wet": {
       "file": "tile_wet.glb",
       "group": "tile",
-      "tris": 274,
+      "tris": 100,
       "size": [
-        1,
-        1,
-        0.2
+        0.94,
+        0.94,
+        0.226
       ]
     }
   }

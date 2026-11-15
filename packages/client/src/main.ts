@@ -18,6 +18,7 @@ import { challengeScenario, loadChallenge, mountArena } from './arena';
 import { FarmApi, signedInHint, wireSiteLinks } from './api-client';
 import { mountJoinDuel } from './join-duel';
 import { mountAutoSync } from './autosync';
+import { mountGameShell } from './game-shell';
 import { el } from './palette';
 import type { Mode } from './clock';
 import type { Scenario } from './sim-protocol';
@@ -65,6 +66,7 @@ mountNotice({ live: mode === 'live', verified: sim.ranked });
 mountUpdates();
 mountRating(api);
 mountAccount(api, sim);
+mountGameShell();
 if (sim.ranked) mountAutoSync(api, sim, document.getElementById('mode-note'));
 window.addEventListener('tendril:snapshot', (event) => view.update((event as CustomEvent).detail));
 
