@@ -16,7 +16,7 @@ export function fallbackModel(name: string): AssetModel {
   let parts: AssetPart[];
   if (name.startsWith('tile_') && name !== 'tile_terrace_wall') {
     const color = name === 'tile_soil' ? 0x7a5230 : name === 'tile_wet' ? 0x59402d : name === 'tile_path' ? 0xc5ae82 : 0x5a9e4b;
-    parts = [part(new THREE.BoxGeometry(0.98, 0.2, 0.98).translate(0, -0.1, 0), color)];
+    parts = [part(new THREE.BoxGeometry(0.94, 0.3, 0.94).translate(0, -0.15, 0), color)];
   } else if (name.startsWith('crop_')) {
     const crop = CROPS.findIndex((id) => id && name.startsWith(`crop_${id}_`));
     const stage = Number(name.slice(-1));
@@ -41,13 +41,13 @@ export function fallbackModel(name: string): AssetModel {
     const id = ITEM_NAMES.indexOf(name.slice(5));
     parts = [part(new THREE.BoxGeometry(0.16, 0.16, 0.16).translate(0, 0.08, 0), ITEM_COLORS[id] ?? 0xcccccc)];
   } else if (name === 'bot_tender') {
-    // A tiny enamel helper with a cream face and paired dark eyes while the GLB loads.
+    // Lantern drone: cream hull, amber core and three leaf blades while the GLB loads.
     parts = [
-      part(new THREE.BoxGeometry(0.4, 0.3, 0.36).translate(0, 0.3, 0), 0x4a90d9),
-      part(new THREE.IcosahedronGeometry(0.23, 1).translate(0, 0.58, 0), 0xdfe6ee),
-      part(new THREE.BoxGeometry(0.05, 0.07, 0.025).translate(-0.08, 0.6, 0.21), 0x2e3848),
-      part(new THREE.BoxGeometry(0.05, 0.07, 0.025).translate(0.08, 0.6, 0.21), 0x2e3848),
-      part(new THREE.CylinderGeometry(0.025, 0.025, 0.12, 5).translate(0, 0.84, 0), 0xf8cb3c),
+      part(new THREE.SphereGeometry(0.17, 14, 10).scale(1, 0.85, 1).translate(0, 0.5, 0), 0xf2ecdc),
+      part(new THREE.SphereGeometry(0.075, 10, 8).translate(0, 0.41, 0), 0xffc65a),
+      part(new THREE.SphereGeometry(1, 8, 4).scale(0.24, 0.012, 0.07).translate(0.2, 0.67, 0), 0x6fcf86),
+      part(new THREE.SphereGeometry(1, 8, 4).scale(0.24, 0.012, 0.07).translate(-0.1, 0.67, 0.173), 0x6fcf86),
+      part(new THREE.SphereGeometry(1, 8, 4).scale(0.24, 0.012, 0.07).translate(-0.1, 0.67, -0.173), 0x6fcf86),
     ];
   } else if (name === 'prop_barn') {
     parts = [part(new THREE.BoxGeometry(0.84, 0.64, 0.84).translate(0, 0.32, 0), 0xb0302a),

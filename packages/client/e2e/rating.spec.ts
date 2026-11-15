@@ -106,6 +106,8 @@ test('result panel says whether the run is on course to be rated', async ({ page
   await expect(page.locator('#arena-rated')).toContainText('On course to be rated', { timeout: 15_000 });
   parTick = null;
   await page.reload();
-  await page.click('#btn-run-end');
+  // A completed daily is restored at its limit and submits its result again automatically.
+  await expect(page.locator('#hud-tick')).toHaveText('3000');
+  await expect(page.locator('#btn-run-end')).toBeDisabled();
   await expect(page.locator('#arena-rated')).toContainText('Not on course to be rated', { timeout: 15_000 });
 });
