@@ -31,7 +31,9 @@ publish:
   releaseType: release
 mac:
   category: public.app-category.games
-  identity: null
+  # Seal the complete bundle; null leaves Electron's linker signature invalid.
+  # Ad-hoc signing provides integrity, not Developer ID trust or notarization.
+  identity: '-'
   target:
     - target: dmg
       arch: [x64, arm64]

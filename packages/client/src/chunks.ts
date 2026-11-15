@@ -15,6 +15,26 @@ export interface Submission {
 const MAX_ACTIONS = 20_000;
 const MAX_BYTES = 2 * 1024 * 1024;
 
+/** Bounded worker input. One excess action is enough to detect an overflowing
+ * same-tick group; the planner rejects that group or stops before its tick. */
+export function submissionPrefix(farmTick: number, logs: LogChunk[], endTick: number): LogChunk[] {
+  const limit = Math.min(endTick, farmTick + 20_000);
+  const prefix: LogChunk[] = [];
+  let count = 0;
+  let stopped = false;
+  for (const chunk of logs) {
+    const actions: LogEntry[] = [];
+    for (const entry of chunk.actions) {
+      if (entry[0] >= limit) { stopped = true; break; }
+      actions.push(entry);
+      if (++count > MAX_ACTIONS) { stopped = true; break; }
+    }
+    prefix.push({ ...chunk, actions });
+    if (stopped || chunk.toTick >= limit) break;
+  }
+  return prefix;
+}
+
 /** Build one advancing prefix, preserving complete same-tick action groups. */
 export function planSubmission(farm: FarmResponse, logs: LogChunk[], endTick: number): Submission | null {
   validateFarm(farm);

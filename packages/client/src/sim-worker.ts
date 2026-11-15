@@ -6,6 +6,15 @@ import type { Diagnostic, ScriptRun } from '@tendril/lang/src/index.ts';
 import type { FromWorker, Scenario, ToWorker } from './sim-protocol';
 
 const SLICE = 250;
+// A posted task yields to worker messages without the browser's nested timer
+// clamp, which otherwise adds thousands of delays to long offline catch-up.
+const yieldChannel = new MessageChannel();
+function yieldWorker(): Promise<void> {
+  return new Promise((resolve) => {
+    yieldChannel.port1.onmessage = () => resolve();
+    yieldChannel.port2.postMessage(null);
+  });
+}
 let world: World | null = null;
 let run: ScriptRun | null = null;
 let scenario: Scenario = { kind: 'live' };
@@ -65,7 +74,7 @@ async function handle(m: ToWorker): Promise<void> {
         if (r.ticks === 0) break;
         if (done < total) {
           post({ type: 'progress', id: m.id, done, total });
-          await new Promise<void>((resolve) => setTimeout(resolve, 0));
+          await yieldWorker();
         }
       }
     } catch (err) {

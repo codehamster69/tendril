@@ -21,9 +21,11 @@ async function saved(page: Page, prefix = 'sprout.v1.sandbox.'): Promise<{ world
       req.onsuccess = () => resolve(req.result as T);
       req.onerror = () => reject(req.error);
     });
-    const [world, logs, hash, source] = await Promise.all([
+    const [world, legacy, hash, source, journal] = await Promise.all([
       get<string>('world'), get<LogChunk[]>('pendingLog'), get<string>('hash'), get<string>('source'),
+      get<{ ends: number[] } | undefined>('journal'),
     ]);
+    const logs = journal ? await Promise.all(journal.ends.map(end => get<LogChunk>('log.' + end))) : legacy;
     db.close();
     return { world, logs, hash, source };
   }, prefix);
@@ -220,6 +222,30 @@ test('flush is an ordered durability barrier and save failure retains logs for r
   expect(checkpoint.hash).toBe(result.hash);
   expect(deserialize(checkpoint.world).tick).toBe(100);
   await expect(page.locator('#console')).toContainText('Farm save failed');
+});
+
+test('large live catch-up uses bounded batches without advancing beyond the clock', async ({ page }) => {
+  await page.goto('/');
+  await expect(page.locator('#status')).toHaveAttribute('data-state', /running|catching-up/);
+  await page.evaluate(() => window.tendril!.loop.pause());
+  const meta = await page.evaluate(() => window.tendril!.sim.meta);
+  const tick = Number(await page.locator('#hud-tick').textContent());
+  await page.clock.install({ time: new Date(meta.startedAtMs + (tick + 12_000) * 100) });
+  await page.evaluate(() => {
+    const sim = window.tendril!.sim;
+    const request = sim.requestStep.bind(sim);
+    const w = window as unknown as { batches: { ticks: number; debt: number }[] };
+    w.batches = [];
+    sim.requestStep = (ticks: number) => {
+      w.batches.push({ ticks, debt: Math.floor((Date.now() - sim.meta.startedAtMs) / 100) - sim.latest()!.tick });
+      request(ticks);
+    };
+  });
+  await page.click('#btn-run');
+  await expect.poll(() => page.evaluate(() => (window as unknown as { batches: { ticks: number }[] }).batches[0]?.ticks ?? 0)).toBeGreaterThan(2_000);
+  const batch = await page.evaluate(() => (window as unknown as { batches: { ticks: number; debt: number }[] }).batches[0]!);
+  expect(batch.ticks).toBeLessThanOrEqual(batch.debt);
+  expect(batch.ticks).toBeLessThanOrEqual(20_000);
 });
 
 test('live clock catches up offline, speed cannot mint ticks and reset needs confirmation', async ({ page }) => {

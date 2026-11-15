@@ -1,0 +1,30 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { FarmMinimap } from './farm-minimap.ts';
+
+test('terrain is cached while moving overlays redraw, and invalidates on snapshot, bounds or resize', () => {
+  let fills = 0, overlays = 0, copies = 0;
+  const terrain = { width: 0, height: 0, getContext: () => ({ fillRect: () => fills++ }) };
+  const context = { drawImage: () => copies++, beginPath() {}, arc: () => overlays++, fill() {}, stroke() {}, strokeRect() {} };
+  const canvas = { width: 176, height: 176, getContext: () => context, ownerDocument: { createElement: () => terrain }, addEventListener() {}, removeEventListener() {} };
+  const map = new FarmMinimap(canvas as unknown as HTMLCanvasElement, () => {});
+  const tiles = [{ x: 0, y: 0, crop: 0, stage: 0, tilled: 0 }];
+  map.update(tiles, [], [], null);
+  const first = fills;
+  map.update(tiles, [{ x: 1, z: 1, color: 0xffffff }], [], null);
+  assert.equal(fills, first);
+  assert.equal(overlays, 1);
+  assert.equal(copies, 2);
+  map.setBounds({ x0: 0, x1: 0, z0: 0, z1: 0 });
+  map.update(tiles, [], [], null);
+  assert.equal(fills, first);
+  map.update([...tiles], [], [], null);
+  assert.equal(fills, first * 2);
+  map.setBounds({ x0: 0, x1: 8, z0: 0, z1: 8 });
+  map.update(tiles, [], [], null);
+  assert.equal(fills, first * 3);
+  canvas.width = 352;
+  map.update(tiles, [], [], null);
+  assert.equal(fills, first * 4);
+  map.dispose();
+});

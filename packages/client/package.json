@@ -1,7 +1,7 @@
 {
   "name": "@tendril/client",
   "private": true,
-  "version": "0.2.3",
+  "version": "0.2.4",
   "license": "AGPL-3.0-or-later",
   "type": "module",
   "scripts": {
@@ -9,7 +9,7 @@
     "build": "node ../../scripts/copy-assets.mjs && vite build",
     "preview": "vite preview --port 4173 --strictPort",
     "typecheck": "tsc --noEmit",
-    "test": "node --experimental-strip-types --test src/pending-run.test.ts src/room.test.ts src/duel-id.test.ts",
+    "test": "node --experimental-strip-types --test src/pending-run.test.ts src/room.test.ts src/duel-id.test.ts && node --experimental-transform-types --no-warnings --test src/chunk-planner.test.ts src/log-journal.test.ts src/restore-validator.test.ts src/restore-validation.test.ts src/farm-minimap.test.ts",
     "electron": "electron electron/main.cjs",
     "test:e2e": "playwright test --trace off",
     "electron:smoke": "node e2e/electron-smoke.mjs",
