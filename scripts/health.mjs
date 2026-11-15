@@ -7,7 +7,7 @@
 // GITHUB_TOKEN + GITHUB_REPOSITORY (issue sync; skipped when absent), HEALTH_SIMULATE_FAILURE=1 (forced failure test).
 import { readFileSync, writeFileSync, appendFileSync } from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { createWorld, dailySeed, deserialize, hashWorld, replayChunk, RULES_VERSION } from '../packages/sim/src/index.ts';
+import { createWorld, dailySeed, deserialize, hashWorld, replayChunk, dailyRulesVersion } from '../packages/sim/src/index.ts';
 
 export const FIXTURE_PATH = fileURLToPath(new URL('./health/canary-log.json', import.meta.url));
 export const ISSUE_LABEL = 'health';
@@ -35,13 +35,14 @@ export async function runChecks(deps) {
   const results = [];
   const add = (name, ok, detail, skipped = false) => results.push({ name, ok, skipped, detail });
 
-  // 1. Today's challenge: date is today (UTC), seed matches the sim, rules version matches this build.
+  // 1. Today's challenge: date is today (UTC), seed matches the sim, rules version matches the scheduled rules for today.
   try {
     const { status, body } = await getJson(fetchFn, `${api}/daily`);
     const date = todayUtc(now);
+    const expectedRules = dailyRulesVersion(date);
     const good = status === 200 && body && body.date === date && body.seed === dailySeed(date)
-      && typeof body.ticks === 'number' && body.rulesVersion === RULES_VERSION;
-    add('daily challenge', good, good ? `${date}, rules v${RULES_VERSION}` : `HTTP ${status}, body ${JSON.stringify(body)}`);
+      && typeof body.ticks === 'number' && body.rulesVersion === expectedRules;
+    add('daily challenge', good, good ? `${date}, rules v${expectedRules}` : `HTTP ${status}, body ${JSON.stringify(body)}`);
   } catch (e) { add('daily challenge', false, String(e)); }
 
   // 2. Home page and web game load (the game is built to /play/).
