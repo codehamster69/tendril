@@ -3,10 +3,13 @@ import { deserialize, hashWorld, replayChunk } from '@tendril/sim/src/index.ts';
 import type { LogEntry, Snapshot } from '@tendril/sim/src/index.ts';
 import type { ChunkResponse, FarmResponse } from './api-client';
 import { targetTick, type Meta, type Mode } from './clock';
-import { planSubmission, validateFarm, type Accepted, type LogChunk, type Submission } from './chunks';
+import { validateFarm, type Accepted, type LogChunk, type Submission } from './chunks';
+import { ChunkPlanner } from './chunk-planner';
+import { RestoreValidator } from './restore-validation';
 import type { BotDebug, Diagnostic, FromWorker, OutputLine, Scenario, SimError, StateMessage, ToWorker } from './sim-protocol';
 import type { SimSource } from './sim-types';
-import { kvGetMany, kvSetMany } from './store';
+import { kvGetFarm, kvCommitFarm } from './store';
+import { journalDelta, type JournalIndex } from './log-journal';
 
 export type { LogChunk, Accepted, Submission } from './chunks';
 export interface RealSimOptions { authoritative?: FarmResponse; replyTimeoutMs?: number; scenario?: Scenario; storageKey?: string; seed?: number }
@@ -19,6 +22,8 @@ export class RealSim implements SimSource {
   durableTick: number | null = null;
   hash: string | null = null;
   private worker: Worker;
+  private planner = new ChunkPlanner();
+  private restoreValidator = new RestoreValidator();
   private snap: Snapshot | null = null;
   private out: OutputLine[] = [];
   diagnostics: Diagnostic[] = [];
@@ -31,6 +36,8 @@ export class RealSim implements SimSource {
   private durableHash: string | null = null;
   private errs: SimError[] = [];
   private pendingLog: LogChunk[] = [];
+  private journal: JournalIndex | undefined;
+  private durableLogs: LogChunk[] = [];
   readonly prefix: string;
   accepted: Accepted | null = null;
   private savedWorld: string | null = null;
@@ -83,7 +90,8 @@ export class RealSim implements SimSource {
 
   private async restore(source: string, recovering: boolean): Promise<void> {
     const keys = ['world', 'meta', 'pendingLog', 'source', 'hash', 'accepted'].map((key) => this.prefix + key);
-    const saved = await kvGetMany<Record<string, unknown>>(keys);
+    const { saved, journal } = await kvGetFarm(this.prefix);
+    this.journal = journal;
     let world = saved[keys[0]] as string | undefined;
     let meta = saved[keys[1]] as Meta | undefined;
     const log = saved[keys[2]] as LogChunk[] | undefined;
@@ -102,20 +110,11 @@ export class RealSim implements SimSource {
       meta ??= { seed: authoritative.seed, startedAtMs: authoritative.startedAtMs, mode: 'live', farmId: authoritative.id, rulesVersion: authoritative.rulesVersion };
     }
     this.pendingLog = log ?? [];
-    if (world) {
-      const restored = deserialize(world);
-      if (restored.seed !== meta!.seed || (authoritative && restored.id !== authoritative.id)) throw new Error('Saved world does not match farm metadata.');
-      if (saved[keys[4]] && hashWorld(restored) !== saved[keys[4]]) throw new Error('Saved checkpoint hash mismatch.');
-      if (this.accepted) {
-        const replay = deserialize(this.accepted.farm.checkpoint);
-        for (const chunk of this.pendingLog) {
-          if (chunk.fromTick !== replay.tick || chunk.fromHash !== hashWorld(replay)) throw new Error('Saved pending log chain is inconsistent. Logs retained.');
-          replayChunk(replay, chunk.actions, chunk.toTick);
-          if (chunk.hash !== hashWorld(replay)) throw new Error('Saved pending log hash mismatch. Logs retained.');
-        }
-        if (hashWorld(replay) !== hashWorld(restored)) throw new Error('Saved pending logs do not reach the durable checkpoint.');
-      }
-    }
+    this.durableLogs = journal ? [...this.pendingLog] : [];
+    if (world) await this.restoreValidator.validate({
+      world, meta: meta!, hash: saved[keys[4]], accepted: this.accepted,
+      logs: this.pendingLog, authoritative,
+    }, (done, total) => this.onProgress?.(done, total));
     this.snap = null;
     source = recovering ? (saved[keys[3]] as string | undefined) ?? source : source;
     const nextMeta = meta ?? this.newMeta();
@@ -164,15 +163,15 @@ export class RealSim implements SimSource {
   }
 
   /**
-   * Plans the next chunk from inside the command queue, so it reads a consistent durable state without
-   * pausing the program. Steps queued after it simply become part of a later chunk.
+   * Captures a durable prefix inside the queue, then replays it outside the renderer.
+   * Catch-up may continue while planning; acknowledgement still checks the accepted prefix.
    */
   planChunk(): Promise<Submission | null> {
-    let plan: Submission | null = null;
+    let plan: Promise<Submission | null> = Promise.resolve(null);
     return this.enqueue(async () => {
       if (this.persistenceError || this.fatal) throw new Error('The farm could not be saved, so it cannot sync. Your local logs are kept.');
       if (!this.accepted || !this.snap) return; // Still loading: nothing to sync yet.
-      plan = planSubmission(this.accepted.farm, this.pendingLog, this.snap.tick);
+      plan = this.planner.plan(this.accepted.farm, this.pendingLog, this.snap.tick);
     }).then(() => plan);
   }
   acknowledge(plan: Submission, response: ChunkResponse): Promise<void> {
@@ -210,6 +209,8 @@ export class RealSim implements SimSource {
 
   dispose(): void {
     this.disposed = true;
+    this.planner.dispose();
+    this.restoreValidator.dispose();
     this.generation++;
     this.clearWatchdog();
     this.worker.terminate();
@@ -299,14 +300,21 @@ export class RealSim implements SimSource {
 
   private async persist(world: string, meta: Meta, source: string, logs: LogChunk[], hash: string, accepted: Accepted | null): Promise<void> {
     try {
-      await kvSetMany({
+      const delta = journalDelta(this.prefix, this.durableLogs, logs);
+      const journal: JournalIndex = { version: 1, revision: (this.journal?.revision ?? 0) + 1, ends: delta.ends };
+      const retained = new Set(delta.ends);
+      const remove = [...new Set([...delta.remove, ...(this.journal?.ends ?? []).filter(end => !retained.has(end)).map(end => this.prefix + 'log.' + end), this.prefix + 'pendingLog'])];
+      await kvCommitFarm(this.prefix, this.journal, {
+        ...delta.entries,
+        [this.prefix + 'journal']: journal,
         [this.prefix + 'world']: world,
         [this.prefix + 'meta']: meta,
-        [this.prefix + 'pendingLog']: logs,
         [this.prefix + 'hash']: hash,
         [this.prefix + 'source']: source,
         ...(accepted ? { [this.prefix + 'accepted']: accepted } : {}),
-      });
+      }, remove);
+      this.journal = journal;
+      this.durableLogs = [...logs];
       this.persistenceError = null;
     } catch (e) {
       this.persistenceError = `Farm save failed: ${e instanceof Error ? e.message : String(e)}. Keep this window open and pause to retry saving.`;
