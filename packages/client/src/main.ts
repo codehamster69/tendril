@@ -57,6 +57,7 @@ const loop = new GameLoop(sim);
 const firstRun = !stress && await isFirstRun(mode, sim.ranked, query, sim.prefix);
 const editor = createEditor(document.getElementById('editor')!, `tendril.sprout.v1.${mode}${suffix}`, stress ? stress.source : mode === 'campaign' ? lesson.starter : mode === 'daily' ? EXAMPLES.daily!.source : firstRun ? '' : undefined);
 const view = new FarmView(document.getElementById('farm-canvas') as HTMLCanvasElement);
+view.setDay({ runTicks: scenario.tickLimit ?? null, seed: () => sim.meta.seed, weatherBias: scenario.setup?.weatherBias });
 const perf = mountPerfMeter({ renderInfo: () => view.renderInfo(), canvas: document.getElementById('farm-canvas') as HTMLCanvasElement }, query);
 
 mountControls({ loop, editor });

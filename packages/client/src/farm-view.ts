@@ -14,6 +14,8 @@ import { FarmFx } from './farm-fx';
 import { FarmCarried } from './farm-carried';
 import { FarmMarket, type MarketData } from './farm-market';
 import type { FarmHud, Lens, ZoomMode } from './farm-hud';
+import { dayProgress } from './day-clock';
+import type { DayConfig } from './day-dial';
 
 export type { FarmOverlay };
 export type { Lens, ZoomMode, LightPreset };
@@ -42,6 +44,7 @@ export class FarmView {
   private carried: FarmCarried;
   private market: FarmMarket | null = null;
   private hud: FarmHud | null = null;
+  private day: DayConfig = { runTicks: null };
   private loader: AssetLoader;
   private fallbacks = new Map<string, AssetModel>();
   private latest: Snapshot | null = null;
@@ -137,7 +140,9 @@ export class FarmView {
     const previous = this.latest;
     this.latest = snapshot;
     const tickDelta = this.lastTick >= 0 && snapshot.tick > this.lastTick ? snapshot.tick - this.lastTick : 1;
+    const scrub = this.lastTick < 0 || snapshot.tick < this.lastTick || tickDelta > 200;
     this.lastTick = snapshot.tick;
+    this.syncDay(snapshot, scrub);
     if (snapshot.weather !== this.weather) { this.weather = snapshot.weather; this.light.setWeather(snapshot.weather); }
     this.world.setSnapshot(snapshot);
     const bounds = this.world.bounds;
@@ -213,7 +218,16 @@ export class FarmView {
   setZoomMode(mode: ZoomMode): void { if (!this.disposed) this.rig.zoomMode = mode; }
 
   /** Attach the HUD built by `mountInspectors`; it is updated every frame from here on. */
-  attachHud(hud: FarmHud | null): void { this.hud = this.lite ? null : hud; }
+  attachHud(hud: FarmHud | null): void { this.hud = this.lite ? null : hud; if (this.latest) this.syncDay(this.latest, true); }
+
+  /** Run length (null = endless) and, for the dial's weather marks, where to find the weather seed. The sky and the dial both read the same tick. */
+  setDay(cfg: DayConfig): void { this.day = cfg; if (this.latest) this.syncDay(this.latest, true); }
+
+  private syncDay(snapshot: Snapshot, jump: boolean): void {
+    const info = dayProgress(snapshot.tick, this.day.runTicks);
+    this.light.setDay(info.progress, jump);
+    this.hud?.dial.update(snapshot, info, this.day);
+  }
 
   // ---------------------------------------------------------------- camera
 
