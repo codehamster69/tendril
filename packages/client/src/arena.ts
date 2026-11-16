@@ -129,7 +129,6 @@ export function mountArena({ loop, api, challenge: c }: { loop: GameLoop; api: F
   void pending(api).flush(); // send any run left over from an earlier visit
   window.addEventListener('online', () => { void pending(api).flush(); });
   window.addEventListener('tendril:account', (event) => { if ((event as CustomEvent<{ profile: unknown }>).detail.profile) void pending(api).flush(); });
-  const number = c.number !== null && c.number > 0 ? c.number : null; // days before the 1 Dec 2026 launch count as practice
   const title = challengeTitle(c);
   const left = el('b', { id: 'arena-left', text: '' });
   const beat = el('b', { id: 'arena-beat', text: '' });
