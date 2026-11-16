@@ -1,0 +1,62 @@
+/* HUD kit: shared look for the game screen. Tokens come from brain-approved mockup (redesign/game-screen-mockup.html).
+   One dark look by choice. Namespaced hk-* so it does not fight the older style.css tokens.
+   Classes: .hk-chip .hk-card .hk-button (.hk-primary) .hk-icon-button .hk-overlay. See brain/notes/hud-kit.md. */
+:root {
+  --hk-page: #14110f; --hk-glass: rgba(30, 23, 18, .82); --hk-glass-strong: rgba(24, 18, 14, .94); --hk-line: rgba(244, 234, 216, .16);
+  --hk-text: #f4ead8; --hk-dim: #c9b99c; --hk-lantern: #f2b84b; --hk-leaf: #8fcf6a; --hk-bad: #ef7a66;
+  --hk-bot1: #ff8a5c; --hk-bot2: #6fd3e0; --hk-code-bg: rgba(18, 14, 11, .92);
+  --hk-display: 'Bricolage Grotesque', 'Avenir Next', ui-sans-serif, system-ui, sans-serif;
+  --hk-body: 'Atkinson Hyperlegible Next', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --hk-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  --hk-s1: 4px; --hk-s2: 8px; --hk-s3: 12px; --hk-s4: 16px; --hk-s5: 24px;
+  --hk-r-sm: 8px; --hk-r-md: 12px; --hk-r-lg: 14px; --hk-r-pill: 999px;
+  --hk-shadow: 0 10px 30px -10px rgba(0, 0, 0, .65);
+  --hk-blur: blur(8px);
+}
+
+.hk-chip {
+  display: inline-flex; align-items: center; gap: .45rem; padding: .3rem .75rem; white-space: nowrap;
+  background: var(--hk-glass); color: var(--hk-text); border: 1px solid var(--hk-line); border-radius: var(--hk-r-pill);
+  font: 600 .85rem/1.2 var(--hk-body); backdrop-filter: var(--hk-blur); box-shadow: var(--hk-shadow);
+}
+.hk-chip b { font: 600 .95rem var(--hk-mono); font-variant-numeric: tabular-nums; }
+.hk-chip small { color: var(--hk-dim); font: 600 .7rem var(--hk-mono); letter-spacing: .08em; text-transform: uppercase; }
+
+.hk-card {
+  background: var(--hk-glass); color: var(--hk-text); border: 1px solid var(--hk-line); border-radius: var(--hk-r-lg);
+  padding: var(--hk-s4) var(--hk-s5); backdrop-filter: var(--hk-blur); box-shadow: var(--hk-shadow);
+}
+
+.hk-button {
+  display: inline-flex; align-items: center; justify-content: center; gap: var(--hk-s2); min-height: 2.25rem; padding: .35rem .9rem;
+  background: rgba(244, 234, 216, .08); color: var(--hk-text); border: 1px solid var(--hk-line); border-radius: var(--hk-r-pill);
+  font: 600 .85rem/1.2 var(--hk-mono); cursor: pointer; box-shadow: none; text-decoration: none;
+  transition: background .12s, border-color .12s, transform .05s;
+}
+.hk-button:hover:not(:disabled) { background: rgba(244, 234, 216, .16); border-color: var(--hk-lantern); }
+.hk-button:active:not(:disabled) { transform: translateY(1px); }
+.hk-button[aria-pressed="true"] { background: rgba(244, 234, 216, .2); }
+.hk-button:disabled { opacity: .4; cursor: not-allowed; }
+.hk-button.hk-primary { background: var(--hk-lantern); color: #2a1c05; border-color: var(--hk-lantern); }
+.hk-button.hk-primary:hover:not(:disabled) { background: #ffcc66; }
+
+.hk-icon-button {
+  display: inline-grid; place-items: center; width: 2.4rem; height: 2.4rem; padding: 0; flex: none;
+  background: var(--hk-glass); color: var(--hk-leaf); border: 1px solid var(--hk-line); border-radius: 50%;
+  font: 700 1.1rem var(--hk-display); cursor: pointer; backdrop-filter: var(--hk-blur); box-shadow: var(--hk-shadow);
+}
+.hk-icon-button:hover:not(:disabled) { border-color: var(--hk-lantern); color: var(--hk-lantern); }
+.hk-icon-button:disabled { opacity: .4; cursor: not-allowed; }
+
+.hk-overlay {
+  position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; padding: var(--hk-s4);
+  background: rgba(12, 9, 7, .6); overflow: auto; color: var(--hk-text); font-family: var(--hk-body);
+}
+.hk-overlay[hidden] { display: none; }
+
+.hk-chip:focus-visible, .hk-card:focus-visible, .hk-button:focus-visible, .hk-icon-button:focus-visible, .hk-overlay :focus-visible {
+  outline: 2px solid var(--hk-lantern); outline-offset: 2px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .hk-button, .hk-icon-button, .hk-chip, .hk-card, .hk-overlay { transition: none !important; animation: none !important; }
+}

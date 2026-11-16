@@ -8,6 +8,7 @@ import { mountInspectors } from './inspectors';
 import { mountDebugger } from './debugger';
 import { mountConsole } from './console-panel';
 import { mountControls } from './ui';
+import { mountStage } from './stage';
 import { mountAccount, connectRanked } from './account';
 import { mountNotice } from './notice';
 import { mountUpdates } from './updates';
@@ -71,6 +72,7 @@ mountNotice({ live: mode === 'live', verified: sim.ranked });
 mountUpdates();
 mountRating(api);
 mountAccount(api, sim);
+mountStage({ loop, editor }); // last: it moves panels that the mounts above create
 if (sim.ranked) mountAutoSync(api, sim, document.getElementById('mode-note'));
 window.addEventListener('tendril:snapshot', (event) => view.update((event as CustomEvent).detail));
 
