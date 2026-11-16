@@ -258,6 +258,30 @@ export class FarmView {
     this.canvas.dataset.selectedBot = String(id);
     this.drones.setSelected(id);
     this.updateSelection();
+    this.canvas.dispatchEvent(new CustomEvent('tendril:bot', { detail: { bot: id }, bubbles: true }));
+  }
+
+  /** Where a bot is drawn right now (world x, z), or null. */
+  botPosition(id: number): { x: number; z: number } | null { return this.drones.position(id); }
+
+  private projected = new THREE.Vector3();
+  /** Canvas pixel under a world point at height `h`. `visible` is false behind the camera or well off screen. */
+  project(x: number, z: number, h = 0): { x: number; y: number; visible: boolean } | null {
+    if (this.disposed) return null;
+    const v = this.projected.set(x, h, z).project(this.camera);
+    return { x: (v.x * 0.5 + 0.5) * (this.canvas.clientWidth || 1), y: (-v.y * 0.5 + 0.5) * (this.canvas.clientHeight || 1), visible: v.z < 1 && Math.abs(v.x) <= 1.1 && Math.abs(v.y) <= 1.1 };
+  }
+
+  /** The bot drawn within reach of a ground point, nearest first. Reach grows when zoomed out so small drones stay clickable. */
+  private botAt(x: number, z: number): number | null {
+    const reach = Math.max(0.7, 16 / Math.max(1, this.tilePx));
+    let best: number | null = null, bestD = reach;
+    this.latest?.bots.forEach((_, id) => {
+      const p = this.drones.position(id);
+      const d = p ? Math.hypot(p.x - x, p.z - z) : Infinity;
+      if (d < bestD) { bestD = d; best = id; }
+    });
+    return best;
   }
 
   private updateSelection(): void {
@@ -272,7 +296,10 @@ export class FarmView {
     if (this.disposed) return;
     const rect = this.canvas.getBoundingClientRect();
     const hit = this.rig.groundAt((clientX - rect.left) / rect.width * 2 - 1, -(clientY - rect.top) / rect.height * 2 + 1);
-    if (hit) this.selectTile(Math.floor(hit.x + 0.5), Math.floor(hit.z + 0.5));
+    if (!hit) return;
+    const bot = this.botAt(hit.x, hit.z);
+    if (bot !== null) { this.selectBot(bot); return; }
+    this.selectTile(Math.floor(hit.x + 0.5), Math.floor(hit.z + 0.5));
   };
 
   /** Selects an owned tile and tells the inspector. Scenery and unowned holes are never selectable simulation cells. */
@@ -280,6 +307,12 @@ export class FarmView {
     const tile = this.world.tileAt(x, y);
     if (!tile) return false;
     this.selectedTile = { x, y };
+    if (this.selectedBot !== null) {
+      this.selectedBot = null;
+      this.drones.setSelected(null);
+      delete this.canvas.dataset.selectedBot;
+      this.canvas.dispatchEvent(new CustomEvent('tendril:bot', { detail: { bot: null }, bubbles: true }));
+    }
     this.updateSelection();
     this.canvas.dispatchEvent(new CustomEvent('tendril:tile', { detail: { x, y, scan: { ...tile } }, bubbles: true }));
     return true;

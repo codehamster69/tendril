@@ -21,6 +21,7 @@ import { mountJoinDuel } from './join-duel';
 import { mountAutoSync } from './autosync';
 import { el } from './palette';
 import { mountPerfMeter } from './perf-meter';
+import { mountWorldFeedback } from './world-feedback';
 import { stressConfig, stressParam } from './stress-farm';
 import type { Mode } from './clock';
 import type { Scenario } from './sim-protocol';
@@ -73,6 +74,7 @@ mountUpdates();
 mountRating(api);
 mountAccount(api, sim);
 mountStage({ loop, editor }); // last: it moves panels that the mounts above create
+mountWorldFeedback({ view, editor });
 if (sim.ranked) mountAutoSync(api, sim, document.getElementById('mode-note'));
 window.addEventListener('tendril:snapshot', (event) => view.update((event as CustomEvent).detail));
 
