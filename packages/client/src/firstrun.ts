@@ -29,7 +29,10 @@ interface Prompt { anchor: string; title: string; text: string; action?: { label
  */
 export function mountFirstRun({ editor }: { editor: Editor }): void {
   write(FLAG, 'active');
-  const starter = LESSONS[0]!.solution;
+  // Lesson 1's solution ends on harvest; the tour ends on a sale, so the starter walks the carrots to the barn and sells them.
+  const starter = LESSONS[0]!.solution + 'go_to barn\ndeposit\nsell carrot, all\n';
+  // A new live farm is already running; pressing Play then would pause it, so only press it when the farm is paused.
+  const running = (): boolean => document.getElementById('btn-run')?.hasAttribute('disabled') === true && document.getElementById('btn-pause')?.hasAttribute('disabled') === false;
   let index = 0;
   let finished = false;
   const title = el('b', { class: 'fr-title' });
@@ -43,7 +46,7 @@ export function mountFirstRun({ editor }: { editor: Editor }): void {
 
   const prompts: Prompt[] = [
     { anchor: '#side', title: 'Give your bot a program', text: 'Type some Sprout in the editor, or start from a ready one that plants, harvests and sells a carrot.', action: { label: 'Use the starter', run: () => editor.setSource(starter) } },
-    { anchor: '#tp-play', title: 'Press Play', text: 'Your bot follows the program line by line, and the day starts.', action: { label: 'Play', run: () => document.getElementById('tp-play')?.click() } },
+    { anchor: '#tp-play', title: 'Press Play', text: 'Your bot follows the program line by line, and the day starts.', action: { label: 'Play', run: () => { if (!running()) document.getElementById('tp-play')?.click(); } } },
     { anchor: '#farm-canvas', title: 'Watch the first harvest', text: 'Your bot tills, plants and waits for the carrot to ripen. This takes a few seconds.' },
     { anchor: '#farm-canvas', title: 'Now it sells', text: 'The bot carries the carrots to the barn. Your first sale ends the tour.' },
   ];
@@ -70,6 +73,7 @@ export function mountFirstRun({ editor }: { editor: Editor }): void {
     if (p.action) action.textContent = p.action.label;
     card.hidden = false;
     place();
+    if (i === 1 && running()) { window.setTimeout(() => advance(1), 0); return; } // already playing: nothing to press
     document.querySelector<HTMLElement>(p.anchor)?.classList.add('fr-spot');
     for (const other of prompts) if (other !== p) document.querySelector<HTMLElement>(other.anchor)?.classList.remove('fr-spot');
   };
