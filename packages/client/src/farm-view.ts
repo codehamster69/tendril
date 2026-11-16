@@ -14,6 +14,7 @@ import { FarmFx } from './farm-fx';
 import { FarmCarried } from './farm-carried';
 import { FarmMarket, type MarketData } from './farm-market';
 import type { FarmHud, Lens, ZoomMode } from './farm-hud';
+import { DynamicScale, QUALITY_EVENT, QUALITY_KEY, RenderGate, ShadowClock, qualityPlan, readQuality, type Quality, type QualityPlan } from './render-budget';
 
 export type { FarmOverlay };
 export type { Lens, ZoomMode, LightPreset };
@@ -68,6 +69,16 @@ export class FarmView {
   private disposed = false;
   private raf = 0;
   private previousTime = 0;
+  // Drawing budget (task P4): frames are drawn only when something changed, see render-budget.ts.
+  private gate = new RenderGate();
+  private shadowClock = new ShadowClock(100);
+  private quality: Quality = 'auto';
+  private plan: QualityPlan;
+  private scale: DynamicScale;
+  private hidden = typeof document !== 'undefined' && document.hidden;
+  private camMoved = false;
+  private shadowWorld = -1;
+  private autoShadowsOff = false;
   private lastMinimap = 0;
   private shownColors: unknown = null;
   private shownOverlay: unknown = null;
@@ -76,9 +87,14 @@ export class FarmView {
 
   constructor(private canvas: HTMLCanvasElement, opts: FarmViewOptions = {}) {
     this.lite = !!opts.lite;
-    this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+    this.quality = this.lite ? 'auto' : readQuality();
+    this.plan = qualityPlan(this.quality, window.devicePixelRatio);
+    this.scale = new DynamicScale(this.plan.maxRatio);
+    // Small embedded views keep their drawing buffer: the replay clip copies the canvas outside the render callback.
+    this.renderer = new THREE.WebGLRenderer({ canvas, antialias: this.plan.antialias, preserveDrawingBuffer: this.lite });
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.light = new FarmLight(this.scene, this.renderer, { shadows: !this.lite });
+    this.light.setShadows(this.plan.shadows);
     this.island = new FarmIsland(this.scene);
     this.loader = new AssetLoader(this.assetsChanged);
     this.world = new FarmWorld(this.scene, (name) => this.loader.models.get(name) ?? this.fallback(name));
@@ -98,6 +114,17 @@ export class FarmView {
     this.ro = new ResizeObserver(this.resize);
     this.ro.observe(canvas.parentElement ?? canvas);
     window.addEventListener('resize', this.resize);
+    canvas.addEventListener('wheel', this.wake, { passive: true });
+    canvas.addEventListener('pointerdown', this.wake, { passive: true });
+    canvas.addEventListener('pointermove', this.pointerWake, { passive: true });
+    canvas.addEventListener('pointerup', this.wake, { passive: true });
+    window.addEventListener('keydown', this.keyWake, { passive: true });
+    window.addEventListener('keyup', this.keyWake, { passive: true });
+    window.addEventListener(QUALITY_EVENT, this.qualityChanged);
+    window.addEventListener('storage', this.storageChanged);
+    document.addEventListener('visibilitychange', this.visibility);
+    // The market countdown is DOM text; it ticks on its own clock so it keeps counting while the farm is not drawing.
+    if (this.market) this.marketTimer = window.setInterval(() => { if (!this.hidden) this.market?.update(1); }, 1000);
     canvas.tabIndex = 0;
     canvas.addEventListener('keydown', this.keyDown);
     canvas.dataset.overlay = 'none';
@@ -106,7 +133,77 @@ export class FarmView {
     canvas.dataset.lod = '0';
     this.resize();
     void this.loader.load();
+    this.wake();
+  }
+
+  private marketTimer = 0;
+
+  // ---------------------------------------------------------------- drawing budget
+
+  /** Ask for one more drawn frame (plus the few quiet frames that let easing finish). Cheap to call from anywhere. */
+  requestRender(): void {
+    if (this.disposed) return;
+    this.gate.request();
+    this.schedule();
+  }
+
+  /** Number of modules holding the view in continuous drawing, see `holdAnimation`. */
+  get animating(): number { return this.gate.animating; }
+
+  /**
+   * Keep frames coming until the returned function is called (an effect, a transition, a dial). Call it exactly once.
+   * While nothing holds the view and nothing moves, the farm draws no frames at all.
+   */
+  holdAnimation(): () => void {
+    const release = this.gate.hold();
+    this.schedule();
+    return () => { release(); this.schedule(); };
+  }
+
+  /** Something happened that should look alive for a moment (an update, input): draw, with ambient motion for a short tail. */
+  private wake = (): void => {
+    if (this.disposed) return;
+    this.gate.touch(performance.now());
+    this.schedule();
+  };
+
+  private pointerWake = (e: PointerEvent): void => { if (e.buttons) this.wake(); };
+  private keyWake = (e: KeyboardEvent): void => {
+    // Typing anywhere in the code slate (a contenteditable or input) must not wake the farm.
+    const t = e.target as HTMLElement | null;
+    if (t?.closest?.('input,textarea,select,[contenteditable]')) return;
+    this.wake();
+  };
+
+  private schedule(): void {
+    if (this.raf || this.disposed || this.hidden) return;
     this.raf = requestAnimationFrame(this.loop);
+  }
+
+  private visibility = (): void => {
+    this.hidden = document.hidden;
+    if (this.hidden) { cancelAnimationFrame(this.raf); this.raf = 0; this.previousTime = 0; this.scale.gap(); }
+    else this.wake();
+  };
+
+  private qualityChanged = (): void => this.applyQuality(readQuality());
+  private storageChanged = (e: StorageEvent): void => { if (e.key === QUALITY_KEY || e.key === null) this.applyQuality(readQuality()); };
+
+  /** Low: no shadows, ratio 1. Auto: ratio up to 1.5 and shadows. High: ratio up to 2 and shadows. Antialiasing applies on the next load. */
+  private applyQuality(quality: Quality): void {
+    if (this.disposed || this.lite || quality === this.quality) return;
+    this.quality = quality;
+    this.plan = qualityPlan(quality, window.devicePixelRatio);
+    this.autoShadowsOff = false;
+    this.scale.setMax(this.plan.maxRatio);
+    this.scale.clearStrikes();
+    this.light.setShadows(this.plan.shadows);
+    this.resize();
+  }
+
+  private applyRatio(): void {
+    this.renderer.setPixelRatio(this.scale.ratio);
+    this.renderer.setSize(this.canvas.clientWidth || 1, this.canvas.clientHeight || 1, false);
   }
 
   private assetsChanged = (status: AssetStatus): void => {
@@ -117,6 +214,8 @@ export class FarmView {
     this.canvas.dataset.modelsAssets = JSON.stringify([...this.loader.models.keys()].sort());
     this.world.invalidate();
     if (this.latest) this.renderWorld(performance.now() / 1000); // swap placeholders for the GLBs before anyone reads the batches
+    this.light.markShadowDirty();
+    this.requestRender();
     this.canvas.dispatchEvent(new CustomEvent('tendril:models', { detail: status, bubbles: true }));
   };
 
@@ -143,7 +242,7 @@ export class FarmView {
     const bounds = this.world.bounds;
     this.rig.setBounds(bounds);
     const key = `${bounds ? `${bounds.x0},${bounds.x1},${bounds.z0},${bounds.z1}` : '-'}|${this.world.tileCount}`;
-    if (key !== this.islandKey) { this.islandKey = key; this.island.update(bounds, (x, y) => !!this.world.tileAt(x, y)); }
+    if (key !== this.islandKey) { this.islandKey = key; this.island.update(bounds, (x, y) => !!this.world.tileAt(x, y)); this.light.setFarm(bounds); this.light.markShadowDirty(); }
     if (this.market && !this.stallPlaced && this.world.tileAt(0, 0)) { this.market.setStallAt(1, 0); this.stallPlaced = true; }
     this.drones.setBots(snapshot.bots, tickDelta);
     if (this.selectedBot !== null && this.selectedBot >= snapshot.bots.length) this.selectedBot = null;
@@ -152,6 +251,7 @@ export class FarmView {
     this.updateSelection();
     this.canvas.dataset.renderedTiles = String(this.world.tileCount);
     this.renderWorld(performance.now() / 1000);
+    this.wake();
     if (applyStart) perfHook.apply?.(performance.now() - applyStart);
   }
 
@@ -188,6 +288,7 @@ export class FarmView {
   setMarket(market: MarketData | null, opts?: { opensInDays?: number }): void {
     if (this.disposed || !this.market) return;
     this.market.setMarket(market, opts);
+    this.requestRender();
     if (!this.market.multipliers && this.priceLens) this.setLens('none');
   }
 
@@ -207,13 +308,14 @@ export class FarmView {
     this.overlay = lens === 'price' ? 'none' : lens;
     this.canvas.dataset.overlay = lens;
     if (this.latest) this.renderWorld(performance.now() / 1000);
+    this.requestRender();
   }
 
-  setLight(preset: LightPreset): void { if (!this.disposed) this.light.setPreset(preset); }
-  setZoomMode(mode: ZoomMode): void { if (!this.disposed) this.rig.zoomMode = mode; }
+  setLight(preset: LightPreset): void { if (!this.disposed) { this.light.setPreset(preset); this.wake(); } }
+  setZoomMode(mode: ZoomMode): void { if (!this.disposed) { this.rig.zoomMode = mode; this.wake(); } }
 
   /** Attach the HUD built by `mountInspectors`; it is updated every frame from here on. */
-  attachHud(hud: FarmHud | null): void { this.hud = this.lite ? null : hud; }
+  attachHud(hud: FarmHud | null): void { this.hud = this.lite ? null : hud; this.requestRender(); }
 
   // ---------------------------------------------------------------- camera
 
@@ -222,6 +324,7 @@ export class FarmView {
     if (this.disposed) return;
     this.followId = null;
     this.rig.fit();
+    this.wake();
   }
 
   /** Cycle the camera through the drones, then back to free. */
@@ -229,18 +332,20 @@ export class FarmView {
     if (this.disposed || !this.latest) return;
     const count = this.latest.bots.length;
     const next = this.followId === null ? 0 : this.followId + 1;
-    if (!count || next >= count) { this.followId = null; this.rig.follow(null); return; }
+    if (!count || next >= count) { this.followId = null; this.rig.follow(null); this.wake(); return; }
     this.followId = next;
     this.rig.follow(() => this.drones.position(next));
+    this.wake();
   }
 
-  rotate(steps: number): void { if (!this.disposed) this.rig.rotate(steps); }
+  rotate(steps: number): void { if (!this.disposed) { this.rig.rotate(steps); this.wake(); } }
 
   /** Move the camera over a world position (minimap). */
   jumpTo(x: number, z: number): void {
     if (this.disposed) return;
     this.followId = null;
     this.rig.focus(x, z);
+    this.wake();
   }
 
   /** Ground point under a screen position given as normalised device coordinates (-1..1, y up). Test and tooling hook. */
@@ -258,12 +363,14 @@ export class FarmView {
     this.canvas.dataset.selectedBot = String(id);
     this.drones.setSelected(id);
     this.updateSelection();
+    this.wake();
   }
 
   private updateSelection(): void {
     const tile = this.selectedTile;
     this.tileRing.visible = !!tile && !!this.world.tileAt(tile.x, tile.y);
     if (tile) this.tileRing.position.set(tile.x, 0.045, tile.y);
+    this.requestRender();
   }
 
   // ---------------------------------------------------------------- input
@@ -300,6 +407,7 @@ export class FarmView {
   };
 
   private cameraStatus = (): void => {
+    this.camMoved = true;
     this.canvas.dataset.cameraTarget = JSON.stringify(this.rig.target.toArray());
     this.canvas.dataset.cameraPosition = JSON.stringify(this.camera.position.toArray());
   };
@@ -307,10 +415,11 @@ export class FarmView {
   private resize = (): void => {
     if (this.disposed) return;
     const width = this.canvas.clientWidth || 1, height = this.canvas.clientHeight || 1;
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    this.renderer.setPixelRatio(this.scale.ratio);
     this.renderer.setSize(width, height, false);
     this.camera.aspect = width / height;
     this.camera.updateProjectionMatrix();
+    this.requestRender();
   };
 
   // ---------------------------------------------------------------- frame
@@ -343,12 +452,33 @@ export class FarmView {
   }
 
   private loop = (ms: number): void => {
-    if (this.disposed) return;
-    perfHook.frame?.(ms);
-    const dt = this.previousTime ? Math.min((ms - this.previousTime) / 1000, 0.1) : 0;
+    this.raf = 0;
+    if (this.disposed || this.hidden) return;
+    const gap = this.previousTime ? ms - this.previousTime : 0;
+    const resumed = !this.previousTime || gap > 1000;
+    const dt = resumed ? 0 : Math.min(gap / 1000, 0.1);
     this.previousTime = ms;
+    // Dynamic resolution looks only at frames drawn back to back, never at the pause between bursts.
+    if (resumed) this.scale.gap();
+    else {
+      if (this.scale.add(gap) !== null) this.applyRatio();
+      // Auto gives up shadows when even the lowest resolution stays too slow for two seconds.
+      if (this.quality === 'auto' && this.plan.shadows && !this.autoShadowsOff && this.scale.floorStrikes >= 2) { this.autoShadowsOff = true; this.light.setShadows(false); }
+    }
+    perfHook.frame?.(ms);
+    const changed = this.draw(ms, dt);
+    if (this.gate.next(ms, changed)) { this.schedule(); return; }
+    // Quiet: the farm is at rest. Stop drawing until something wakes it.
+    this.gate.stopped();
+    this.previousTime = 0;
+    if (this.hud) this.updateMinimap();
+  };
+
+  /** One frame. Returns true when something on screen was still moving (the loop keeps going until it settles). */
+  private draw(ms: number, dt: number): boolean {
     const time = ms / 1000;
     if (this.followId !== null && !this.rig.following) this.followId = null;
+    this.camMoved = false;
     this.rig.update(dt);
     const focus = this.rig.target;
     this.light.update(dt, focus, this.rig.distance);
@@ -357,15 +487,22 @@ export class FarmView {
     this.renderWorld(time);
     this.drones.update(dt, time, this.light.glow, droneViewScale(this.tilePx));
     this.fx.update(dt, time, focus, this.light.glow, droneViewScale(this.tilePx));
-    if (this.market) { this.market.setPopupsHidden(this.lod === 2); this.market.update(dt); }
+    if (this.market) this.market.setPopupsHidden(this.lod === 2);
     if (this.hud) {
       this.hud.update({ following: this.rig.following, lod: this.lod, tilePx: this.tilePx, cells: this.stride });
       if (ms - this.lastMinimap > MINIMAP_MS) { this.lastMinimap = ms; this.updateMinimap(); }
     }
+    // The shadow map is redrawn only when the sun, the shadow window or the farm changed, and at most ten times a
+    // second while drones and carried crops move; once more when they stop.
+    const sunChanged = this.light.takeShadowDirty();
+    const farmChanged = this.world.rebuilds !== this.shadowWorld;
+    this.shadowWorld = this.world.rebuilds;
+    const dronesMoving = this.drones.moving;
+    if (this.light.shadowsOn && this.shadowClock.due(ms, sunChanged || farmChanged, dronesMoving)) this.renderer.shadowMap.needsUpdate = true;
     this.renderer.render(this.scene, this.camera);
     this.canvas.dataset.sceneReady = String(this.world.tileCount > 0);
-    this.raf = requestAnimationFrame(this.loop);
-  };
+    return this.camMoved || dronesMoving || this.fx.active || this.light.busy;
+  }
 
   private updateMinimap(): void {
     const s = this.latest;
@@ -387,7 +524,18 @@ export class FarmView {
     if (this.disposed) return;
     this.disposed = true;
     cancelAnimationFrame(this.raf);
+    this.raf = 0;
     window.removeEventListener('resize', this.resize);
+    this.canvas.removeEventListener('wheel', this.wake);
+    this.canvas.removeEventListener('pointerdown', this.wake);
+    this.canvas.removeEventListener('pointermove', this.pointerWake);
+    this.canvas.removeEventListener('pointerup', this.wake);
+    window.removeEventListener('keydown', this.keyWake);
+    window.removeEventListener('keyup', this.keyWake);
+    window.removeEventListener(QUALITY_EVENT, this.qualityChanged);
+    window.removeEventListener('storage', this.storageChanged);
+    document.removeEventListener('visibilitychange', this.visibility);
+    window.clearInterval(this.marketTimer);
     this.ro.disconnect();
     this.canvas.removeEventListener('keydown', this.keyDown);
     this.rig.dispose();

@@ -30,8 +30,21 @@ Cloud runs use software rendering (SwiftShader, no graphics chip), so frame rate
 | Worker update, full stress farm | 864 KB | |
 | Update rate, full stress farm | about 430 KB/s (headless run) | |
 | Apply time, full stress farm | 6.0 ms (software GL box) | |
-| Draw calls, small / full stress farm | 98 / 232 | |
+| Draw calls, small / full stress farm | 98 / 232 (re-measured on the same box: 194 / 324 with the shadow pass counted) | 88 / 224 on a frame with no shadow redraw (P4) |
 | Triangles, small / full stress farm | 40,214 / 184,764 | |
 | fps and frame time, small stress farm | Mac: _to fill in_ | |
 | fps and frame time, full stress farm | Mac: _to fill in_ | |
-| fps while idle on a normal farm | Mac: _to fill in_ | |
+| Frames drawn per second, paused farm (headless, WebGL clear calls counted) | 4 to 5 (every animation frame) | 0 (P4) |
+
+## P4 numbers (cloud, software GL, headless Chromium 1280x720)
+
+Counted with a `clear` call hook on the WebGL context and the meter's draw calls. Frame rate itself is meaningless here (SwiftShader), so the Mac rows above are still open.
+
+| Case | Before P4 | After P4 |
+|---|---|---|
+| Frames drawn per second, paused small farm | 5.5 | 0 |
+| Frames drawn per second, paused full farm | 1.75 (software GL cannot go faster) | 0 |
+| Draw calls, small farm, running | 164 to 194 | 88 to 119 |
+| Draw calls, full farm, running | 318 to 324 | 222 to 224 on frames with no shadow redraw |
+
+Open on the Mac: `/?perf=1&stress=1` and `/?perf=1&stress=small` (targets: 60 fps with 16 plots and 8 bots, 30 or better with 100 plots and 32 bots), then pause and check fps reads 0.

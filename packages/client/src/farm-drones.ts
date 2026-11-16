@@ -276,6 +276,15 @@ export class FarmDrones {
     if (this.ownsFx) this.fx.update(dt, time, this.focus ?? this.focusPoint(), glow, sc);
   }
 
+  /** True while any drone is still travelling, turning or changing its beam; false once the whole fleet is at rest. */
+  get moving(): boolean {
+    for (const d of this.drones) {
+      if (Math.abs(d.tx - d.x) + Math.abs(d.tz - d.z) > 0.002 || Math.abs(d.vx) + Math.abs(d.vz) > 0.02) return true;
+      if (Math.abs((beamOp(d.op) ? 1 : 0) - d.beamLevel) > 0.01) return true;
+    }
+    return false;
+  }
+
   position(id: number): { x: number; z: number } | null {
     const d = this.drones[id];
     return d ? { x: d.x, z: d.z } : null;

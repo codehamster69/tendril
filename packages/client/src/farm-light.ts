@@ -55,7 +55,12 @@ export class FarmLight {
   private weather: Weather = 'clear';
   private _shadowsOn: boolean;
   private shadowsAllowed: boolean;
+  /** Quality switch (task P4): false turns the sun's shadow off without touching the renderer state. */
+  private shadowsWanted = true;
   private shadowExtent = 0;
+  private shadowKey = '';
+  private shadowDirty = true;
+  private farm: { cx: number; cz: number; radius: number } | null = null;
   private skyDirty = true;
   private settled = false;
   private reduced = typeof window !== 'undefined' && typeof window.matchMedia === 'function' ? window.matchMedia('(prefers-reduced-motion: reduce)') : null;
@@ -66,6 +71,8 @@ export class FarmLight {
     this.shadowsAllowed = opts.shadows !== false;
     this._shadowsOn = this.shadowsAllowed;
     renderer.shadowMap.enabled = this.shadowsAllowed;
+    // The shadow map is drawn only when asked: the sun moved, the farm changed or a drone moved (see `takeShadowDirty`).
+    renderer.shadowMap.autoUpdate = false;
     renderer.shadowMap.type = THREE.PCFShadowMap;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.sun.castShadow = this.shadowsAllowed;
@@ -87,7 +94,32 @@ export class FarmLight {
 
   get preset(): LightPreset { return this._preset; }
   get glow(): number { return Math.min(1.5, Math.max(0.2, this.cur.glow)); }
-  get shadowsOn(): boolean { return this._shadowsOn; }
+  get shadowsOn(): boolean { return this._shadowsOn && this.shadowsWanted; }
+  /** True while colours, intensities or the sky are still easing toward the preset (frames must keep coming). */
+  get busy(): boolean { return !this.settled || this.skyDirty; }
+
+  /** Quality setting: shadows on or off. */
+  setShadows(on: boolean): void {
+    if (!this.shadowsAllowed || on === this.shadowsWanted) return;
+    this.shadowsWanted = on;
+    this.sun.castShadow = on && this._shadowsOn;
+    this.shadowDirty = true;
+  }
+
+  /** The shadow map must be redrawn because the sun, the farm or the shadow window changed. Reading clears it. */
+  takeShadowDirty(): boolean {
+    const dirty = this.shadowDirty && this.shadowsOn;
+    this.shadowDirty = false;
+    return dirty;
+  }
+
+  /** Tell the shadow camera how big the farm is, so a farm that fits one shadow window gets a fixed, sharp window. */
+  setFarm(bounds: { x0: number; x1: number; z0: number; z1: number } | null): void {
+    this.farm = bounds ? { cx: (bounds.x0 + bounds.x1) / 2, cz: (bounds.z0 + bounds.z1) / 2, radius: Math.hypot(bounds.x1 - bounds.x0, bounds.z1 - bounds.z0) / 2 } : null;
+  }
+
+  /** The farm's geometry changed (tiles grew, crops advanced, models arrived). */
+  markShadowDirty(): void { this.shadowDirty = true; }
 
   setPreset(p: LightPreset, snap = false): void {
     this._preset = p;
@@ -136,6 +168,7 @@ export class FarmLight {
     this.renderer.toneMappingExposure = c.exposure;
     this.fogObj.color.copy(c.fog);
     this.skyDirty = true;
+    this.shadowDirty = true;
     const cd = (x: THREE.Color, y: THREE.Color): number => Math.abs(x.r - y.r) + Math.abs(x.g - y.g) + Math.abs(x.b - y.b);
     const err = cd(c.sun, g.sun) + cd(c.sky, g.sky) + cd(c.ground, g.ground) + cd(c.top, g.top) + cd(c.bottom, g.bottom) + cd(c.fog, g.fog)
       + Math.abs(c.sunI - g.sunI) + Math.abs(c.hemiI - g.hemiI) + Math.abs(c.exposure - g.exposure) + Math.abs(c.glow - g.glow) + Math.abs(c.fogScale - g.fogScale) + c.dir.distanceTo(g.dir);
@@ -162,20 +195,28 @@ export class FarmLight {
     // Shadows off when far away (hysteresis); castShadow flips recompile materials, so avoid chatter.
     if (this.shadowsAllowed) {
       const want = this._shadowsOn ? distance < SHADOW_OFF_DISTANCE : distance < SHADOW_ON_DISTANCE;
-      if (want !== this._shadowsOn) { this._shadowsOn = want; this.sun.castShadow = want; }
+      if (want !== this._shadowsOn) { this._shadowsOn = want; this.sun.castShadow = want && this.shadowsWanted; this.shadowDirty = true; }
     }
-    // Shadow window follows the focus and scales with the view; quantised so it does not shimmer.
-    const extent = Math.min(36, Math.max(9, distance * 0.85));
+    // A farm that fits one window is covered by a fixed window (the camera can move without redrawing the shadow
+    // map). A bigger farm gets a window that follows the focus and scales with the view, quantised so it does not shimmer.
+    const fits = !!this.farm && this.farm.radius + 2 <= 36;
+    const extent = fits ? Math.max(9, this.farm!.radius + 2) : Math.min(36, Math.max(9, distance * 0.85));
     if (Math.abs(extent - this.shadowExtent) > 0.25) {
       const sc = this.sun.shadow.camera;
       sc.left = sc.bottom = -extent; sc.right = sc.top = extent;
       sc.updateProjectionMatrix();
       this.shadowExtent = extent;
+      this.shadowDirty = true;
     }
-    const sx = Math.round(focus.x * 2) / 2, sz = Math.round(focus.z * 2) / 2;
-    this.sun.target.position.set(sx, 0, sz);
-    this.sun.position.set(sx + this.cur.dir.x * 70, this.cur.dir.y * 70, sz + this.cur.dir.z * 70);
-    this.sun.target.updateMatrixWorld();
+    const sx = fits ? Math.round(this.farm!.cx * 2) / 2 : Math.round(focus.x * 2) / 2, sz = fits ? Math.round(this.farm!.cz * 2) / 2 : Math.round(focus.z * 2) / 2;
+    const key = `${sx},${sz},${this.cur.dir.x.toFixed(4)},${this.cur.dir.y.toFixed(4)},${this.cur.dir.z.toFixed(4)}`;
+    if (key !== this.shadowKey) {
+      this.shadowKey = key;
+      this.shadowDirty = true;
+      this.sun.target.position.set(sx, 0, sz);
+      this.sun.position.set(sx + this.cur.dir.x * 70, this.cur.dir.y * 70, sz + this.cur.dir.z * 70);
+      this.sun.target.updateMatrixWorld();
+    }
 
     // Fog scales with distance; it opens up further when the camera is high (Map zoom).
     const far = smooth(40, 90, distance), s = this.cur.fogScale;
