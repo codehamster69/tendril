@@ -300,6 +300,8 @@ export class GameLoop {
     }
     const lines = this.sim.drainOutput();
     if (lines.length) emit('output', lines);
+    const events = this.sim.drainEvents?.();
+    if (events?.length) emit('events', events);
     const errors: SimError[] = this.sim.drainErrors();
     if (!errors.length) return;
     const script = errors.filter((e) => !e.kind || e.kind === 'script');

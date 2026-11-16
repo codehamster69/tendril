@@ -142,7 +142,7 @@ export class FarmView {
     this.world.setSnapshot(snapshot);
     const bounds = this.world.bounds;
     this.rig.setBounds(bounds);
-    const key = `${bounds ? `${bounds.x0},${bounds.x1},${bounds.z0},${bounds.z1}` : '-'}|${snapshot.tiles.length}`;
+    const key = `${bounds ? `${bounds.x0},${bounds.x1},${bounds.z0},${bounds.z1}` : '-'}|${this.world.tileCount}`;
     if (key !== this.islandKey) { this.islandKey = key; this.island.update(bounds, (x, y) => !!this.world.tileAt(x, y)); }
     if (this.market && !this.stallPlaced && this.world.tileAt(0, 0)) { this.market.setStallAt(1, 0); this.stallPlaced = true; }
     this.drones.setBots(snapshot.bots, tickDelta);
@@ -150,7 +150,7 @@ export class FarmView {
     this.drones.setSelected(this.selectedBot);
     if (this.market) this.watchHarvests(previous, snapshot, tickDelta);
     this.updateSelection();
-    this.canvas.dataset.renderedTiles = String(snapshot.tiles.length);
+    this.canvas.dataset.renderedTiles = String(this.world.tileCount);
     this.renderWorld(performance.now() / 1000);
     if (applyStart) perfHook.apply?.(performance.now() - applyStart);
   }
@@ -363,7 +363,7 @@ export class FarmView {
       if (ms - this.lastMinimap > MINIMAP_MS) { this.lastMinimap = ms; this.updateMinimap(); }
     }
     this.renderer.render(this.scene, this.camera);
-    this.canvas.dataset.sceneReady = String(!!this.latest?.tiles.length);
+    this.canvas.dataset.sceneReady = String(this.world.tileCount > 0);
     this.raf = requestAnimationFrame(this.loop);
   };
 

@@ -4,7 +4,8 @@ export {
 } from './world.ts';
 export { hashWorld, serialize, deserialize } from './hash.ts';
 export { replayChunk } from './replay.ts';
-export { snapshot } from './snapshot.ts';
+export { snapshot, viewPlot, viewBot, viewScalars, VIEW_TILE_FIELDS, VIEW_BOT_FIELDS } from './snapshot.ts';
+export type { ViewScalars } from './snapshot.ts';
 export {
   CROPS, ITEMS, BUILDINGS, UNLOCKS, OPS, OP, COST, FARM_OPS, RULES_VERSION, BASE_RULES_VERSION, SUPPORTED_RULES_VERSIONS, DAILY_TICKS, SEASON_TICKS, PLOT_SIZE, ITEM_COUNT,
   CROP_COUNT, BASE_CAPACITY, SATCHEL_CAPACITY, SATCHEL_BIT, HONEY, COMPOST, HIVE, COMPOSTER, HONEY_INTERVAL, HONEY_MAX,
