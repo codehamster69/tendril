@@ -178,7 +178,8 @@ export function mountStage({ loop }: { loop: GameLoop; editor?: Editor }): void 
   const q = <T extends HTMLElement>(s: string): T | null => document.querySelector<T>(s);
   const decks = (...ids: string[]): HTMLElement[] => ids.map((i) => document.getElementById(i)).filter((n): n is HTMLElement => !!n);
   entry('Inspectors', 'Soil, barn, orders, forecast', () => panels.open('Inspectors', decks('forecast', 'deck-farm')), 'inspectors');
-  entry('Progression', 'Research and achievements', () => panels.open('Progression', decks('deck-research', 'deck-goals')), 'progression');
+  entry('Seed catalogue', 'Research crops, buildings, tools', () => window.dispatchEvent(new CustomEvent('tendril:open-catalogue')), 'catalogue');
+  entry('Achievements', 'Goals you have earned', () => panels.open('Achievements', decks('deck-goals')), 'progression');
   entry('Arena & lessons', 'Daily result, submit, lessons', () => panels.open('Arena & lessons', decks('lesson-card'), { wide: true }), 'arena');
   entry('Duels', 'Join a friend’s duel link', () => byId('btn-join-duel').click(), 'duels');
   const ratingEntry = entry('Rating', 'Your overall rating', () => { byId('rating-chip').click(); }, 'rating');

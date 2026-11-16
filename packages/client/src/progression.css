@@ -5,11 +5,6 @@
 #lesson-card .goal { color: var(--lantern); font-weight: 600; }
 #lesson-card .goal.complete { color: #8FE3B8; }
 .next-lesson { display: inline-block; color: var(--lantern); margin-left: 14px; }
-.research-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
-.research-node { text-align: left; padding: 10px; border-style: dashed; border-radius: 12px; }
-.research-node b, .research-node span { display: block; }
-.research-node span { color: var(--mist-2); font: 11px var(--mono); margin-top: 4px; }
-.research-node.unlocked { border-style: solid; border-color: var(--tendril); background: rgba(79,209,176,.12); box-shadow: 0 0 16px -8px var(--tendril); }
 .achievement-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
 .achievement { opacity: .6; padding: 9px; border: 1px solid var(--line-soft); border-radius: 12px; }
 .achievement.earned { opacity: 1; background: rgba(255,198,90,.1); border-color: rgba(255,198,90,.55); }
@@ -24,7 +19,7 @@
 .lesson-link small { display: block; color: var(--mist-2); }
 .lesson-link.locked { opacity: .4; pointer-events: none; }
 .daily-result { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
-@media (max-width: 640px) { .achievement-grid, .research-grid { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 640px) { .achievement-grid { grid-template-columns: repeat(2, 1fr); } }
 #lesson-card .publish-source { display: flex; align-items: center; gap: 6px; margin-top: 6px; color: var(--mist-2); font-size: 13px; cursor: pointer; }
 #lesson-card .publish-source input { accent-color: var(--lantern); }
 #lesson-card .publish-source input[type="text"] { flex: 1; min-width: 0; background: transparent; color: inherit; border: 1px solid var(--mist-2); border-radius: 4px; padding: 2px 6px; font: inherit; }

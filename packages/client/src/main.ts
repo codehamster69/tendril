@@ -14,6 +14,7 @@ import { mountNotice } from './notice';
 import { mountUpdates } from './updates';
 import { isFirstRun, mountFirstRun } from './firstrun';
 import { mountProgression, selectedLesson } from './progression';
+import { mountCatalogue } from './catalogue-view';
 import { mountRating } from './rating';
 import { challengeScenario, loadChallenge, marketOpensIn, mountArena } from './arena';
 import { FarmApi, signedInHint, wireSiteLinks } from './api-client';
@@ -73,6 +74,7 @@ mountUpdates();
 mountRating(api);
 mountAccount(api, sim);
 mountStage({ loop, editor }); // last: it moves panels that the mounts above create
+mountCatalogue({ editor }); // after the stage: it badges the menu button and entry
 if (sim.ranked) mountAutoSync(api, sim, document.getElementById('mode-note'));
 window.addEventListener('tendril:snapshot', (event) => view.update((event as CustomEvent).detail));
 
