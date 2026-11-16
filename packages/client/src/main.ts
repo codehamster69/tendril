@@ -19,6 +19,7 @@ import { challengeScenario, loadChallenge, marketOpensIn, mountArena } from './a
 import { FarmApi, signedInHint, wireSiteLinks } from './api-client';
 import { mountJoinDuel } from './join-duel';
 import { mountAutoSync } from './autosync';
+import { mountSound } from './sound';
 import { el } from './palette';
 import { mountPerfMeter } from './perf-meter';
 import { stressConfig, stressParam } from './stress-farm';
@@ -27,6 +28,7 @@ import type { Scenario } from './sim-protocol';
 
 wireSiteLinks();
 mountJoinDuel();
+mountSound();
 const query = new URLSearchParams(location.search);
 const requested = query.get('mode');
 // ?mode=challenge&id=<challenge id> plays any challenge; it shares the daily sim mode.
