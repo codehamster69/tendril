@@ -23,7 +23,7 @@
     "@tendril/lang": "workspace:*",
     "@tendril/sim": "workspace:*",
     "@types/three": "^0.187.0",
-    "electron": "^45.3.0",
+    "electron": "^45.3.1",
     "electron-builder": "^26.18.0",
     "monaco-editor": "^0.57.0",
     "three": "^0.187.0",
