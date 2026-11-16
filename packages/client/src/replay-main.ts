@@ -50,6 +50,7 @@ async function main(): Promise<void> {
     panes[i]!.hidden = false;
     const header = paneHeader(panes[i]!, run.entry);
     const view = new FarmView(panes[i]!.querySelector('canvas')!, { lite: true });
+    view.setDay({ runTicks: run.timeline.ticks });
     return { ...run, header, view };
   });
   const total = Math.max(...runs.map((r) => r.timeline.ticks));

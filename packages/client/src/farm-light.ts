@@ -1,6 +1,9 @@
 import * as THREE from 'three';
+import { skyStep } from './day-clock';
 
-export type LightPreset = 'dawn' | 'noon' | 'golden' | 'night';
+/** 'day' follows the run: dawn at progress 0, noon, golden hour, dusk at 1 (see day-clock.ts). The others are fixed looks. */
+export type LightPreset = 'day' | 'dawn' | 'noon' | 'golden' | 'night';
+type FixedPreset = Exclude<LightPreset, 'day'>;
 export type Weather = 'clear' | 'rain' | 'frost';
 
 /**
@@ -15,7 +18,7 @@ interface PresetDef {
 }
 const SUN_K = 2.6;
 const HEMI_K = 2.4;
-const PRESETS: Record<LightPreset, PresetDef> = {
+const PRESETS: Record<FixedPreset, PresetDef> = {
   dawn: { sun: 0xffb48a, sunI: 1.25, dir: [-0.9, 0.42, 0.55], sky: 0xbcc8ff, ground: 0x8a7078, hemiI: 0.62, exposure: 0.95, top: '#2b4a75', bottom: '#f0b08e', fog: 0xd9a68c, glow: 0.7 },
   noon: { sun: 0xfff3dc, sunI: 1.15, dir: [-0.35, 1, 0.45], sky: 0xcfe8ff, ground: 0x8aa070, hemiI: 0.62, exposure: 0.95, top: '#5ea9d0', bottom: '#dff0e8', fog: 0xcfe4e4, glow: 0.2 },
   golden: { sun: 0xffa65a, sunI: 1.4, dir: [-1, 0.55, 0.5], sky: 0xb7c4ee, ground: 0x8a7676, hemiI: 0.7, exposure: 1.0, top: '#1f3260', bottom: '#f2a068', fog: 0xd09270, glow: 0.65 },
@@ -28,6 +31,28 @@ const WEATHER: Record<Weather, { tint: number; mix: number; sun: number; hemi: n
   rain: { tint: 0x6f8590, mix: 0.45, sun: 0.5, hemi: 0.85, fog: 0.55, glow: 0.15 },
   frost: { tint: 0xdbeeff, mix: 0.3, sun: 0.9, hemi: 1.1, fog: 0.8, glow: 0.05 },
 };
+
+const mixC = (a: number | string, b: number | string, t: number): THREE.Color => new THREE.Color(a).lerp(new THREE.Color(b), t);
+const mixDef = (a: PresetDef, b: PresetDef, t: number): PresetDef => {
+  const n = (x: number, y: number): number => x + (y - x) * t;
+  return {
+    sun: mixC(a.sun, b.sun, t).getHex(), sunI: n(a.sunI, b.sunI), dir: [n(a.dir[0], b.dir[0]), n(a.dir[1], b.dir[1]), n(a.dir[2], b.dir[2])],
+    sky: mixC(a.sky, b.sky, t).getHex(), ground: mixC(a.ground, b.ground, t).getHex(), hemiI: n(a.hemiI, b.hemiI), exposure: n(a.exposure, b.exposure),
+    top: `#${mixC(a.top, b.top, t).getHexString()}`, bottom: `#${mixC(a.bottom, b.bottom, t).getHexString()}`, fog: mixC(a.fog, b.fog, t).getHex(), glow: n(a.glow, b.glow),
+  };
+};
+/** Sunset is dusk, not full night: the end of a run should still be readable. */
+const DUSK = mixDef(PRESETS.golden, PRESETS.night, 0.55);
+const DAY_KEYS: readonly (readonly [number, PresetDef])[] = [[0, PRESETS.dawn], [0.12, PRESETS.dawn], [0.42, PRESETS.noon], [0.55, PRESETS.noon], [0.8, PRESETS.golden], [1, DUSK]];
+/** The look at day progress `p` (0 sunrise .. 1 sunset), blended between the keyframes. */
+export function dayLook(p: number): PresetDef {
+  const x = Math.min(1, Math.max(0, p));
+  for (let i = 1; i < DAY_KEYS.length; i++) {
+    const [p1, d1] = DAY_KEYS[i]!;
+    if (x <= p1) { const [p0, d0] = DAY_KEYS[i - 1]!; return mixDef(d0, d1, p1 === p0 ? 1 : (x - p0) / (p1 - p0)); }
+  }
+  return DUSK;
+}
 
 const SHADOW_OFF_DISTANCE = 140;
 const SHADOW_ON_DISTANCE = 120;
@@ -53,6 +78,8 @@ export class FarmLight {
   private goal = makeState();
   private _preset: LightPreset = 'golden';
   private weather: Weather = 'clear';
+  private dayQ = 0;
+  private clock = 0;
   private _shadowsOn: boolean;
   private shadowsAllowed: boolean;
   private shadowExtent = 0;
@@ -82,7 +109,7 @@ export class FarmLight {
     scene.add(this.sun, this.sun.target, this.hemi);
     scene.fog = this.fogObj;
     scene.background = this.skyTex;
-    this.setPreset('golden', true);
+    this.setPreset('day', true);
   }
 
   get preset(): LightPreset { return this._preset; }
@@ -95,6 +122,21 @@ export class FarmLight {
     if (snap || this.reduced?.matches) this.step(1);
   }
 
+  /**
+   * Day progress 0..1 from dayProgress(). Only used while the preset is 'day'. The target is recomputed in SKY_STEP steps, and the
+   * lights ease toward it; `jump` (a scrub, a first frame) skips the easing so the sky never lags the dial.
+   */
+  setDay(progress: number, jump = false): void {
+    const q = skyStep(progress);
+    if (q === this.dayQ && !jump) return;
+    this.dayQ = q;
+    if (this._preset !== 'day') return;
+    this.computeGoal();
+    if (jump || this.reduced?.matches) this.step(1);
+  }
+
+  get dayStep(): number { return this.dayQ; }
+
   setWeather(w: Weather): void {
     if (w === this.weather) return;
     this.weather = w;
@@ -103,7 +145,7 @@ export class FarmLight {
   }
 
   private computeGoal(): void {
-    const p = PRESETS[this._preset], w = WEATHER[this.weather], g = this.goal;
+    const p = this._preset === 'day' ? dayLook(this.dayQ) : PRESETS[this._preset], w = WEATHER[this.weather], g = this.goal;
     const tint = (out: THREE.Color, hex: number | string, k = 1): void => { out.set(hex); if (w.mix) out.lerp(this.tmp.set(w.tint), w.mix * k); };
     tint(g.sun, p.sun, 0.8);
     tint(g.sky, p.sky);
@@ -158,6 +200,10 @@ export class FarmLight {
     if (this.disposed) return;
     if (!this.settled) this.step(1 - Math.exp(-Math.max(0, dt) * 2.5));
     if (this.skyDirty) this.paintSky();
+    // Cloud shadow: slow drifting dips in sun strength while it rains (intensity only, so shadow maps are not redone).
+    this.clock += Math.max(0, dt);
+    const cloud = this.weather === 'rain' && !this.reduced?.matches ? 0.5 + 0.5 * Math.sin(this.clock * 0.45) * Math.sin(this.clock * 0.17 + 1) : 0;
+    this.sun.intensity = this.cur.sunI * SUN_K * (1 - 0.25 * cloud);
 
     // Shadows off when far away (hysteresis); castShadow flips recompile materials, so avoid chatter.
     if (this.shadowsAllowed) {
