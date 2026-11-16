@@ -178,9 +178,6 @@ export function mountStage({ loop, api, current, ranked }: { loop: GameLoop; edi
   const panels = new Panels(() => {});
   // The menu itself lives in menu.ts; the stage only hands it the pieces it needs.
   mountMenu({ loop, api, current, ranked, button: menuBtn, panels, openDebugger: () => { setSlate(true); setStrip(true); document.querySelector<HTMLButtonElement>('[data-dock="debugger"]')?.click(); } });
-  // Arena results arrive on their own: show them without the player hunting through the menu.
-  const result = document.getElementById('arena-result');
-  if (result) new MutationObserver(() => { if (!result.hidden && !panels.isOpen) panels.open('Arena & lessons', ['lesson-card'].map((i) => document.getElementById(i)).filter((n): n is HTMLElement => !!n), { wide: true }); }).observe(result, { attributes: true, attributeFilter: ['hidden'] });
 
   document.body.append(hud, hudTr, transport, el('div', { id: 'slate-toggle', class: 'slate-toggle' }, slateBtn));
   // The caption's tile readout and the farm bar stay on the stage; chips sit above them.

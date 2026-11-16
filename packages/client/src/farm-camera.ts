@@ -245,6 +245,9 @@ export class FarmCamera {
     if (source) { this.framed = false; this.panVel.x = this.panVel.z = 0; }
   }
 
+  /** Turn the view by an angle around the target at once (no easing); the sunset orbit calls it every frame. */
+  spin(radians: number): void { this.des.yaw += radians; this.cur.yaw += radians; }
+
   rotate(steps: number): void {
     this.framed = false;
     const patch = { yaw: this.des.yaw + steps * Math.PI / 2 };
