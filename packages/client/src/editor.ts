@@ -1,3 +1,4 @@
+import { boot } from './boot';
 import { EditorState, RangeSetBuilder, StateEffect, StateField, Prec, type Extension } from '@codemirror/state';
 import {
   EditorView, Decoration, GutterMarker, gutter, lineNumbers, keymap, drawSelection, highlightActiveLine, highlightActiveLineGutter,
@@ -336,6 +337,7 @@ export function createEditor(container: HTMLElement, storageKey: string, fallbac
     }),
   ];
   const view = new EditorView({ parent: container, state: EditorState.create({ doc: load(), extensions }) });
+  boot.done('editor');
   renderBps();
 
   const clampLine = (l: number | undefined): number => Math.min(Math.max(1, l || 1), lineCount());

@@ -84,3 +84,15 @@ body.resizing iframe, body.resizing canvas { pointer-events: none; }
 }
 @media (prefers-reduced-motion: reduce) { .game-stage #side, .transport { transition: none; } }
 .panel-body #lesson-card, .panel-body #lesson-card.in-panel { max-height: none; overflow: visible; }
+
+/* First-run prompts (firstrun.ts): a floating card plus a lantern ring on the control it points at. */
+.fr-card { position: fixed; z-index: 60; display: grid; gap: var(--hk-s2); }
+.fr-card[hidden] { display: none; }
+.fr-card .fr-title { font: 700 1.05rem var(--hk-display); }
+.fr-card .fr-text { margin: 0; color: var(--hk-dim); font: 400 .9rem/1.4 var(--hk-body); }
+.fr-card .fr-step { color: var(--hk-dim); font: 600 .7rem var(--hk-mono); letter-spacing: .08em; text-transform: uppercase; }
+.fr-card .fr-actions { display: flex; gap: var(--hk-s2); justify-content: flex-end; }
+.fr-spot { outline: 2px solid var(--hk-lantern); outline-offset: 3px; animation: fr-pulse 1.6s ease-in-out infinite; }
+#farm-canvas.fr-spot { outline: none; animation: none; }
+@keyframes fr-pulse { 50% { outline-offset: 6px; } }
+@media (prefers-reduced-motion: reduce) { .fr-spot { animation: none; } }
