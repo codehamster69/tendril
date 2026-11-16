@@ -2,7 +2,7 @@ import './day-dial.css';
 import { CROPS, createWorld, forecast } from '@tendril/sim/src/index.ts';
 import type { Segment } from '@tendril/sim/src/index.ts';
 import type { Snapshot } from './sim-types';
-import { dayProgress, markAt, type DayInfo } from './day-clock';
+import { markAt, type DayInfo } from './day-clock';
 
 // dayProgress() is the single clock for the dial and the sky (farm-light.ts). It lives in day-clock.ts so tests can load it without CSS.
 export { dayProgress } from './day-clock';
