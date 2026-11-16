@@ -26,6 +26,7 @@ import { mountAutoSync } from './autosync';
 import { mountSound } from './sound';
 import { el } from './palette';
 import { mountPerfMeter } from './perf-meter';
+import { mountWorldFeedback } from './world-feedback';
 import { stressConfig, stressParam } from './stress-farm';
 import type { Mode } from './clock';
 import type { Scenario } from './sim-protocol';
@@ -81,6 +82,7 @@ mountAccount(api, sim);
 mountStage({ loop, editor, api, current: isSeason ? 'season' : mode, ranked: sim.ranked }); // last: it moves panels that the mounts above create
 mountStartCard({ loop, skip: !!stress || firstRun, info: challenge ? challengeCardInfo(challenge) : mode === 'campaign' ? { eyebrow: `Lesson · ${lesson.title}`, goal: lesson.goal, par: null, ticks: lesson.tickLimit } : null });
 mountCatalogue({ editor }); // after the stage: it badges the menu button and entry
+mountWorldFeedback({ view, editor });
 if (sim.ranked) mountAutoSync(api, sim, document.getElementById('mode-note'));
 window.addEventListener('tendril:snapshot', (event) => view.update((event as CustomEvent).detail));
 

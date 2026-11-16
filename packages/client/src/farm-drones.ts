@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import type { SnapshotBot } from '@tendril/sim';
 import type { AssetModel } from './asset-loader';
 import { FarmFx } from './farm-fx.ts';
+import { BOT_PALETTE, botColourHex } from './bot-colours.ts';
 
 /**
  * Lantern drones for the farm view: cream hull, amber core with additive halo, three spinning leaf blades,
@@ -9,7 +10,8 @@ import { FarmFx } from './farm-fx.ts';
  * geometry and textures shared, nothing allocated per frame. The GLB `bot_tender` is used when it has loaded.
  */
 
-export const DRONE_COLORS = [0xffc65a, 0x4fd1b0, 0xf58fb0, 0x9fb8ff, 0xffa056, 0xc4e36a] as const;
+export const DRONE_COLORS: readonly number[] = BOT_PALETTE.map((c) => parseInt(c.slice(1), 16));
+const MAX_RINGS = 256;
 export const TRAIL_POINTS = 44;
 /** Height of the hull centre above the tile surface. Carried-item markers stack above this. */
 export const DRONE_HOVER = 0.75;
@@ -35,7 +37,7 @@ const OP_BEAM = new Set([1, 2, 3, 4, 11, 12, 13, 14]);
 
 // ---- pure helpers (unit tested) ----
 
-export const droneColor = (id: number): number => DRONE_COLORS[((id % DRONE_COLORS.length) + DRONE_COLORS.length) % DRONE_COLORS.length]!;
+export const droneColor = (id: number): number => botColourHex(id);
 
 /** Spark colour for an op, or null when the op makes no burst (move, wait, farm ops). */
 export const sparkColor = (op: number | null): number | null => (op === null ? null : OP_SPARK[op] ?? null);
@@ -150,6 +152,9 @@ export class FarmDrones {
   private root = new THREE.Group();
   private ring = new THREE.Mesh(new THREE.TorusGeometry(0.37, 0.025, 4, 24).rotateX(Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0xffd66a }));
   private selected: number | null = null;
+  /** One flat coloured ring on the ground under every drone: a single instanced draw call whatever the crew size. */
+  private marks = new THREE.InstancedMesh(new THREE.RingGeometry(0.3, 0.37, 28).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.9, depthWrite: false }), MAX_RINGS);
+  private markDummy = new THREE.Object3D();
   private blobTex = radialTexture([[0, 'rgba(0,0,0,.55)'], [1, 'rgba(0,0,0,0)']]);
   private glowTex = radialTexture([[0, 'rgba(255,255,255,1)'], [0.25, 'rgba(255,255,255,.35)'], [1, 'rgba(255,255,255,0)']]);
   private hullGeo = new THREE.SphereGeometry(0.17, 14, 10);
@@ -181,7 +186,10 @@ export class FarmDrones {
     this.fx = fx ?? new FarmFx(scene);
     this.ring.visible = false;
     this.root.name = 'farm-drones';
-    this.scene.add(this.root, this.ring);
+    this.marks.count = 0;
+    this.marks.frustumCulled = false;
+    this.marks.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    this.scene.add(this.root, this.ring, this.marks);
   }
 
   /** The effects instance in use (for harvest bursts from the host). */
@@ -196,6 +204,8 @@ export class FarmDrones {
     while (this.drones.length < bots.length) {
       const b = bots[this.drones.length]!;
       const d = this.make(this.drones.length);
+      if (d.id < MAX_RINGS) this.marks.setColorAt(d.id, this.tmpRgb.set(droneColor(d.id)));
+      if (this.marks.instanceColor) this.marks.instanceColor.needsUpdate = true;
       d.x = d.tx = b.x; d.z = d.tz = b.y; d.op = b.op;
       this.drones.push(d);
     }
@@ -209,6 +219,7 @@ export class FarmDrones {
       if (b.op !== d.op) {
         const spark = sparkColor(b.op);
         if (spark !== null) this.fx.burst(d.tx, 0.2, d.tz, spark, b.op === 4 ? 12 : 8);
+        if (b.op === 2 || b.op === 4) this.fx.pop(d.tx, d.tz, spark ?? 0xffffff);
         d.op = b.op;
       }
     });
@@ -267,6 +278,16 @@ export class FarmDrones {
         (d.trail.geometry.getAttribute('color') as THREE.BufferAttribute).needsUpdate = true;
       }
     }
+    const rings = Math.min(this.drones.length, MAX_RINGS);
+    for (let i = 0; i < rings; i++) {
+      const d = this.drones[i]!;
+      this.markDummy.position.set(d.x, 0.035, d.z);
+      this.markDummy.scale.setScalar(sc);
+      this.markDummy.updateMatrix();
+      this.marks.setMatrixAt(i, this.markDummy.matrix);
+    }
+    this.marks.count = rings;
+    this.marks.instanceMatrix.needsUpdate = true;
     this.ring.visible = this.selected !== null && !!this.drones[this.selected];
     if (this.ring.visible) {
       const d = this.drones[this.selected!]!;
@@ -291,7 +312,8 @@ export class FarmDrones {
     this.disposed = true;
     for (const d of this.drones) this.remove(d);
     this.drones = [];
-    this.scene.remove(this.root, this.ring);
+    this.scene.remove(this.root, this.ring, this.marks);
+    this.marks.geometry.dispose(); (this.marks.material as THREE.Material).dispose(); this.marks.dispose();
     this.ring.geometry.dispose(); (this.ring.material as THREE.Material).dispose();
     for (const g of [this.hullGeo, this.coreGeo, this.bladeGeo, this.beamGeo, this.blobGeo]) g.dispose();
     for (const m of [this.hullMat, this.bladeMat, this.blobMat]) m.dispose();
