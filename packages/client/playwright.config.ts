@@ -12,7 +12,7 @@ export default defineConfig({
   expect: { timeout: process.env.CI ? 30_000 : 15_000 },
   // Two browsers on two cores starve each other (worker boot, frame-rate and clip-length specs), so CI runs one at a time.
   workers: process.env.CI ? 1 : undefined,
-  use: { baseURL: `http://localhost:${port}`, launchOptions: { args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] } },
+  use: { baseURL: `http://localhost:${port}`, launchOptions: { ...(process.env.PW_CHROMIUM ? { executablePath: process.env.PW_CHROMIUM } : {}), args: [...(process.env.PW_CHROMIUM ? ['--no-sandbox'] : []), '--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] } },
   webServer: {
     command: `pnpm exec vite build --outDir ${out} --emptyOutDir && pnpm exec vite preview --outDir ${out} --port ${port} --strictPort`,
     url: `http://localhost:${port}`,

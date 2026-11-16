@@ -1,50 +1,51 @@
-#lesson-card { padding: 14px 16px; border-bottom: 1px solid var(--line); background: #223f35; }
+#lesson-card { padding: 14px 16px; border-bottom: 1px solid var(--line); background: linear-gradient(180deg, rgba(79,209,176,.08), rgba(255,198,90,.04)), rgba(10,34,38,.55); }
 #lesson-card header { display: flex; align-items: center; justify-content: space-between; }
 #lesson-card h3 { font: italic 600 23px var(--serif); margin-top: 5px; }
 #lesson-card p { margin: 8px 0; color: var(--mist-2); }
-#lesson-card .goal { color: var(--wheat); font-weight: 600; }
-#lesson-card .goal.complete { color: #a7d59a; }
-.next-lesson { display: inline-block; color: var(--wheat); margin-left: 14px; }
+#lesson-card .goal { color: var(--lantern); font-weight: 600; }
+#lesson-card .goal.complete { color: #8FE3B8; }
+.next-lesson { display: inline-block; color: var(--lantern); margin-left: 14px; }
 .research-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
-.research-node { text-align: left; padding: 10px; border-style: dashed; }
+.research-node { text-align: left; padding: 10px; border-style: dashed; border-radius: 12px; }
 .research-node b, .research-node span { display: block; }
 .research-node span { color: var(--mist-2); font: 11px var(--mono); margin-top: 4px; }
-.research-node.unlocked { border-style: solid; border-color: var(--sage); background: #294b3e; }
+.research-node.unlocked { border-style: solid; border-color: var(--tendril); background: rgba(79,209,176,.12); box-shadow: 0 0 16px -8px var(--tendril); }
 .achievement-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
-.achievement { opacity: .6; padding: 9px; border: 1px solid var(--line-soft); border-radius: 8px; }
-.achievement.earned { opacity: 1; background: #284839; border-color: var(--sage); }
+.achievement { opacity: .6; padding: 9px; border: 1px solid var(--line-soft); border-radius: 12px; }
+.achievement.earned { opacity: 1; background: rgba(255,198,90,.1); border-color: rgba(255,198,90,.55); }
 .achievement b, .achievement span { display: block; }
 .achievement span { font-size: 11px; color: var(--mist-2); margin-top: 4px; }
-.campaign-map { width: min(750px, 95vw); max-height: 85vh; background: var(--deep); color: var(--mist); border: 1px solid var(--line); border-radius: 16px; padding: 20px; }
-.campaign-map::backdrop { background: #08191acc; }
+.campaign-map { width: min(750px, 95vw); max-height: 85vh; background: var(--deep); color: var(--mist); border: 1px solid var(--line); border-radius: 20px; padding: 20px; box-shadow: 0 30px 80px rgba(0,0,0,.6), 0 0 0 1px rgba(255,198,90,.12); }
+.campaign-map::backdrop { background: rgba(4,16,18,.7); backdrop-filter: blur(4px); }
 .campaign-map header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
-.lesson-link { display: flex; gap: 16px; padding: 12px; margin: 6px 0; border: 1px solid var(--line); border-radius: 10px; color: var(--mist); text-decoration: none; }
-.lesson-link > span { font: 22px var(--mono); color: var(--wheat); }
+.lesson-link { display: flex; gap: 16px; padding: 12px; margin: 6px 0; border: 1px solid var(--line); border-radius: 12px; color: var(--mist); text-decoration: none; transition: border-color .15s, background .15s; }
+.lesson-link:hover { border-color: var(--lantern); background: rgba(255,198,90,.06); }
+.lesson-link > span { font: 22px var(--mono); color: var(--lantern); }
 .lesson-link small { display: block; color: var(--mist-2); }
 .lesson-link.locked { opacity: .4; pointer-events: none; }
 .daily-result { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
 @media (max-width: 640px) { .achievement-grid, .research-grid { grid-template-columns: repeat(2, 1fr); } }
 #lesson-card .publish-source { display: flex; align-items: center; gap: 6px; margin-top: 6px; color: var(--mist-2); font-size: 13px; cursor: pointer; }
-#lesson-card .publish-source input { accent-color: var(--wheat); }
+#lesson-card .publish-source input { accent-color: var(--lantern); }
 #lesson-card .publish-source input[type="text"] { flex: 1; min-width: 0; background: transparent; color: inherit; border: 1px solid var(--mist-2); border-radius: 4px; padding: 2px 6px; font: inherit; }
 #lesson-card .publish-source input[hidden] { display: none; }
 .coach-steps { margin: 8px 0 8px 18px; padding: 0; color: var(--mist-2); }
-.coach-steps li.done { color: #a7d59a; text-decoration: line-through; }
+.coach-steps li.done { color: #8FE3B8; text-decoration: line-through; }
 .coach-steps code { margin-left: 4px; }
 
-#arena-market { margin: 0.25rem 0 0.5rem; font-size: 0.85rem; }
+#arena-market { margin: 0.25rem 0 0.5rem; font-size: 0.85rem; font-variant-numeric: tabular-nums; }
 #arena-market summary { cursor: pointer; font-weight: 600; }
 #arena-market p { margin: 0.25rem 0; }
 #arena-market table { border-collapse: collapse; width: 100%; }
 #arena-market th, #arena-market td { text-align: left; padding: 2px 8px 2px 0; font-weight: 400; font-variant-numeric: tabular-nums; }
 #arena-market thead th { opacity: 0.7; font-size: 0.78rem; }
 #arena-market tbody th { text-transform: capitalize; }
-#arena-market .m-up td:nth-child(3) { color: #2e7d32; }
-#arena-market .m-down td:nth-child(3) { color: #b3261e; }
+#arena-market .m-up td:nth-child(3) { color: #6FE0A6; }
+#arena-market .m-down td:nth-child(3) { color: #FF9C7A; }
 .market-soon { margin: 0.25rem 0 0.5rem; font-size: 0.85rem; opacity: 0.8; }
 #arena-mods { margin: 0.25rem 0 0.5rem; font-size: 0.85rem; opacity: 0.8; }
 
 #lesson-card { flex: 0 0 auto; max-height: 46vh; overflow-y: auto; }
 #lesson-card #arena-body[hidden] { display: none; }
 #arena-head .arena-head-actions { display: flex; gap: 8px; align-items: center; }
-#join-duel-input { width: 100%; box-sizing: border-box; margin: 4px 0 10px; padding: 8px 10px; background: rgba(0,0,0,.3); color: var(--mist); border: 1px solid var(--line); border-radius: 8px; font: inherit; }
+#join-duel-input { width: 100%; box-sizing: border-box; margin: 4px 0 10px; padding: 8px 10px; background: rgba(0,0,0,.34); color: var(--mist); border: 1px solid var(--line); border-radius: 8px; font: inherit; }

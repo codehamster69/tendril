@@ -95,7 +95,7 @@ async function main(): Promise<void> {
       hostCanvas3d.setAttribute('aria-label', 'Host farm, 3D');
       hostStage.append(hostCanvas3d);
       flat.hidden = true;
-      hostView = new FarmView(hostCanvas3d);
+      hostView = new FarmView(hostCanvas3d, { lite: true });
     } else {
       hostView?.dispose();
       hostCanvas3d?.remove();

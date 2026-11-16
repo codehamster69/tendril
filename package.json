@@ -12,6 +12,7 @@
     "build": "pnpm --filter @tendril/client build",
     "assets:copy": "node scripts/copy-assets.mjs",
     "assets:check": "node scripts/validate-assets.mjs",
+    "assets:build": "node assets/scripts/gen/build.mjs",
     "test:e2e": "pnpm assets:copy && pnpm --filter @tendril/client test:e2e",
     "pack": "pnpm build && pnpm --filter @tendril/client electron:pack",
     "test:electron": "pnpm --filter @tendril/client electron:smoke",

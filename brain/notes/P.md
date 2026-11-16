@@ -55,3 +55,31 @@ These are actual separate runs during concurrent implementation, not automated r
 - No Windows/Linux binaries, installers or native smoke executed locally. No macOS x64 build, dmg/zip creation, installation/uninstallation, quarantine/Gatekeeper validation, notarization or developer signing performed. Only actual native macOS arm64 directory build/run was validated.
 - CI definition validated locally only; workflow never run remotely and nothing uploaded/published.
 - Full root release gate is NOT green: coordinator must fix lint/sim security/browser E2E blockers, then rerun the complete no-retry gate before relying on installer CI. P packaging/smoke is implemented and locally verified, not a release approval.
+
+---
+
+# Task P (polish): farm stage, HUD, market pill, trails
+
+(The section above is the older desktop-packaging note that shared this file name; this section is the farm-view polish task.)
+
+## Files changed
+`style.css` (stage layout, caption, decks, phone rules, `#editor` overflow), `farm-hud.ts/css` (one compact row), `farm-minimap.ts` (144 px, collapse), `farm-market.ts/css` (pill, hidden without a market), `farm-drones.ts` (+ test) (trails), `inspectors.ts` (tile hint to caption). `index.html`, `farm-view.ts` needed no change. Ids/ARIA hooks kept (`#soil-overlay`, `#btn-focus-farm`, `#farm-minimap-canvas`, `#tile-inspector`, `#farm-light`, `#farm-hud`).
+
+## What changed
+- Layout: `#farm-stage` is `flex: 1 1 0; min-height: max(52vh, 300px)`; decks are a fixed scroll region `clamp(112px, 19vh, 180px)`; panel heading tighter. 1400x900: stage 488 px tall (was ~280). <=1100: stage `clamp(360px, 64vh, 640px)`, <=640: `clamp(340px, 58vh, 520px)`. No horizontal scroll at 390 (checked by e2e).
+- HUD: one row top-left: Home, Follow, rotate x2 (icon + label, icons only on phones), Light popover (sun + current preset, presets inside, closes on pick/outside/Escape), Lens select, View disclosure (zoom mode + shortcuts). The glass box behind the whole bar (old `#stage-tools > * > *` rule) is gone. Phone popovers span the stage width.
+- LOD badge removed from the bar: the "Close / Field / Map, px per tile" text shows in the minimap header for ~1.8 s after the zoom changes, then fades.
+- Minimap: 144 px (96 px phone), header button `Map -` / `Map +` collapses it (stored in `localStorage['tendril.minimap']`, default collapsed at <=640 px). The caption stops short of it (`:has()` rule).
+- Tile hint: moved into the caption bottom-left as one line with ellipsis + `title`; short default text "Click a tile to read its soil".
+- Market: `.farm-market` hidden when the card kind is `base` (sandbox, live, campaign, no market), a top-right pill when `soon`, expanded when a market day opens (`open`), collapsible. Phone: bottom-left above the caption. Price lens option is disabled and hidden without a market.
+- Trails: `trimTrail` keeps length in distance (`trailLength(pace)`: 3.5 tiles at 1x down to 0.5 at high pace), width and brightness scale with `trailFade(pace)` (1 up to pace 4, 0 at 28+, about 0.5 at 16x), history cleared when hidden so no criss-cross smear returns when speed drops. Pace = ticks per snapshot.
+- Unrelated race fixed: `#editor { overflow: hidden; max-width: 100% }`. The mobile test `app.spec.ts:81` failed about half the time because Monaco kept its 1280-px-wide layout for a moment after `setViewportSize` (`document.scrollWidth` 553); it now passes 6/6.
+
+## Screenshots (DPR 2, looked at each)
+`brain/notes/farm-redesign-shots/`: `p-wide.png` (1400x900), `p-mid.png` (900x800), `p-phone.png` (390x844 full page), `p-large-farm.png` (64-plot farm, close LOD), `p-market-light.png` (market day expanded + light popover). Script `shoot-p.mjs` (`ONLY_LARGE=1` for the slow large-farm shot). Removed outdated `after-*.png`, `large-farm-*.png`, `live-30s.png`; kept `before-*.png`, `assets.png`, `shoot.mjs`. Seen: farm dominates, HUD is one row, no card in sandbox, hint stops before the minimap, expanded market card clears the minimap. Not verified in a browser: trails at 16x live (only unit-tested), market pill on phone.
+
+## Checks (real output)
+- `pnpm lint`: exit 0. `pnpm typecheck`: exit 0 (all workspaces). `pnpm test`: rating 42, sim 96, server 615, lang 47 (1 skipped), client `# pass 61 # fail 0` (new trail test included). `pnpm build`: `built in 32.92s`.
+- e2e (`PW_CHROMIUM=... playwright test view instruments app firstrun replay room farm-hud rating --workers=2`): 39 passed, 1 skipped, 2 failed:
+  - `room.spec.ts:35` (fps >= 20, got 16.8 with 2 parallel software-GL workers): passes alone (`--workers=1`: 1 passed). CPU contention; the room uses the lite view, untouched by this task.
+  - `rating.spec.ts:90`: fails deterministically, also alone. Timeout is on `page.click('#btn-run-end')` with "element is not enabled". Cause is not the farm view and not boot timing: `arena.ts:155` disables the button from `tendril:status.canStep`, and `game-loop.ts:343` has `canStep = loaded && free && !busy && !this.ended`. The test runs the daily to its end, then `page.reload()`s; the finished run is restored from the saved state so `ended` is true and Run to end stays disabled. The first half of the test (before the reload) passes. Fix belongs in the test (use a fresh context/clear storage before the reload, or reset the run) or in the intended behaviour of resuming a finished daily; I did not change either. Not confirmed on the pre-redesign code (no baseline run was made); the reasoning is from the code path above.

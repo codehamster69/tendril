@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- **Living island farm view**: the farm floats as an island in a golden-hour sky (Dawn, Noon, Golden, Night presets). New camera: left-drag pans, right-drag or Ctrl-drag orbits, the wheel zooms to the cursor, Q/E turn, WASD pans, pinch on touch, Home jumps back to the farm, F follows a drone. Lantern drones with light trails, fireflies, redrawn tiles, crops, barn, stall and hive. The view is drawn from the part of the farm on screen, so a farm of any size stays smooth, and zooming out turns it into a map with a minimap (click or drag to move the camera). Price lens and a market card show the shared daily market, with a stall next to the barn and harvest popups. Small replay and room views stay light (no HUD, trails or shadows).
 - Keyboard: focus the farm and use arrow keys to select tiles (read out to screen readers), skip link to the editor, tab `aria-controls`.
 - Site: phone menu, Season 1 in the header. Reference shows commands the way you type them. Starter code wraps in the editor, shorter toolbar labels, roomier instrument panel at 800 px height, market prices fold away once a result shows.
 - Server: the late-submit grace for old desktop 0.1.x clients ends automatically after a quiet month (no earlier than 31 Dec 2026, no later than 1 Mar 2027).

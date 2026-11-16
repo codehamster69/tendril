@@ -1,6 +1,6 @@
 // Challenge play: daily (`?mode=daily`) and any challenge (`?mode=challenge&id=`). The sim mode is always 'daily'.
 import { setupOf, challengeScenario } from './challenge-setup';
-import { challengeSetup, createWorld, dailyNumber, dailySeed, DAILY_PAR, describeModifiers, describeMarket, replayWithPar, BASE_RULES_VERSION, SETUP_VERSION, SUPPORTED_RULES_VERSIONS } from '@tendril/sim/src/index.ts';
+import { challengeSetup, createWorld, dailyNumber, dailySeed, DAILY_PAR, daysUntilMarket, describeModifiers, describeMarket, replayWithPar, BASE_RULES_VERSION, SETUP_VERSION, SUPPORTED_RULES_VERSIONS } from '@tendril/sim/src/index.ts';
 import type { LogEntry, Snapshot } from '@tendril/sim/src/index.ts';
 import { ApiError, signedInHint } from './api-client';
 import type { ChallengeInfo, EntryResult, FarmApi } from './api-client';
@@ -54,6 +54,12 @@ export function requireKnownRules(c: ChallengeInfo): ChallengeInfo {
 }
 
 export { challengeScenario, setupOf };
+
+/** Days until the shared market opens for a daily dated before the market epoch (0 otherwise): feeds the farm's market card. */
+export function marketOpensIn(c: ChallengeInfo): number {
+  if (c.kind !== 'daily' || !/^d-\d{4}-\d{2}-\d{2}$/.test(c.id)) return 0;
+  return c.market ? 0 : daysUntilMarket(c.id.slice(2));
+}
 
 /** The market block: "Market opens in N days" before the epoch, the day's prices and yesterday's shares from then on. */
 export function marketPanel(c: ChallengeInfo): HTMLElement | null {

@@ -1,21 +1,28 @@
 import { CROPS, OPS, createWorld, forecast } from '@tendril/sim/src/index.ts';
 import type { Snapshot } from './sim-types';
 import type { FarmView } from './farm-view';
+import { mountFarmHud, type FarmHud } from './farm-hud';
 import { ITEM_COLORS, buildingName, cap, el, itemName } from './palette';
 
-type Overlay = 'none' | 'moisture' | 'nitrogen' | 'fatigue';
-
-export function mountInspectors(view: FarmView, seed: () => number): void {
+export function mountInspectors(view: FarmView, seed: () => number): FarmHud {
   const tools = document.getElementById('stage-tools')!;
-  const lens = el('select', { id: 'soil-overlay', 'aria-label': 'Soil lens' });
-  for (const key of ['none', 'moisture', 'nitrogen', 'fatigue'] as const) lens.append(el('option', { value: key, text: key === 'none' ? 'Natural' : cap(key) }));
-  lens.addEventListener('change', () => view.setOverlay(lens.value as Overlay));
-  const frame = el('button', { id: 'btn-focus-farm', type: 'button', text: 'Frame farm' });
-  frame.addEventListener('click', () => view.focusFarm());
-  const tile = el('p', { id: 'tile-inspector', text: 'Click a tile, or focus the farm and use the arrow keys, to read its soil.' });
+  const tile = el('p', { id: 'tile-inspector', text: 'Click a tile to read its soil' });
   // Read out once per selection (the visible line above changes every snapshot, which would be too chatty for a live region).
   const announce = el('p', { id: 'tile-announce', class: 'sr-only', role: 'status' });
-  tools.append(el('div', { id: 'farm-inspector' }, el('label', {}, 'Soil lens', lens), frame, tile, announce));
+  tools.append(el('div', { id: 'farm-inspector' }, announce));
+  // One-line readout in the caption (bottom-left), clear of the HUD and the minimap.
+  (document.querySelector('.farm-caption') ?? tools).append(tile);
+  // The HUD (home, follow, rotate, light, lens, minimap) mounts into the stage and drives the view directly.
+  const hud = mountFarmHud(document.getElementById('farm-stage') ?? tools, {
+    home: () => view.focusFarm(),
+    follow: () => view.follow(),
+    rotate: (n) => view.rotate(n),
+    setLens: (l) => view.setLens(l),
+    setLight: (p) => view.setLight(p),
+    setZoomMode: (m) => view.setZoomMode(m),
+    jumpTo: (x, z) => view.jumpTo(x, z),
+  }, { priceAvailable: () => view.priceAvailable() });
+  view.attachHud(hud);
 
   const deck = document.getElementById('deck-farm')!;
   const soil = el('section', { class: 'card' });
@@ -37,6 +44,7 @@ export function mountInspectors(view: FarmView, seed: () => number): void {
       : t.building ? `${cap(buildingName(t.building))}${t.building === 1 ? ` · ${t.honey} honey ready` : ''}`
         : t.crop ? `${cap(CROPS[t.crop]!.name)} · stage ${t.stage}/3${t.stage === 3 ? ' · ripe' : ''}` : t.tilled ? 'Tilled soil' : 'Grass';
     tile.textContent = `(${t.x}, ${t.y}) ${what} · 💧${t.moisture} N${t.nitrogen} fatigue ${t.fatigue}`;
+    tile.title = tile.textContent;
   };
 
   const meter = (name: string, v: number): HTMLElement => {
@@ -108,4 +116,5 @@ export function mountInspectors(view: FarmView, seed: () => number): void {
     });
     crew.replaceChildren(el('h3', { text: 'Crew' }), bots);
   });
+  return hud;
 }

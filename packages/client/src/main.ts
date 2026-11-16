@@ -14,7 +14,7 @@ import { mountUpdates } from './updates';
 import { isFirstRun, mountFirstRun } from './firstrun';
 import { mountProgression, selectedLesson } from './progression';
 import { mountRating } from './rating';
-import { challengeScenario, loadChallenge, mountArena } from './arena';
+import { challengeScenario, loadChallenge, marketOpensIn, mountArena } from './arena';
 import { FarmApi, signedInHint, wireSiteLinks } from './api-client';
 import { mountJoinDuel } from './join-duel';
 import { mountAutoSync } from './autosync';
@@ -58,6 +58,7 @@ mountConsole(editor);
 mountDebugger();
 mountReference((code) => editor.setSource(editor.getSource() + '\n' + code + '\n'));
 mountInspectors(view, () => sim.meta.seed);
+if (challenge) view.setMarket(challenge.market ?? null, { opensInDays: marketOpensIn(challenge) });
 mountProgression({ loop, editor, view, api });
 if (firstRun) mountFirstRun({ editor, host: document.getElementById('lesson-card')! });
 if (challenge) mountArena({ loop, api, challenge });
@@ -68,8 +69,8 @@ mountAccount(api, sim);
 if (sim.ranked) mountAutoSync(api, sim, document.getElementById('mode-note'));
 window.addEventListener('tendril:snapshot', (event) => view.update((event as CustomEvent).detail));
 
-declare global { interface Window { tendril?: { sim: RealSim; editor: typeof editor; loop: GameLoop } } }
-if (import.meta.env.DEV || ['localhost', '127.0.0.1', '[::1]'].includes(location.hostname)) window.tendril = { sim, editor, loop };
+declare global { interface Window { tendril?: { sim: RealSim; editor: typeof editor; loop: GameLoop; view: FarmView } } }
+if (import.meta.env.DEV || ['localhost', '127.0.0.1', '[::1]'].includes(location.hostname)) window.tendril = { sim, editor, loop, view };
 
 const examples = document.getElementById('examples') as HTMLSelectElement;
 for (const [key, entry] of Object.entries(EXAMPLES)) examples.append(el('option', { value: key, text: entry.title }));

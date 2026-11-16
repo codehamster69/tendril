@@ -49,7 +49,7 @@ async function main(): Promise<void> {
   const views = runs.map((run, i) => {
     panes[i]!.hidden = false;
     const header = paneHeader(panes[i]!, run.entry);
-    const view = new FarmView(panes[i]!.querySelector('canvas')!);
+    const view = new FarmView(panes[i]!.querySelector('canvas')!, { lite: true });
     return { ...run, header, view };
   });
   const total = Math.max(...runs.map((r) => r.timeline.ticks));
