@@ -9,6 +9,8 @@ import { mountDebugger } from './debugger';
 import { mountConsole } from './console-panel';
 import { mountControls } from './ui';
 import { mountStage } from './stage';
+import { initSettings } from './settings';
+import { challengeCardInfo, mountStartCard } from './start-card';
 import { mountAccount, connectRanked } from './account';
 import { mountNotice } from './notice';
 import { mountUpdates } from './updates';
@@ -25,6 +27,7 @@ import { stressConfig, stressParam } from './stress-farm';
 import type { Mode } from './clock';
 import type { Scenario } from './sim-protocol';
 
+initSettings();
 wireSiteLinks();
 mountJoinDuel();
 const query = new URLSearchParams(location.search);
@@ -41,9 +44,6 @@ const api = new FarmApi();
 const lesson = selectedLesson();
 const challenge = mode === 'daily' ? await loadChallenge(api, query) : null;
 const isSeason = challenge?.kind === 'season';
-for (const tab of document.querySelectorAll<HTMLAnchorElement>('#mode-tabs a')) {
-  if (tab.dataset.mode === (isSeason ? 'season' : mode)) tab.setAttribute('aria-current', 'page');
-}
 const suffix = stress ? `.stress.${stress.name}` : mode === 'campaign' ? `.${lesson.id}` : challenge ? `.${challenge.id}` : '';
 const scenario: Scenario = stress ? stress.scenario : { kind: mode, ...(mode === 'campaign' ? { features: lesson.features, setup: lesson.setup, tickLimit: lesson.tickLimit } : challenge ? challengeScenario(challenge) : {}) };
 const sim = new RealSim(mode, {
@@ -72,7 +72,8 @@ mountNotice({ live: mode === 'live', verified: sim.ranked });
 mountUpdates();
 mountRating(api);
 mountAccount(api, sim);
-mountStage({ loop, editor }); // last: it moves panels that the mounts above create
+mountStage({ loop, editor, api, current: isSeason ? 'season' : mode, ranked: sim.ranked }); // last: it moves panels that the mounts above create
+mountStartCard({ loop, skip: !!stress || firstRun, info: challenge ? challengeCardInfo(challenge) : mode === 'campaign' ? { eyebrow: `Lesson · ${lesson.title}`, goal: lesson.goal, par: null, ticks: lesson.tickLimit } : null });
 if (sim.ranked) mountAutoSync(api, sim, document.getElementById('mode-note'));
 window.addEventListener('tendril:snapshot', (event) => view.update((event as CustomEvent).detail));
 
