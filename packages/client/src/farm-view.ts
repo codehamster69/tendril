@@ -1,3 +1,4 @@
+import { perfHook } from './perf-meter';
 import * as THREE from 'three';
 import { CROPS as SIM_CROPS } from '@tendril/sim/src/index.ts';
 import { AssetLoader, disposeModels, type AssetModel, type AssetStatus } from './asset-loader';
@@ -132,6 +133,7 @@ export class FarmView {
 
   update(snapshot: Snapshot): void {
     if (this.disposed) return;
+    const applyStart = perfHook.apply ? performance.now() : 0;
     const previous = this.latest;
     this.latest = snapshot;
     const tickDelta = this.lastTick >= 0 && snapshot.tick > this.lastTick ? snapshot.tick - this.lastTick : 1;
@@ -140,7 +142,7 @@ export class FarmView {
     this.world.setSnapshot(snapshot);
     const bounds = this.world.bounds;
     this.rig.setBounds(bounds);
-    const key = `${bounds ? `${bounds.x0},${bounds.x1},${bounds.z0},${bounds.z1}` : '-'}|${snapshot.tiles.length}`;
+    const key = `${bounds ? `${bounds.x0},${bounds.x1},${bounds.z0},${bounds.z1}` : '-'}|${this.world.tileCount}`;
     if (key !== this.islandKey) { this.islandKey = key; this.island.update(bounds, (x, y) => !!this.world.tileAt(x, y)); }
     if (this.market && !this.stallPlaced && this.world.tileAt(0, 0)) { this.market.setStallAt(1, 0); this.stallPlaced = true; }
     this.drones.setBots(snapshot.bots, tickDelta);
@@ -148,9 +150,13 @@ export class FarmView {
     this.drones.setSelected(this.selectedBot);
     if (this.market) this.watchHarvests(previous, snapshot, tickDelta);
     this.updateSelection();
-    this.canvas.dataset.renderedTiles = String(snapshot.tiles.length);
+    this.canvas.dataset.renderedTiles = String(this.world.tileCount);
     this.renderWorld(performance.now() / 1000);
+    if (applyStart) perfHook.apply?.(performance.now() - applyStart);
   }
+
+  /** Renderer counters (draw calls, triangles) for the performance meter. */
+  renderInfo(): THREE.WebGLInfo { return this.renderer.info; }
 
   /** Harvest popups: a ripe crop that was next to a drone is gone or reset, or coins arrived while a drone stood at the barn. */
   private watchHarvests(previous: Snapshot | null, s: Snapshot, tickDelta: number): void {
@@ -338,6 +344,7 @@ export class FarmView {
 
   private loop = (ms: number): void => {
     if (this.disposed) return;
+    perfHook.frame?.(ms);
     const dt = this.previousTime ? Math.min((ms - this.previousTime) / 1000, 0.1) : 0;
     this.previousTime = ms;
     const time = ms / 1000;
@@ -356,7 +363,7 @@ export class FarmView {
       if (ms - this.lastMinimap > MINIMAP_MS) { this.lastMinimap = ms; this.updateMinimap(); }
     }
     this.renderer.render(this.scene, this.camera);
-    this.canvas.dataset.sceneReady = String(!!this.latest?.tiles.length);
+    this.canvas.dataset.sceneReady = String(this.world.tileCount > 0);
     this.raf = requestAnimationFrame(this.loop);
   };
 
