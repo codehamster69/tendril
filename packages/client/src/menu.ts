@@ -170,7 +170,7 @@ export function mountMenu(ctx: MenuContext): MenuApi {
   window.addEventListener('keydown', (e) => {
     if (e.key !== 'Escape' || e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey) return;
     if (!overlay.hidden) { e.preventDefault(); e.stopPropagation(); if (!settingsView.hidden) showView('main'); else close(); return; }
-    if (somethingElseOpen()) return;
+    if (somethingElseOpen() || q('#start-card:not([hidden])')) return; // the start card takes Esc itself: it closes without starting the day
     e.preventDefault(); e.stopPropagation(); open();
   }, true);
 
