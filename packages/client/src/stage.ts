@@ -7,6 +7,8 @@ import { el } from './palette';
 
 const SLATE_W = 'tendril.slate.width', SLATE_HIDDEN = 'tendril.slate.hidden', STRIP_OPEN = 'tendril.slate.console';
 const MIN_W = 320, DEFAULT_W = 440;
+/** The slate sits 12px from the right edge and its resize grip reaches 7px further left; the free area ends this far from the right edge. */
+const SLATE_INSET_PAD = 24;
 const get = (k: string): string | null => { try { return localStorage.getItem(k); } catch { return null; } };
 const put = (k: string, v: string): void => { try { localStorage.setItem(k, v); } catch { /* storage blocked: choice just does not persist */ } };
 const byId = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T;
@@ -68,7 +70,13 @@ export function mountStage({ loop }: { loop: GameLoop; editor?: Editor }): void 
   // ---- code slate ----
   const side = byId('side');
   const clampW = (w: number): number => Math.round(Math.min(Math.max(w, MIN_W), Math.max(MIN_W, Math.min(760, window.innerWidth - 360))));
-  const setW = (w: number, save = false): void => { root.style.setProperty('--slate-w', `${clampW(w)}px`); if (save) put(SLATE_W, String(clampW(w))); };
+  /** Tells the farm view how many px on the right the slate covers (its margin included, 0 when hidden); the camera frames the rest. */
+  const announceInset = (): void => {
+    const open = !document.body.classList.contains('slate-hidden');
+    const w = parseFloat(getComputedStyle(root).getPropertyValue('--slate-w')) || DEFAULT_W;
+    window.dispatchEvent(new CustomEvent('tendril:slate-inset', { detail: open ? w + SLATE_INSET_PAD : 0 }));
+  };
+  const setW = (w: number, save = false): void => { root.style.setProperty('--slate-w', `${clampW(w)}px`); if (save) put(SLATE_W, String(clampW(w))); announceInset(); };
   setW(Number(get(SLATE_W)) || DEFAULT_W);
   const grip = el('div', { class: 'slate-grip', role: 'separator', 'aria-orientation': 'vertical', 'aria-label': 'Resize the code slate', tabindex: '0' });
   side.prepend(grip);
@@ -92,6 +100,7 @@ export function mountStage({ loop }: { loop: GameLoop; editor?: Editor }): void 
     slateBtn.setAttribute('aria-expanded', String(open));
     put(SLATE_HIDDEN, open ? '0' : '1');
     if (open && focus) document.querySelector<HTMLElement>('#editor textarea')?.focus();
+    announceInset();
   };
   const slateOpen = (): boolean => !document.body.classList.contains('slate-hidden');
   setSlate(get(SLATE_HIDDEN) !== '1');

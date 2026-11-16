@@ -98,6 +98,7 @@ export class FarmView {
     this.ro = new ResizeObserver(this.resize);
     this.ro.observe(canvas.parentElement ?? canvas);
     window.addEventListener('resize', this.resize);
+    if (!this.lite) window.addEventListener('tendril:slate-inset', this.onSlate);
     canvas.tabIndex = 0;
     canvas.addEventListener('keydown', this.keyDown);
     canvas.dataset.overlay = 'none';
@@ -242,6 +243,26 @@ export class FarmView {
     this.followId = null;
     this.rig.focus(x, z);
   }
+
+  /** Glide over a ground point (splash, result screen, bot selection). */
+  flyTo(target: { x: number; z: number }, o: { dist?: number } = {}): void {
+    if (this.disposed) return;
+    this.followId = null;
+    this.rig.flyTo(target, o);
+  }
+
+  /** Opening shot for the splash: high and far, easing down into the farm. */
+  introGlide(): void {
+    if (this.disposed) return;
+    this.followId = null;
+    this.rig.introGlide();
+  }
+
+  /** The code slate's width (px, margin included) arrives from the stage; the frame moves into the free area. */
+  private onSlate = (e: Event): void => {
+    if (this.disposed) return;
+    this.rig.setInset(Number((e as CustomEvent<number>).detail) || 0);
+  };
 
   /** Ground point under a screen position given as normalised device coordinates (-1..1, y up). Test and tooling hook. */
   groundAt(ndcX: number, ndcY: number): { x: number; z: number } | null {
@@ -388,6 +409,7 @@ export class FarmView {
     this.disposed = true;
     cancelAnimationFrame(this.raf);
     window.removeEventListener('resize', this.resize);
+    window.removeEventListener('tendril:slate-inset', this.onSlate);
     this.ro.disconnect();
     this.canvas.removeEventListener('keydown', this.keyDown);
     this.rig.dispose();
