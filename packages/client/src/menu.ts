@@ -77,14 +77,12 @@ export function mountMenu(ctx: MenuContext): MenuApi {
 
   const toolsGrid = el('div', { class: 'menu-entries menu-tools' });
   const tool = (id: string, label: string, hint: string, run: () => void): HTMLButtonElement => { const b = action(id, label, hint, run); toolsGrid.append(b); return b; };
-  tool('inspectors', 'Inspectors', 'Soil, barn, orders, forecast', () => panels.open('Inspectors', decks('forecast', 'deck-farm')));
   tool('progression', 'Achievements', 'Goals you have earned', () => panels.open('Achievements', decks('deck-goals')));
   tool('arena', 'Arena & lessons', 'Daily result, submit, lessons', () => panels.open('Arena & lessons', decks('lesson-card'), { wide: true }));
   const marketBtn = tool('market', 'Market', 'Shared market prices', () => {
     const m = q('.farm-market');
     if (m && !m.hidden) panels.open('Market', [m], { onOpen: () => m.classList.remove('collapsed'), onClose: () => m.classList.add('collapsed') });
   });
-  tool('minimap', 'Minimap', 'Jump around the farm', () => { const m = q('#farm-minimap'); if (m) panels.open('Minimap', [m], { onOpen: () => m.classList.remove('collapsed') }); });
   tool('debugger', 'Debugger', 'Variables and breakpoints', () => ctx.openDebugger());
   tool('reference', 'Reference', 'Every Sprout command', () => q('#btn-reference')?.click());
   tool('account', 'Account', 'Sign in or out', () => byId('btn-account')?.click());
