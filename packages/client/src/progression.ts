@@ -77,7 +77,7 @@ export function mountProgression({ loop, editor }: { loop: GameLoop; editor: Edi
     });
     research.replaceChildren(el('p', { class: 'muted', text: 'Buy research with code: unlock wheat. Click an upgrade to insert its command. Research is separate from campaign language lessons.' }), tree);
     let changed = false;
-    for (const a of ACHIEVEMENTS) if (!earned.has(a.id) && !baseline.has(a.id) && a.test(s, log)) { earned.add(a.id); changed = true; toast(a.title, a.detail); }
+    for (const a of ACHIEVEMENTS) if (!earned.has(a.id) && !baseline.has(a.id) && a.test(s, log)) { earned.add(a.id); changed = true; toast(a.title, a.detail); window.dispatchEvent(new CustomEvent('tendril:medal', { detail: a.id })); }
     if (changed) { saveSet('tendril.achievements.v1', earned); renderGoals(); }
   });
 }
