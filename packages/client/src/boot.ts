@@ -47,7 +47,7 @@ function render(): void {
   s.querySelector('.sp-bar')?.setAttribute('aria-valuenow', String(Math.round(p * 100)));
   const next = steps.find((x) => !finished.has(x.name));
   const status = s.querySelector('.sp-status');
-  if (status && next) status.textContent = next.label;
+  if (status) status.textContent = next ? next.label : 'Ready';
 }
 
 function finish(): void {
