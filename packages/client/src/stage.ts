@@ -203,9 +203,6 @@ export function mountStage({ loop }: { loop: GameLoop; editor?: Editor }): void 
     el('header', {}, el('h2', { text: 'Menu' }), closeBtn), el('p', { class: 'menu-label', text: 'Mode' }), modes, entries, el('div', { class: 'menu-links' }, links)));
   menu.addEventListener('mousedown', (e) => { if (e.target === menu) closeMenu(); });
   menu.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.stopPropagation(); closeMenu(); } });
-  // Arena results arrive on their own: show them without the player hunting through the menu.
-  const result = document.getElementById('arena-result');
-  if (result) new MutationObserver(() => { if (!result.hidden && !panels.isOpen) panels.open('Arena & lessons', decks('lesson-card'), { wide: true }); }).observe(result, { attributes: true, attributeFilter: ['hidden'] });
 
   document.body.append(hud, hudTr, transport, el('div', { id: 'slate-toggle', class: 'slate-toggle' }, slateBtn), menu);
   // The caption's tile readout and the farm bar stay on the stage; chips sit above them.

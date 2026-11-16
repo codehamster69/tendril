@@ -209,6 +209,7 @@ export class FarmView {
     if (this.latest) this.renderWorld(performance.now() / 1000);
   }
 
+  get lightPreset(): LightPreset { return this.light.preset; }
   setLight(preset: LightPreset): void { if (!this.disposed) this.light.setPreset(preset); }
   setZoomMode(mode: ZoomMode): void { if (!this.disposed) this.rig.zoomMode = mode; }
 
@@ -235,6 +236,9 @@ export class FarmView {
   }
 
   rotate(steps: number): void { if (!this.disposed) this.rig.rotate(steps); }
+
+  /** Turn the camera around the farm by an angle (the sunset result orbit). */
+  orbitBy(radians: number): void { if (!this.disposed) this.rig.spin(radians); }
 
   /** Move the camera over a world position (minimap). */
   jumpTo(x: number, z: number): void {

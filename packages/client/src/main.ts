@@ -15,6 +15,7 @@ import { mountUpdates } from './updates';
 import { isFirstRun, mountFirstRun } from './firstrun';
 import { mountProgression, selectedLesson } from './progression';
 import { mountRating } from './rating';
+import { mountResultScreen } from './result-screen';
 import { challengeScenario, loadChallenge, marketOpensIn, mountArena } from './arena';
 import { FarmApi, signedInHint, wireSiteLinks } from './api-client';
 import { mountJoinDuel } from './join-duel';
@@ -68,6 +69,7 @@ if (challenge) view.setMarket(challenge.market ?? null, { opensInDays: marketOpe
 mountProgression({ loop, editor, view, api });
 if (firstRun) mountFirstRun({ editor, host: document.getElementById('lesson-card')! });
 if (challenge) mountArena({ loop, api, challenge });
+if (challenge) mountResultScreen({ loop, api, challenge, view });
 mountNotice({ live: mode === 'live', verified: sim.ranked });
 mountUpdates();
 mountRating(api);
