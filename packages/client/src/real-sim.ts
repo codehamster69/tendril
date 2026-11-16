@@ -1,4 +1,5 @@
 // Main-thread worker wrapper. Commands finish after checkpoint and logs are durable.
+import { perfHook } from './perf-meter';
 import { deserialize, hashWorld, replayChunk } from '@tendril/sim/src/index.ts';
 import type { LogEntry } from '@tendril/sim/src/index.ts';
 import type { ChunkResponse, FarmResponse } from './api-client';
@@ -342,6 +343,7 @@ export class RealSim implements SimSource {
     this.clearWatchdog();
     const waiting = this.waiting;
     this.waiting = null;
+    perfHook.update?.(m);
     if (m.type === 'fatal') waiting.reject(new Error(m.message));
     else waiting.resolve(m);
   }

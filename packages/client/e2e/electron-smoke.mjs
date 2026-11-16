@@ -71,7 +71,7 @@ try {
   assert.match(page.url(), /^app:\/\/tendril\//, 'Smoke must exercise the production app:// entry');
   assert.equal(new URL(page.url()).searchParams.get('mode'), 'sandbox');
   await expect(page.locator('#farm-canvas')).toBeVisible();
-  await expect(page.locator('#editor .monaco-editor')).toBeVisible();
+  await expect(page.locator('#editor .cm-editor')).toBeVisible();
   await expect(page.locator('#btn-run')).toBeEnabled();
   await page.waitForFunction(() => {
     const canvas = document.getElementById('farm-canvas');
@@ -119,12 +119,12 @@ try {
 
   // Use real DOM/editor controls, never a mock or a privileged renderer bridge.
   const marker = 'TENDRIL_ELECTRON_SPROUT_SMOKE';
-  // No indentation: Monaco would auto-indent typed blocks, and this proves the interpreter without it.
+  // No indentation: CodeMirror would auto-indent typed blocks, and this proves the interpreter without it.
   const source = `say "${marker}"\nwait 5\nsay "second line"`;
-  await page.locator('#editor .view-lines').click();
+  await page.locator('#editor .cm-content').click();
   await page.keyboard.press(process.platform === 'darwin' ? 'Meta+A' : 'Control+A');
   await page.keyboard.insertText(source);
-  await expect(page.locator('#editor .view-lines')).toContainText(marker);
+  await expect(page.locator('#editor .cm-content')).toContainText(marker);
   const tick = async () => {
     const text = (await page.locator('#hud-tick').innerText()).replace(/,/g, '').trim();
     assert.match(text, /^\d+$/, 'HUD must show a concrete initialized tick');

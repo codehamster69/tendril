@@ -1,0 +1,4 @@
+{
+  "_comment": "Budget for the gzip size of the scripts needed for first load (see scripts/check-size.mjs). Set to the size measured on the PR #68 build. Tasks P1 (CodeMirror) and P2 (lazy loading) lower it to 409600 bytes (400 KB).",
+  "firstLoadGzipBytes": 1301610
+}

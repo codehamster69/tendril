@@ -41,7 +41,7 @@ function node<K extends keyof HTMLElementTagNameMap>(tag: K, attrs: Record<strin
 
 const isTyping = (t: EventTarget | null): boolean => {
   const e = t as HTMLElement | null;
-  return !!e && (e.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(e.tagName) || !!e.closest?.('.monaco-editor, .cm-editor'));
+  return !!e && (e.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(e.tagName) || !!e.closest?.('.cm-editor'));
 };
 
 export class FarmHud {
