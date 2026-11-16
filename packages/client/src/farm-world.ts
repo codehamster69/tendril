@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import type { AssetModel, AssetPart } from './asset-loader.ts';
 import type { Snapshot } from './sim-types.ts';
+import type { ViewSnapshot } from './view-codec.ts';
 import { BUILDING_MODELS, CROPS, CROP_COLORS } from './fallback-models.ts';
 import { OverlayLayer, overlayColor, unit, type FarmOverlay } from './farm-overlay.ts';
 import type { Bounds } from './farm-scenery.ts';
@@ -125,6 +126,9 @@ export class FarmWorld {
   private chunks = new Map<string, Chunk>();
   private count = 0;
   private lastTiles: Snapshot['tiles'] | null = null;
+  /** The compact-view store and version this world has caught up with. */
+  private viewSource = -1;
+  private viewVersion = -1;
   private version = 0;
   private _bounds: Bounds | null = null;
   private batches = new Map<string, Batch>();
@@ -187,7 +191,16 @@ export class FarmWorld {
   }
 
   /** Merge a snapshot into the sparse store. Unchanged tiles keep their identity and cost one comparison. */
-  setSnapshot(snapshot: Snapshot): void {
+  setSnapshot(snapshot: Snapshot | ViewSnapshot): void {
+    const delta = (snapshot as Partial<ViewSnapshot>).delta;
+    if (delta) {
+      // Compact view: take only the tiles that changed since this world last looked. A new source, a gap in the
+      // history or a reset falls through to the full merge below.
+      const changes = delta.source === this.viewSource ? delta.since(this.viewVersion) : null;
+      this.viewSource = delta.source; this.viewVersion = delta.version;
+      if (changes) { this.applyChanged(changes); return; }
+      this.lastTiles = null;
+    }
     const tiles = snapshot.tiles;
     if (tiles === this.lastTiles) return;
     this.lastTiles = tiles;
@@ -211,6 +224,23 @@ export class FarmWorld {
         if (!chunk.tiles.size) this.chunks.delete(ck);
       }
       changed = structural = true;
+    }
+    if (structural) this._bounds = this.computeBounds();
+    if (changed) this.version++;
+  }
+
+  /** Merge changed tiles only; tiles never disappear outside a reset. */
+  private applyChanged(tiles: readonly SnapshotTile[]): void {
+    let changed = false, structural = false;
+    for (const tile of tiles) {
+      const cx = Math.floor(tile.x / CHUNK), cy = Math.floor(tile.y / CHUNK);
+      const ck = `${cx},${cy}`;
+      let chunk = this.chunks.get(ck);
+      if (!chunk) { chunk = { cx, cy, tiles: new Map() }; this.chunks.set(ck, chunk); }
+      const k = `${tile.x},${tile.y}`;
+      const old = chunk.tiles.get(k);
+      if (!old) { chunk.tiles.set(k, tile); this.count++; changed = structural = true; }
+      else if (!sameTile(old, tile)) { chunk.tiles.set(k, tile); changed = true; }
     }
     if (structural) this._bounds = this.computeBounds();
     if (changed) this.version++;
