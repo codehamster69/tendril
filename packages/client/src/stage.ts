@@ -177,7 +177,6 @@ export function mountStage({ loop }: { loop: GameLoop; editor?: Editor }): void 
   };
   const q = <T extends HTMLElement>(s: string): T | null => document.querySelector<T>(s);
   const decks = (...ids: string[]): HTMLElement[] => ids.map((i) => document.getElementById(i)).filter((n): n is HTMLElement => !!n);
-  entry('Inspectors', 'Soil, barn, orders, forecast', () => panels.open('Inspectors', decks('forecast', 'deck-farm')), 'inspectors');
   entry('Progression', 'Research and achievements', () => panels.open('Progression', decks('deck-research', 'deck-goals')), 'progression');
   entry('Arena & lessons', 'Daily result, submit, lessons', () => panels.open('Arena & lessons', decks('lesson-card'), { wide: true }), 'arena');
   entry('Duels', 'Join a friend’s duel link', () => byId('btn-join-duel').click(), 'duels');
@@ -189,7 +188,6 @@ export function mountStage({ loop }: { loop: GameLoop; editor?: Editor }): void 
     const m = q('.farm-market');
     if (m && !m.hidden) panels.open('Market', [m], { onOpen: () => m.classList.remove('collapsed'), onClose: () => m.classList.add('collapsed') });
   }, 'market');
-  entry('Minimap', 'Jump around the farm', () => { const m = q('#farm-minimap'); if (m) panels.open('Minimap', [m], { onOpen: () => m.classList.remove('collapsed') }); }, 'minimap');
   const syncEntries = (): void => {
     ratingEntry.disabled = !document.getElementById('rating-chip');
     marketEntry.disabled = !q('.farm-market') || !!q('.farm-market')?.hidden;

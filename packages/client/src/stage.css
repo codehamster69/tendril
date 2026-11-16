@@ -11,7 +11,8 @@ body.game-stage { display: block; min-height: 0; height: 100vh; overflow: hidden
 .game-stage.slate-hidden .farm-caption { right: 14px; }
 .game-stage #toast-host { top: 62px; right: calc(var(--slate-w) + 40px); }
 .game-stage.slate-hidden #toast-host { right: 14px; }
-.game-stage #farm-minimap:not(.in-panel), .game-stage .farm-market:not(.in-panel) { display: none; }
+.game-stage .farm-market:not(.in-panel) { display: none; }
+.game-stage:not(.farm-large) #farm-minimap { display: none; }
 .game-stage #farm-minimap.in-panel { position: static; }
 .game-stage .farm-market.in-panel { position: static; width: 100%; }
 

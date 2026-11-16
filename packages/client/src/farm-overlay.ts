@@ -2,11 +2,12 @@ import * as THREE from 'three';
 import type { Snapshot } from './sim-types.ts';
 import { matte } from './fallback-models.ts';
 
-export type FarmOverlay = 'none' | 'moisture' | 'nitrogen' | 'fatigue';
+export type FarmOverlay = 'none' | 'moisture' | 'nitrogen' | 'fatigue' | 'growth';
 const OVERLAYS = {
   moisture: [new THREE.Color('#e0bb79'), new THREE.Color('#287caf')],
   nitrogen: [new THREE.Color('#e0c898'), new THREE.Color('#468653')],
   fatigue: [new THREE.Color('#8fc3a4'), new THREE.Color('#bf6650')],
+  growth: [new THREE.Color('#9aa98c'), new THREE.Color('#f2b84b')],
 };
 export const unit = (value: number): number => THREE.MathUtils.clamp(value / 100, 0, 1);
 /** Most instances any one mesh holds (a hard cap, whatever the farm size). */
@@ -15,7 +16,7 @@ export const MAX_OVERLAY = 20000;
 /** The lens colour of one tile (used per cell when tiles are merged at Map zoom). */
 export function overlayColor(overlay: Exclude<FarmOverlay, 'none'>, tile: Snapshot['tiles'][number], out: THREE.Color): THREE.Color {
   const [low, high] = OVERLAYS[overlay];
-  return out.copy(low).lerp(high, unit(tile[overlay]));
+  return out.copy(low).lerp(high, overlay === 'growth' ? (tile.crop ? tile.stage / 3 : 0) : unit(tile[overlay]));
 }
 
 /** The soil-lens colour layer and the faint tile guides, both one instanced mesh each. */

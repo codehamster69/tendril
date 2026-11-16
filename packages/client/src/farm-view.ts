@@ -191,17 +191,20 @@ export class FarmView {
     if (!this.market.multipliers && this.priceLens) this.setLens('none');
   }
 
+  /** Today's price multipliers by crop (null without a market), for the stock chips. */
+  marketMultipliers(): number[] | null { return this.market?.multipliers ?? null; }
+
   /** True when the price lens has a market to draw. */
   priceAvailable(): boolean { return !!this.market?.multipliers; }
 
   setOverlay(overlay: FarmOverlay): void {
-    if (this.disposed || !['none', 'moisture', 'nitrogen', 'fatigue'].includes(overlay)) return;
+    if (this.disposed || !['none', 'moisture', 'nitrogen', 'fatigue', 'growth'].includes(overlay)) return;
     this.setLens(overlay);
   }
 
   /** Soil lens or price lens. `price` needs a market and quietly falls back to natural without one. */
   setLens(lens: Lens): void {
-    if (this.disposed || !['none', 'moisture', 'nitrogen', 'fatigue', 'price'].includes(lens)) return;
+    if (this.disposed || !['none', 'moisture', 'nitrogen', 'fatigue', 'growth', 'price'].includes(lens)) return;
     if (lens === 'price' && !this.priceAvailable()) lens = 'none';
     this.priceLens = lens === 'price';
     this.overlay = lens === 'price' ? 'none' : lens;

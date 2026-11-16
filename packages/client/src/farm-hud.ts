@@ -2,7 +2,7 @@ import './farm-hud.css';
 import type { LightPreset } from './farm-light';
 import { FarmMinimap, lodLabel } from './farm-minimap';
 
-export type Lens = 'none' | 'moisture' | 'nitrogen' | 'fatigue' | 'price';
+export type Lens = 'none' | 'moisture' | 'nitrogen' | 'fatigue' | 'growth' | 'price';
 export type ZoomMode = 'cursor' | 'center';
 
 export interface FarmHudApi {
@@ -19,7 +19,7 @@ const LIGHTS: { id: LightPreset; label: string }[] = [
   { id: 'dawn', label: 'Dawn' }, { id: 'noon', label: 'Noon' }, { id: 'golden', label: 'Golden' }, { id: 'night', label: 'Night' },
 ];
 const LENSES: { id: Lens; label: string }[] = [
-  { id: 'none', label: 'Natural' }, { id: 'moisture', label: 'Moisture' }, { id: 'nitrogen', label: 'Nitrogen' }, { id: 'fatigue', label: 'Fatigue' }, { id: 'price', label: 'Price' },
+  { id: 'none', label: 'Natural' }, { id: 'moisture', label: 'Moisture' }, { id: 'nitrogen', label: 'Nitrogen' }, { id: 'fatigue', label: 'Fatigue' }, { id: 'growth', label: 'Growth' }, { id: 'price', label: 'Price' },
 ];
 const LIGHT_KEY = 'tendril.light';
 const ZOOM_KEY = 'tendril.zoomMode';
