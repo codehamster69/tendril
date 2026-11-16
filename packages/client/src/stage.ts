@@ -4,6 +4,9 @@ import type { Editor } from './editor';
 import type { GameLoop, LoopStatus } from './game-loop';
 import type { Snapshot } from './sim-types';
 import { el } from './palette';
+import { mountMenu } from './menu';
+import type { ModeKey } from './menu';
+import type { FarmApi } from './api-client';
 
 const SLATE_W = 'tendril.slate.width', SLATE_HIDDEN = 'tendril.slate.hidden', STRIP_OPEN = 'tendril.slate.console';
 const MIN_W = 320, DEFAULT_W = 440;
@@ -62,7 +65,7 @@ class Panels {
 }
 
 /** The full-screen game layout: stage behind everything, code slate, transport bar, HUD chips and a menu overlay. */
-export function mountStage({ loop }: { loop: GameLoop; editor?: Editor }): void {
+export function mountStage({ loop, api, current, ranked }: { loop: GameLoop; editor?: Editor; api: FarmApi; current: ModeKey; ranked: boolean }): void {
   const root = document.documentElement;
   const live = loop.mode === 'live';
   document.body.classList.add('game-stage');
@@ -173,49 +176,12 @@ export function mountStage({ loop }: { loop: GameLoop; editor?: Editor }): void 
 
   // ---- menu + panels ----
   const panels = new Panels(() => {});
-  const menu = el('div', { id: 'menu-overlay', class: 'hk-overlay', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Menu', hidden: '' });
-  const entries = el('div', { class: 'menu-entries' });
-  const modes = byId('mode-tabs'), links = document.querySelector<HTMLElement>('.top-actions')!;
-  const closeMenu = (): void => { menu.hidden = true; menuBtn.focus(); };
-  const openMenu = (): void => { menu.hidden = false; (menu.querySelector('button, a') as HTMLElement | null)?.focus(); };
-  const entry = (label: string, hint: string, run: () => void, id: string): HTMLButtonElement => {
-    const b = el('button', { class: 'hk-button menu-entry', type: 'button', 'data-entry': id }, el('b', { text: label }), el('small', { text: hint }));
-    b.addEventListener('click', () => { menu.hidden = true; run(); });
-    entries.append(b);
-    return b;
-  };
-  const q = <T extends HTMLElement>(s: string): T | null => document.querySelector<T>(s);
-  const decks = (...ids: string[]): HTMLElement[] => ids.map((i) => document.getElementById(i)).filter((n): n is HTMLElement => !!n);
-  entry('Inspectors', 'Soil, barn, orders, forecast', () => panels.open('Inspectors', decks('forecast', 'deck-farm')), 'inspectors');
-  entry('Progression', 'Research and achievements', () => panels.open('Progression', decks('deck-research', 'deck-goals')), 'progression');
-  entry('Arena & lessons', 'Daily result, submit, lessons', () => panels.open('Arena & lessons', decks('lesson-card'), { wide: true }), 'arena');
-  entry('Duels', 'Join a friend’s duel link', () => byId('btn-join-duel').click(), 'duels');
-  const ratingEntry = entry('Rating', 'Your overall rating', () => { byId('rating-chip').click(); }, 'rating');
-  const accountEntry = entry('Account', 'Sign in or out', () => byId('btn-account').click(), 'account');
-  entry('Reference', 'Every Sprout command', () => { q('#btn-reference')?.click(); }, 'reference');
-  entry('Debugger', 'Variables and breakpoints', () => { setSlate(true); setStrip(true); q<HTMLButtonElement>('[data-dock="debugger"]')?.click(); }, 'debugger');
-  const marketEntry = entry('Market', 'Shared market prices', () => {
-    const m = q('.farm-market');
-    if (m && !m.hidden) panels.open('Market', [m], { onOpen: () => m.classList.remove('collapsed'), onClose: () => m.classList.add('collapsed') });
-  }, 'market');
-  entry('Minimap', 'Jump around the farm', () => { const m = q('#farm-minimap'); if (m) panels.open('Minimap', [m], { onOpen: () => m.classList.remove('collapsed') }); }, 'minimap');
-  const syncEntries = (): void => {
-    ratingEntry.disabled = !document.getElementById('rating-chip');
-    marketEntry.disabled = !q('.farm-market') || !!q('.farm-market')?.hidden;
-    const label = byId('btn-account').textContent?.trim();
-    accountEntry.querySelector('small')!.textContent = label && label !== 'Sign in' ? `Signed in as ${label}` : 'Sign in or out';
-  };
-  menuBtn.addEventListener('click', () => { syncEntries(); openMenu(); });
-  const closeBtn = el('button', { class: 'hk-button', type: 'button', text: 'Close' });
-  closeBtn.addEventListener('click', closeMenu);
-  menu.append(el('div', { class: 'hk-card menu-card' },
-    el('header', {}, el('h2', { text: 'Menu' }), closeBtn), el('p', { class: 'menu-label', text: 'Mode' }), modes, entries, el('div', { class: 'menu-links' }, links)));
-  menu.addEventListener('mousedown', (e) => { if (e.target === menu) closeMenu(); });
-  menu.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.stopPropagation(); closeMenu(); } });
+  // The menu itself lives in menu.ts; the stage only hands it the pieces it needs.
+  mountMenu({ loop, api, current, ranked, button: menuBtn, panels, openDebugger: () => { setSlate(true); setStrip(true); document.querySelector<HTMLButtonElement>('[data-dock="debugger"]')?.click(); } });
   // Arena results arrive on their own: show them without the player hunting through the menu.
   const result = document.getElementById('arena-result');
-  if (result) new MutationObserver(() => { if (!result.hidden && !panels.isOpen) panels.open('Arena & lessons', decks('lesson-card'), { wide: true }); }).observe(result, { attributes: true, attributeFilter: ['hidden'] });
+  if (result) new MutationObserver(() => { if (!result.hidden && !panels.isOpen) panels.open('Arena & lessons', ['lesson-card'].map((i) => document.getElementById(i)).filter((n): n is HTMLElement => !!n), { wide: true }); }).observe(result, { attributes: true, attributeFilter: ['hidden'] });
 
-  document.body.append(hud, hudTr, transport, el('div', { id: 'slate-toggle', class: 'slate-toggle' }, slateBtn), menu);
+  document.body.append(hud, hudTr, transport, el('div', { id: 'slate-toggle', class: 'slate-toggle' }, slateBtn));
   // The caption's tile readout and the farm bar stay on the stage; chips sit above them.
 }

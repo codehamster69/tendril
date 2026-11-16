@@ -122,13 +122,19 @@ export async function submitRun(api: FarmApi, c: ChallengeInfo, actions: LogEntr
   return { ...(await submitPlain(api, c, actions)), program: 'none' as const };
 }
 
+/** The challenge's name: "Daily farm #12", "Weekly season #3", "Duel", or a practice label. */
+export function challengeTitle(c: ChallengeInfo): string {
+  const number = c.number !== null && c.number > 0 ? c.number : null; // days before the 1 Dec 2026 launch count as practice
+  return c.kind === 'season' ? (number !== null ? `Weekly season #${number}` : 'Practice week') : number !== null ? `Daily farm #${number}` : c.kind === 'daily' ? `Practice farm · ${c.id.slice(2)}` : c.kind === 'duel' ? 'Duel' : c.id;
+}
+
 export function mountArena({ loop, api, challenge: c }: { loop: GameLoop; api: FarmApi; challenge: ChallengeInfo }): void {
   const host = document.getElementById('lesson-card')!; host.hidden = false;
   void pending(api).flush(); // send any run left over from an earlier visit
   window.addEventListener('online', () => { void pending(api).flush(); });
   window.addEventListener('tendril:account', (event) => { if ((event as CustomEvent<{ profile: unknown }>).detail.profile) void pending(api).flush(); });
   const number = c.number !== null && c.number > 0 ? c.number : null; // days before the 1 Dec 2026 launch count as practice
-  const title = c.kind === 'season' ? (number !== null ? `Weekly season #${number}` : 'Practice week') : number !== null ? `Daily farm #${number}` : c.kind === 'daily' ? `Practice farm · ${c.id.slice(2)}` : c.kind === 'duel' ? 'Duel' : c.id;
+  const title = challengeTitle(c);
   const left = el('b', { id: 'arena-left', text: '' });
   const beat = el('b', { id: 'arena-beat', text: '' });
   const runEnd = el('button', { id: 'btn-run-end', class: 'primary', text: 'Run to end' });

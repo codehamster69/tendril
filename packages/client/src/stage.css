@@ -70,7 +70,6 @@ body.resizing iframe, body.resizing canvas { pointer-events: none; }
 .menu-entry { flex-direction: column; align-items: flex-start; gap: 2px; border-radius: var(--hk-r-md); padding: .6rem .8rem; text-align: left; font-family: var(--hk-body); }
 .menu-entry b { font: 700 .95rem var(--hk-display); } .menu-entry small { color: var(--hk-dim); font: 400 .78rem var(--hk-body); }
 .menu-links .top-actions { display: flex; gap: var(--hk-s4); align-items: center; }
-.menu-card #mode-tabs { align-self: flex-start; flex-wrap: wrap; }
 .panel-body { display: flex; flex-direction: column; gap: var(--hk-s3); overflow: auto; }
 .panel-body .deck { height: auto; max-height: none; flex: none; padding: 0; }
 .panel-body #lesson-card:empty::before { content: "Nothing here for this mode yet. Lessons and daily results appear here."; color: var(--hk-dim); }

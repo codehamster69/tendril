@@ -142,11 +142,14 @@ test('the Season tab opens this week\'s season, runs 6,000 ticks and highlights 
     return route.fulfill({ status: 401, contentType: 'application/json', body: JSON.stringify({ error: 'Sign in first.' }) });
   });
   await page.goto('/');
-  await page.click('#mode-tabs a[data-mode="season"]');
+  await page.click('#btn-menu');
+  await page.click('#menu-overlay a[data-entry="season"]');
   await expect(page.locator('#arena-head')).toContainText('Weekly season #1');
   await expect(page.locator('#mode-label')).toHaveText('Weekly season');
-  await expect(page.locator('#mode-tabs a[aria-current="page"]')).toHaveText('Season');
-  await expect(page.locator('#mode-tabs a[data-mode="live"]')).toHaveText('Endless');
+  await page.click('#btn-menu');
+  await expect(page.locator('#menu-overlay a[aria-current="page"]')).toContainText('Season');
+  await expect(page.locator('#menu-overlay a[data-entry="live"]')).toContainText('Endless');
+  await page.keyboard.press('Escape');
   const started = Date.now();
   await page.click('#btn-run-end');
   await expect(page.locator('#arena-result')).toBeVisible({ timeout: 30_000 });

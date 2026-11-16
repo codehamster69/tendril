@@ -64,7 +64,9 @@ async function createWindow() {
     if (isAllowedExternalURL(url, origin) || isAllowedSiteURL(url, origin)) openExternal(url);
   };
   ipcMain.on('tendril:open-external', ipcHandler);
-  win.on('closed', () => ipcMain.removeListener('tendril:open-external', ipcHandler));
+  const quitHandler = (event) => { if (event.sender === win.webContents) app.quit(); };
+  ipcMain.on('tendril:quit', quitHandler);
+  win.on('closed', () => { ipcMain.removeListener('tendril:open-external', ipcHandler); ipcMain.removeListener('tendril:quit', quitHandler); });
   await win.loadURL(entry);
 }
 
