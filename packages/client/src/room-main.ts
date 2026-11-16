@@ -1,15 +1,18 @@
+import { boot } from './boot';
 import { FarmView } from './farm-view';
 import type { Snapshot } from '@tendril/sim/src/index.ts';
 import { DUEL_ID, RoomClock, drawMiniFarm, loadRoom, playerName, rankOrder } from './room';
 import type { RoomRun } from './room';
 
 const $ = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T;
+boot.profile('lite');
 const params = new URLSearchParams(location.search);
 const id = params.get('id') ?? '';
 if (params.get('embed') === '1') document.body.classList.add('embed');
 const fmt = (n: number): string => n.toLocaleString('en-US');
 
 function fail(message: string): void {
+  boot.fail(message);
   const el = $('error');
   el.textContent = message;
   el.hidden = false;
@@ -186,6 +189,8 @@ async function main(): Promise<void> {
   label();
   draw();
   requestAnimationFrame(frame);
+  // The room draws 2D mini farms; the 3D host view is optional and loads later, so there is nothing 3D to wait for.
+  boot.done('models'); boot.done('frame');
   document.body.dataset.state = 'ready';
   document.body.dataset.farms = String(runs.length);
   document.body.dataset.live = String(live.length);

@@ -1,3 +1,4 @@
+import { boot } from './boot';
 import './style.css';
 import { createEditor, EXAMPLES } from './editor';
 import { FarmView } from './farm-view';
@@ -60,6 +61,7 @@ document.getElementById('mode-label')!.textContent = stress ? `Stress farm · ${
 document.getElementById('mode-note')!.textContent = mode === 'live' ? (sim.ranked ? '10 ticks per second · syncs to the server as it runs' : '10 ticks per second · local and unverified until connected') : mode === 'sandbox' ? 'Experiment freely · separate from your live farm' : mode === 'daily' ? `The same seed for everyone · ${challenge?.ticks.toLocaleString('en-US') ?? '3,000'} ticks` : 'Learn one recipe at a time';
 const loop = new GameLoop(sim);
 const firstRun = !stress && await isFirstRun(mode, sim.ranked, query, sim.prefix);
+boot.done('save');
 const editor = createEditor(document.getElementById('editor')!, `tendril.sprout.v1.${mode}${suffix}`, stress ? stress.source : mode === 'campaign' ? lesson.starter : mode === 'daily' ? EXAMPLES.daily!.source : firstRun ? '' : undefined);
 const view = new FarmView(document.getElementById('farm-canvas') as HTMLCanvasElement);
 view.setDay({ runTicks: scenario.tickLimit ?? null, seed: () => sim.meta.seed, weatherBias: scenario.setup?.weatherBias });
@@ -72,7 +74,7 @@ mountReference((code) => editor.setSource(editor.getSource() + '\n' + code + '\n
 mountInspectors(view, () => sim.meta.seed);
 if (challenge) view.setMarket(challenge.market ?? null, { opensInDays: marketOpensIn(challenge) });
 mountProgression({ loop, editor, view, api });
-if (firstRun) mountFirstRun({ editor, host: document.getElementById('lesson-card')! });
+if (firstRun) mountFirstRun({ editor });
 if (challenge) mountArena({ loop, api, challenge });
 if (challenge) mountResultScreen({ loop, api, challenge, view });
 mountNotice({ live: mode === 'live', verified: sim.ranked });
@@ -108,5 +110,5 @@ window.addEventListener('pagehide', () => { loop.dispose(); view.dispose(); sim.
 window.addEventListener('pageshow', (e) => { if (e.persisted) location.reload(); });
 void loop.setBreakpoints(editor.breakpoints());
 // ?stress=1 | small: a fixed, local-only farm (its own sandbox keyspace, never synced). Rebuilt from the same seed on every load.
-if (stress) void loop.init(scenario, stress.source).then(() => loop.startScenario({ ...stress.scenario, seed: stress.seed, source: stress.source })).then(() => loop.step(stress.warmupTicks)).then(() => loop.run()).catch(() => {});
-else void loop.init(scenario, editor.getSource()).catch(() => {});
+if (stress) void loop.init(scenario, stress.source).then(() => { boot.done('worker'); }).then(() => loop.startScenario({ ...stress.scenario, seed: stress.seed, source: stress.source })).then(() => loop.step(stress.warmupTicks)).then(() => loop.run()).catch(() => {});
+else void loop.init(scenario, editor.getSource()).then(() => boot.done('worker')).catch((e: unknown) => boot.fail(e instanceof Error ? e.message : 'The simulation could not start.'));

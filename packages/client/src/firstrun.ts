@@ -1,13 +1,14 @@
-import type { Snapshot } from '@tendril/sim/src/index.ts';
 import type { Editor } from './editor';
-import { DEFAULT_SCRIPT } from './editor';
+import { boot } from './boot';
 import { LESSONS } from './lessons';
-import { el, toast } from './palette';
+import { el } from './palette';
+import { EVENT } from './sim-protocol';
+import type { ViewEvent } from './sim-protocol';
 import { kvGetMany } from './store';
 
 const FLAG = 'tendril.firstrun.v1'; // absent | 'active' | 'done'
 const read = (key: string): string | null => { try { return localStorage.getItem(key); } catch { return 'unavailable'; } };
-const write = (key: string, value: string): void => { try { localStorage.setItem(key, value); } catch { /* storage full or blocked: the coach just shows again */ } };
+const write = (key: string, value: string): void => { try { localStorage.setItem(key, value); } catch { /* storage full or blocked: the prompts just show again */ } };
 
 /** True for a brand-new local live farm: no saved program, no saved farm, never dismissed. `?coach=0` opts out. */
 export async function isFirstRun(mode: string, ranked: boolean, params: URLSearchParams, farmKey: string): Promise<boolean> {
@@ -19,36 +20,81 @@ export async function isFirstRun(mode: string, ranked: boolean, params: URLSearc
   try { return (await kvGetMany<Record<string, unknown>>([farmKey + 'world']))[farmKey + 'world'] === undefined; } catch { return false; }
 }
 
-const STEPS: { text: string; code: string; test: RegExp }[] = [
-  { text: 'Walk one tile.', code: 'move east', test: /^\s*move east\b/m },
-  { text: 'Prepare the soil.', code: 'till', test: /^\s*till\b/m },
-  { text: 'Plant a carrot.', code: 'plant carrot', test: /^\s*plant carrot\b/m },
-];
+interface Prompt { anchor: string; title: string; text: string; action?: { label: string; run: () => void } }
 
-/** The coach is the live-farm version of campaign lesson 1; it never touches ranked or campaign state. */
-export function mountFirstRun({ editor, host }: { editor: Editor; host: HTMLElement }): void {
+/**
+ * Three prompts anchored to the real controls, ending on the first sale: write or accept a program, press Play,
+ * watch the first harvest and the sale. Skippable, and never shown again once finished or skipped.
+ * It never touches ranked or campaign state; the starter is campaign lesson 1's own solution.
+ */
+export function mountFirstRun({ editor }: { editor: Editor }): void {
   write(FLAG, 'active');
-  const lesson = LESSONS[0]!;
-  const list = el('ol', { class: 'coach-steps' });
-  const items = STEPS.map((s) => { const li = el('li', {}, el('span', { text: s.text + ' ' }), el('code', { text: s.code })); list.append(li); return li; });
-  const status = el('p', { class: 'goal', text: 'Type the three lines in the editor, then press Run.' });
-  const skip = el('button', { class: 'quiet', text: 'Skip the tour' });
-  host.append(el('header', {}, el('span', { class: 'eyebrow', text: 'Your first program' })), el('h3', { text: 'Make your bot plant a carrot' }), el('p', { text: lesson.intro }), list, status, skip);
-  host.hidden = false;
+  const starter = LESSONS[0]!.solution;
+  let index = 0;
   let finished = false;
-  const finish = (loadExample: boolean): void => {
-    if (finished) return; finished = true; write(FLAG, 'done');
-    window.removeEventListener('tendril:snapshot', onSnapshot);
-    if (!loadExample) { host.hidden = true; host.replaceChildren(); return; }
-    status.textContent = 'You wrote a program. Here is a bigger one to learn from.'; status.classList.add('complete');
-    list.remove(); skip.remove();
-    const example = el('button', { text: 'Load the starter example' }); example.addEventListener('click', () => { editor.setSource(DEFAULT_SCRIPT); host.hidden = true; });
-    host.append(example, el('a', { class: 'next-lesson', href: '?mode=daily', text: "Play today's farm →" }));
-    toast('First program done', "Today's farm is waiting.");
+  const title = el('b', { class: 'fr-title' });
+  const text = el('p', { class: 'fr-text' });
+  const step = el('small', { class: 'fr-step' });
+  const action = el('button', { class: 'hk-button hk-primary', type: 'button' });
+  const skip = el('button', { class: 'hk-button', type: 'button', text: 'Skip tour' });
+  const card = el('div', { class: 'hk-card fr-card', role: 'dialog', 'aria-label': 'First run tour', 'aria-live': 'polite' }, step, title, text, el('div', { class: 'fr-actions' }, action, skip));
+  card.hidden = true;
+  document.body.append(card);
+
+  const prompts: Prompt[] = [
+    { anchor: '#side', title: 'Give your bot a program', text: 'Type some Sprout in the editor, or start from a ready one that plants, harvests and sells a carrot.', action: { label: 'Use the starter', run: () => editor.setSource(starter) } },
+    { anchor: '#tp-play', title: 'Press Play', text: 'Your bot follows the program line by line, and the day starts.', action: { label: 'Play', run: () => document.getElementById('tp-play')?.click() } },
+    { anchor: '#farm-canvas', title: 'Watch the first harvest', text: 'Your bot tills, plants and waits for the carrot to ripen. This takes a few seconds.' },
+    { anchor: '#farm-canvas', title: 'Now it sells', text: 'The bot carries the carrots to the barn. Your first sale ends the tour.' },
+  ];
+  const place = (): void => {
+    const p = prompts[index];
+    const target = p && document.querySelector<HTMLElement>(p.anchor);
+    if (!p || !target || card.hidden) return;
+    const r = target.getBoundingClientRect();
+    const w = Math.min(320, window.innerWidth - 24);
+    card.style.width = `${w}px`;
+    const side = p.anchor === '#side';
+    const left = side ? r.left - w - 16 : r.left + r.width / 2 - w / 2;
+    const top = side ? r.top + 90 : p.anchor === '#tp-play' ? r.top - card.offsetHeight - 14 : r.top + 110;
+    card.style.left = `${Math.max(12, Math.min(left, window.innerWidth - w - 12))}px`;
+    card.style.top = `${Math.max(12, Math.min(top, window.innerHeight - card.offsetHeight - 12))}px`;
   };
-  const refresh = (): void => { const src = editor.getSource(); STEPS.forEach((s, i) => items[i]!.classList.toggle('done', s.test.test(src))); };
-  const onSnapshot = (event: Event): void => { if ((event as CustomEvent<Snapshot>).detail.tiles.some((t) => t.crop > 0)) finish(true); };
-  editor.onChange(refresh); refresh();
-  window.addEventListener('tendril:snapshot', onSnapshot);
-  skip.addEventListener('click', () => { editor.setSource(DEFAULT_SCRIPT); finish(false); });
+  const show = (i: number): void => {
+    index = i;
+    const p = prompts[i]!;
+    step.textContent = `Step ${Math.min(i + 1, 3)} of 3`;
+    title.textContent = p.title;
+    text.textContent = p.text;
+    action.hidden = !p.action;
+    if (p.action) action.textContent = p.action.label;
+    card.hidden = false;
+    place();
+    document.querySelector<HTMLElement>(p.anchor)?.classList.add('fr-spot');
+    for (const other of prompts) if (other !== p) document.querySelector<HTMLElement>(other.anchor)?.classList.remove('fr-spot');
+  };
+  const end = (): void => {
+    if (finished) return;
+    finished = true;
+    write(FLAG, 'done');
+    window.removeEventListener('tendril:events', onEvents);
+    window.removeEventListener('resize', place);
+    for (const p of prompts) document.querySelector<HTMLElement>(p.anchor)?.classList.remove('fr-spot');
+    card.remove();
+  };
+  const advance = (from: number): void => { if (!finished && index === from) { if (from >= prompts.length - 1) end(); else show(from + 1); } };
+  const onEvents = (event: Event): void => {
+    const events = (event as CustomEvent<ViewEvent[]>).detail;
+    if (index === 2 && events.some((e) => e[0] === EVENT.harvest)) advance(2);
+    else if (index === 3 && events.some((e) => e[0] === EVENT.sale)) advance(3);
+  };
+  action.addEventListener('click', () => { const p = prompts[index]!; p.action?.run(); if (index === 0 && editor.getSource().trim()) advance(0); });
+  skip.addEventListener('click', () => { if (!editor.getSource().trim()) editor.setSource(starter); end(); });
+  card.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.stopPropagation(); skip.click(); } });
+  editor.onChange(() => { if (index === 0 && editor.getSource().trim().length > 12) show(1); });
+  // Delegated: the transport bar is mounted after this module runs.
+  document.addEventListener('click', (e) => { if (index === 1 && (e.target as Element).closest('#tp-play, #btn-run')) window.setTimeout(() => advance(1), 0); });
+  window.addEventListener('tendril:events', onEvents);
+  window.addEventListener('resize', place);
+  void boot.whenReady().then(() => { if (!finished) show(0); });
 }

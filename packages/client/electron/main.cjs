@@ -43,7 +43,8 @@ async function createWindow() {
     height: 900,
     minWidth: 1100,
     minHeight: 680,
-    backgroundColor: '#14171c',
+    backgroundColor: '#14110f', // the splash colour: no white flash
+    show: false,
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
@@ -56,6 +57,7 @@ async function createWindow() {
     },
   });
   mainWindow = win;
+  win.once('ready-to-show', () => win.show());
   win.on('closed', () => { if (mainWindow === win) mainWindow = null; });
   hardenContents(win.webContents, entry);
   const origin = apiOrigin();

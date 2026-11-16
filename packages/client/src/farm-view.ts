@@ -1,3 +1,4 @@
+import { boot } from './boot';
 import { perfHook } from './perf-meter';
 import * as THREE from 'three';
 import { CROPS as SIM_CROPS } from '@tendril/sim/src/index.ts';
@@ -214,6 +215,7 @@ export class FarmView {
     if (this.disposed) return;
     this.canvas.dataset.modelsLoaded = String(status.loaded);
     this.canvas.dataset.modelsStatus = status.state;
+    if (status.state !== 'loading') boot.done('models');
     this.canvas.dataset.modelsErrors = status.errors.join('; ');
     this.canvas.dataset.modelsAssets = JSON.stringify([...this.loader.models.keys()].sort());
     this.world.invalidate();
@@ -576,6 +578,7 @@ export class FarmView {
     if (this.light.shadowsOn && this.shadowClock.due(ms, sunChanged || farmChanged, dronesMoving)) this.renderer.shadowMap.needsUpdate = true;
     this.renderer.render(this.scene, this.camera);
     this.canvas.dataset.sceneReady = String(this.world.tileCount > 0);
+    if (this.world.tileCount > 0) boot.done('frame');
     return this.camMoved || dronesMoving || this.fx.active || this.light.busy;
   }
 

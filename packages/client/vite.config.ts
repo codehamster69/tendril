@@ -1,12 +1,14 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vite';
+import { splash } from './vite-splash.ts';
 
 const { version } = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8')) as { version: string };
 
 export default defineConfig({
   base: process.env.VITE_BASE ?? './',
   define: { __APP_VERSION__: JSON.stringify(version) },
+  plugins: [splash()],
   esbuild: { target: 'esnext' },
   build: {
     chunkSizeWarningLimit: 6000,
