@@ -16,6 +16,7 @@ import { mountNotice } from './notice';
 import { mountUpdates } from './updates';
 import { isFirstRun, mountFirstRun } from './firstrun';
 import { mountProgression, selectedLesson } from './progression';
+import { mountCatalogue } from './catalogue-view';
 import { mountRating } from './rating';
 import { mountResultScreen } from './result-screen';
 import { challengeScenario, loadChallenge, marketOpensIn, mountArena } from './arena';
@@ -79,6 +80,7 @@ mountRating(api);
 mountAccount(api, sim);
 mountStage({ loop, editor, api, current: isSeason ? 'season' : mode, ranked: sim.ranked }); // last: it moves panels that the mounts above create
 mountStartCard({ loop, skip: !!stress || firstRun, info: challenge ? challengeCardInfo(challenge) : mode === 'campaign' ? { eyebrow: `Lesson · ${lesson.title}`, goal: lesson.goal, par: null, ticks: lesson.tickLimit } : null });
+mountCatalogue({ editor }); // after the stage: it badges the menu button and entry
 if (sim.ranked) mountAutoSync(api, sim, document.getElementById('mode-note'));
 window.addEventListener('tendril:snapshot', (event) => view.update((event as CustomEvent).detail));
 

@@ -7,7 +7,7 @@ test('Esc opens and closes the menu, and every mode is two clicks away', async (
   await expect(menu).toBeHidden();
   await page.keyboard.press('Escape');
   await expect(menu).toBeVisible();
-  for (const id of ['continue', 'daily', 'season', 'live', 'sandbox', 'campaign', 'duels', 'seeds', 'profile', 'settings']) await expect(menu.locator(`[data-entry="${id}"]`)).toBeVisible();
+  for (const id of ['continue', 'daily', 'season', 'live', 'sandbox', 'campaign', 'duels', 'catalogue', 'profile', 'settings']) await expect(menu.locator(`[data-entry="${id}"]`)).toBeVisible();
   await expect(menu.locator('a[data-entry="sandbox"]')).toHaveAttribute('aria-current', 'page');
   await expect(menu.locator('a[data-entry="daily"]')).toHaveAttribute('href', '?mode=daily');
   await page.keyboard.press('Escape');

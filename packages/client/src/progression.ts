@@ -28,7 +28,7 @@ const ACHIEVEMENTS: Achievement[] = [
   { id: 'all-research', title: 'The whole almanac', detail: 'Research every upgrade.', test: (s) => s.unlocks === 511 },
 ];
 export function mountProgression({ loop, editor }: { loop: GameLoop; editor: Editor; view?: FarmView; api?: FarmApi }): void {
-  const goals = document.getElementById('deck-goals')!, research = document.getElementById('deck-research')!;
+  const goals = document.getElementById('deck-goals')!;
   const completed = loadSet('tendril.campaign.v1'), earned = loadSet('tendril.achievements.v1');
   const renderGoals = (): void => {
     goals.replaceChildren(el('div', { class: 'achievement-grid' }, ...ACHIEVEMENTS.map((a) => el('div', { class: `achievement${earned.has(a.id) ? ' earned' : ''}`, title: a.detail }, el('b', { text: a.title }), el('span', { text: earned.has(a.id) ? 'Earned' : a.detail })))));
@@ -69,13 +69,6 @@ export function mountProgression({ loop, editor }: { loop: GameLoop; editor: Edi
   window.addEventListener('tendril:snapshot', (event) => {
     const s = (event as CustomEvent<Snapshot>).detail, log = loop.logChunks().flatMap((c) => c.actions);
     if (!baseline) baseline = new Set(loop.mode !== 'daily' && loop.mode !== 'challenge' ? [] : ACHIEVEMENTS.filter((a) => a.test(s, log)).map((a) => a.id));
-    const tree = el('div', { class: 'research-grid' });
-    UNLOCKS.forEach((u, i) => {
-      const unlocked = !!(s.unlocks & (1 << i)), insert = el('button', { class: `research-node${unlocked ? ' unlocked' : ''}`, title: `Insert unlock ${u.name}` });
-      insert.append(el('b', { text: cap(u.name) }), el('span', { text: unlocked ? 'Researched' : `${u.price} coins` }));
-      insert.addEventListener('click', () => { if (!unlocked) editor.setSource(editor.getSource() + `\nunlock ${u.name}\n`); }); tree.append(insert);
-    });
-    research.replaceChildren(el('p', { class: 'muted', text: 'Buy research with code: unlock wheat. Click an upgrade to insert its command. Research is separate from campaign language lessons.' }), tree);
     let changed = false;
     for (const a of ACHIEVEMENTS) if (!earned.has(a.id) && !baseline.has(a.id) && a.test(s, log)) { earned.add(a.id); changed = true; toast(a.title, a.detail); window.dispatchEvent(new CustomEvent('tendril:medal', { detail: a.id })); }
     if (changed) { saveSet('tendril.achievements.v1', earned); renderGoals(); }

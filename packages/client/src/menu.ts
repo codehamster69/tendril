@@ -70,7 +70,7 @@ export function mountMenu(ctx: MenuContext): MenuApi {
   }
   modeGrid.append(card('campaign', 'Lessons', 'Learn one recipe at a time', 'a', { href: '?mode=campaign', ...(current === 'campaign' ? { 'aria-current': 'page' } : {}) }));
   modeGrid.append(action('duels', 'Duels', 'Join a friend’s duel link', () => byId('btn-join-duel')?.click()));
-  modeGrid.append(action('seeds', 'Seed catalogue', 'Coming soon', null));
+  modeGrid.append(action('catalogue', 'Seed catalogue', 'Research crops, buildings, tools', () => window.dispatchEvent(new CustomEvent('tendril:open-catalogue'))));
   const profileOk = (): boolean => !!byId('rating-chip');
   modeGrid.append(action('profile', 'Profile', 'Your rating and last result', () => byId('rating-chip')?.click()));
   note(current, { live: ctx.ranked ? 'Playing now · server-verified' : 'Playing now · on this device', sandbox: 'Playing now', campaign: 'Playing now', daily: 'Playing now', season: 'Playing now' }[current]);
@@ -78,7 +78,7 @@ export function mountMenu(ctx: MenuContext): MenuApi {
   const toolsGrid = el('div', { class: 'menu-entries menu-tools' });
   const tool = (id: string, label: string, hint: string, run: () => void): HTMLButtonElement => { const b = action(id, label, hint, run); toolsGrid.append(b); return b; };
   tool('inspectors', 'Inspectors', 'Soil, barn, orders, forecast', () => panels.open('Inspectors', decks('forecast', 'deck-farm')));
-  tool('progression', 'Progression', 'Research and achievements', () => panels.open('Progression', decks('deck-research', 'deck-goals')));
+  tool('progression', 'Achievements', 'Goals you have earned', () => panels.open('Achievements', decks('deck-goals')));
   tool('arena', 'Arena & lessons', 'Daily result, submit, lessons', () => panels.open('Arena & lessons', decks('lesson-card'), { wide: true }));
   const marketBtn = tool('market', 'Market', 'Shared market prices', () => {
     const m = q('.farm-market');
