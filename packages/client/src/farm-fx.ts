@@ -47,6 +47,8 @@ export class FarmFx {
   private flyReady = false;
   private tmp = new THREE.Color();
   private reduced = window.matchMedia('(prefers-reduced-motion: reduce)');
+  /** True while any sparkle is still flying (the farm view keeps drawing until they are gone). */
+  active = false;
 
   private popMesh = new THREE.InstancedMesh(new THREE.RingGeometry(0.2, 0.3, 20).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }), POPS);
   private popAge = new Float32Array(POPS).fill(-1);
@@ -119,6 +121,7 @@ export class FarmFx {
   burst(x: number, y: number, z: number, hex: number, n = 8): void {
     if (this.reduced.matches) return;
     this.tmp.set(hex);
+    this.active = true;
     for (let k = 0; k < n; k++) {
       const i = this.head++ % POOL;
       this.pos[i * 3] = x; this.pos[i * 3 + 1] = y; this.pos[i * 3 + 2] = z;
@@ -145,6 +148,7 @@ export class FarmFx {
       this.pos[i * 3 + 1]! += this.vel[i * 3 + 1]! * dt;
       this.pos[i * 3 + 2]! += this.vel[i * 3 + 2]! * dt;
     }
+    this.active = live;
     if (live) {
       (this.points.geometry.getAttribute('position') as THREE.BufferAttribute).needsUpdate = true;
       (this.points.geometry.getAttribute('color') as THREE.BufferAttribute).needsUpdate = true;

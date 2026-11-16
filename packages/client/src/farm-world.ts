@@ -135,6 +135,8 @@ export class FarmWorld {
   private lodState: Lod | null = null;
   private signature = '';
   private last: RefreshResult = { lod: 0, stride: 1, ripeInView: 0, cells: 0 };
+  /** Counts refreshes that rebuilt the instance batches; the farm view redraws the shadow map when it moves. */
+  rebuilds = 0;
   private swayOn: boolean;
   private motion: boolean;
   private time = { value: 0 };
@@ -369,6 +371,7 @@ transformed.z += cos(uTime * 1.3 + swayPhase) * 0.04 * position.y * uSway;
     const signature = `${this.version}|${win ? `${win.i0},${win.j0},${win.i1},${win.j1},${stride}` : '-'}|${lod}|${o.overlay}|${mult ? mult.join(',') : ''}|${pulse}`;
     if (signature === this.signature && !this.modelsChanged()) return this.last;
     this.signature = signature;
+    this.rebuilds++;
     for (const batch of this.batches.values()) batch.count = 0;
     this.debug.tileColors = [];
     if (!win) {
