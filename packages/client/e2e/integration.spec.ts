@@ -277,7 +277,7 @@ test('live clock catches up offline, speed cannot mint ticks and reset needs con
 });
 
 async function gutterClick(page: Page, line: number): Promise<void> {
-  await page.locator('#editor .margin-view-overlays .line-numbers', { hasText: new RegExp(`^${line}$`) }).click();
+  await page.locator('#editor .cm-lineNumbers .cm-gutterElement', { hasText: new RegExp(`^${line}$`) }).click();
 }
 
 test('a breakpoint pauses a bot at the chosen line and stepLine advances one line', async ({ page }) => {

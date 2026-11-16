@@ -155,17 +155,6 @@ h1, h2, h3 { margin: 0; }
 #debugger .stack { color: var(--mist-2); font-size: 11px; margin-top: 4px; }
 #debugger:empty::before { content: 'Set a breakpoint by clicking beside a line number (or F9), then Run. Variables for each bot show here.'; color: #7FA9A5; }
 
-/* monaco decorations */
-.bp-glyph { background: var(--rose); border-radius: 50%; width: 10px !important; height: 10px !important; margin: 5px 0 0 5px; box-shadow: 0 0 0 2px rgba(232,135,90,.25); }
-.bot-line { background: rgba(255,198,90,.07); }
-.bot-line.paused { background: rgba(255,198,90,.22); }
-.bot-marker { width: 4px !important; margin-left: 3px; border-radius: 2px; }
-.bot-marker.bot-0 { background: #FFC65A; } .bot-marker.bot-1 { background: #D97742; } .bot-marker.bot-2 { background: #8EA98B; } .bot-marker.bot-3 { background: #7FB7D9; }
-.bot-marker.bot-4 { background: #C792EA; } .bot-marker.bot-5 { background: #F28FAD; } .bot-marker.bot-6 { background: #A6E3A1; } .bot-marker.bot-7 { background: #F9E2AF; }
-.heat { width: 3px !important; margin-left: 9px; border-radius: 2px; }
-.heat-1 { background: rgba(217,119,66,.2); } .heat-2 { background: rgba(217,119,66,.35); } .heat-3 { background: rgba(217,119,66,.55); }
-.heat-4 { background: rgba(217,119,66,.75); } .heat-5 { background: rgba(217,119,66,1); }
-
 /* status bar & toasts */
 #statusbar { display: flex; justify-content: space-between; gap: 12px; padding: 7px 20px; border-top: 1px solid var(--line-soft); background: rgba(8,28,32,.7); backdrop-filter: blur(10px); font: 12px var(--mono); color: var(--mist-2); }
 #status::before { content: ''; display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 8px; background: var(--mist-2); vertical-align: middle; }

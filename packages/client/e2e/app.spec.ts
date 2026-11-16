@@ -10,7 +10,7 @@ test.beforeEach(async ({ page }) => {
 test('greenhouse loads a real farm and a nonblank canvas', async ({ page }, testInfo) => {
   await expect(page.locator('#mode-label')).toHaveText('Sandbox');
   await expect(page.locator('#hud-tick')).toHaveText('0');
-  await expect(page.locator('#editor .monaco-editor')).toBeVisible();
+  await expect(page.locator('#editor .cm-editor')).toBeVisible();
   const buf = await page.locator('#farm-canvas').screenshot({ animations: 'disabled' });
   const colours = await page.evaluate(async (b64) => {
     const img = new Image();
@@ -34,18 +34,18 @@ test('greenhouse loads a real farm and a nonblank canvas', async ({ page }, test
   await page.screenshot({ path: testInfo.outputPath('greenhouse.png'), fullPage: true, animations: 'disabled' });
 });
 
-test('monaco completion lists the built-ins generated from the language API', async ({ page }) => {
+test('editor completion lists the built-ins generated from the language API', async ({ page }) => {
   await page.getByRole('textbox', { name: 'Sprout program for your farm bots' }).focus();
   await page.keyboard.press('ControlOrMeta+A');
   await page.keyboard.type('pla');
   const expected = API.filter((entry) => entry.name.startsWith('pla')).map((entry) => entry.name);
   expect(expected).toContain('plant');
   for (const name of expected) {
-    await expect(page.locator('.suggest-widget .monaco-list-row', { hasText: name }).first()).toBeVisible();
+    await expect(page.locator('.cm-tooltip-autocomplete li', { hasText: name }).first()).toBeVisible();
   }
   // The row carries the API signature and tick cost as its detail text.
   const plant = API.find((entry) => entry.name === 'plant')!;
-  await expect(page.locator('.suggest-widget .monaco-list-row.focused, .suggest-widget .monaco-list-row', { hasText: 'plant' }).first())
+  await expect(page.locator('.cm-tooltip-autocomplete li', { hasText: 'plant' }).first())
     .toContainText(plant.signature);
 });
 
