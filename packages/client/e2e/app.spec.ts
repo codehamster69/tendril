@@ -61,7 +61,7 @@ test('sandbox steps exactly 100, runs at selected speed and pauses durably', asy
   const tick = await page.locator('#hud-tick').textContent();
   await page.waitForTimeout(500); // Deliberately prove no new ticks while paused.
   await expect(page.locator('#hud-tick')).toHaveText(tick!);
-  await expect(page.locator('#save-status')).toHaveText(`Saved locally · tick ${tick}`);
+  await expect(page.locator('#save-status')).toHaveText(`Saved locally · tick ${Number(tick).toLocaleString("en-US")}`);
 });
 
 test('examples edit the program without resetting or starting the farm', async ({ page }) => {
