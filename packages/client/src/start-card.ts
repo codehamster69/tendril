@@ -46,6 +46,7 @@ export function mountStartCard({ loop, info, skip }: { loop: GameLoop; info: Sta
   const go = (): void => { dismissed = true; hide(); loop.run(); };
   start.addEventListener('click', go);
   window.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && visible() && !document.body.classList.contains('menu-open')) { e.preventDefault(); dismissed = true; hide(); return; } // look around or edit first; Play starts the day
     if (e.key !== 'Enter' || !visible() || e.repeat || e.ctrlKey || e.metaKey || e.altKey || e.defaultPrevented) return;
     if (document.body.classList.contains('menu-open')) return;
     if (document.activeElement && document.activeElement !== start && document.activeElement.tagName === 'BUTTON') return; // Enter on another button does that button's job
