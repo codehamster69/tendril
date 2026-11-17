@@ -8,7 +8,7 @@
   "bin": { "tendril": "src/cli.ts" },
   "scripts": {
     "test": "vitest run --reporter=dot",
-    "test:perf": "node --experimental-strip-types scripts/benchmark.ts",
+    "test:perf": "node --experimental-transform-types --disable-warning=ExperimentalWarning scripts/benchmark.ts",
     "golden:write": "node --experimental-strip-types scripts/generate-golden.ts --write",
     "typecheck": "tsc --noEmit",
     "cli": "node --experimental-strip-types src/cli.ts"

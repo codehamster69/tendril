@@ -7,7 +7,7 @@ import type { Expr, Stmt } from './ast.ts';
 
 type Pos = { x: number; y: number };
 /** Silo positions in plot order, then row order (the same order as tiles()). Empty before rules v5. */
-function silos(w: World): Pos[] {
+export function silos(w: World): Pos[] {
   const out: Pos[] = [];
   for (const p of w.plots) for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) {
     const tx = p.px * 8 + x, ty = p.py * 8 + y;
@@ -16,7 +16,7 @@ function silos(w: World): Pos[] {
   return out;
 }
 /** The barn or silo nearest the bot by Manhattan distance. Ties go to the barn, then to the earlier silo. */
-function nearestDrop(w: World, bot: Pos): Pos {
+export function nearestDrop(w: World, bot: Pos): Pos {
   let best: Pos = { x: 0, y: 0 }, bestD = Math.abs(bot.x) + Math.abs(bot.y);
   for (const s of silos(w)) {
     const d = Math.abs(bot.x - s.x) + Math.abs(bot.y - s.y);
@@ -28,16 +28,16 @@ import { compile, type CompileOptions, type Program } from './parser.ts';
 import { CompileError, SproutError } from './errors.ts';
 import { rand } from '@tendril/sim/src/weather.ts';
 
-type RecordValue = { [key: string]: Value };
-type Value = number | string | boolean | null | Value[] | RecordValue | FunctionValue | Builtin;
-interface FunctionValue { functionName: string; params: string[]; body: Stmt[] }
-interface Builtin { builtin: string }
-interface Frame { fn: string; line: number; locals: Map<string, Value>; declarations: Set<string> }
-interface BotState {
+export type RecordValue = { [key: string]: Value };
+export type Value = number | string | boolean | null | Value[] | RecordValue | FunctionValue | Builtin;
+export interface FunctionValue { functionName: string; params: string[]; body: Stmt[] }
+export interface Builtin { builtin: string }
+export interface Frame { fn: string; line: number; locals: Map<string, Value>; declarations: Set<string> }
+export interface BotState {
   bot: number; line: number | null; status: BotDebug['status']; globals: Map<string, Value>; frames: Frame[];
   generator: Generator<Event, void, void>; rng: number;
 }
-interface Event { k: 'line' | 'work' | 'action'; line: number }
+export interface Event { k: 'line' | 'work' | 'action'; line: number }
 export interface ScriptError { bot: number; line: number; col: number; tick: number; message: string }
 export interface OutputLine { bot: number; tick: number; text: string }
 export interface BotDebug { bot: number; line: number | null; status: 'ready' | 'busy' | 'thinking' | 'paused' | 'done' | 'error'; vars: { name: string; value: string }[]; stack: { fn: string; line: number }[] }
@@ -51,19 +51,19 @@ export interface ScriptRun {
   /** True once the run stopped because it spent its `stepBudget`. */
   readonly exhausted: boolean;
 }
-class ReturnFlow { constructor(readonly value: Value) {} }
-class LoopFlow { constructor(readonly kind: 'break' | 'continue') {} }
-class StopFlow {}
-const MAX_COLLECTION = 100_000;
-const numeric = (v: Value): number => { if (typeof v !== 'number' || !Number.isSafeInteger(v)) throw new SproutError('Expected an integer.'); return v; };
-const bounded = (n: number): number => { if (!Number.isSafeInteger(n)) throw new SproutError('Number too large.'); return n; };
-const list = (v: Value): Value[] => { if (!Array.isArray(v)) throw new SproutError('Expected a list.'); return v; };
-const record = (v: Value): RecordValue => {
+export class ReturnFlow { constructor(readonly value: Value) {} }
+export class LoopFlow { constructor(readonly kind: 'break' | 'continue') {} }
+export class StopFlow {}
+export const MAX_COLLECTION = 100_000;
+export const numeric = (v: Value): number => { if (typeof v !== 'number' || !Number.isSafeInteger(v)) throw new SproutError('Expected an integer.'); return v; };
+export const bounded = (n: number): number => { if (!Number.isSafeInteger(n)) throw new SproutError('Number too large.'); return n; };
+export const list = (v: Value): Value[] => { if (!Array.isArray(v)) throw new SproutError('Expected a list.'); return v; };
+export const record = (v: Value): RecordValue => {
   if (!v || typeof v !== 'object' || Array.isArray(v) || 'builtin' in v || 'functionName' in v) throw new SproutError('Expected a record.');
   return v;
 };
-const truth = (v: Value): boolean => v !== null && v !== false && v !== 0 && v !== '' && (!Array.isArray(v) || v.length > 0) && (typeof v !== 'object' || !v || Array.isArray(v) || Object.keys(v).length > 0);
-const text = (v: Value, seen = new Set<object>(), depth = 0): string => {
+export const truth = (v: Value): boolean => v !== null && v !== false && v !== 0 && v !== '' && (!Array.isArray(v) || v.length > 0) && (typeof v !== 'object' || !v || Array.isArray(v) || Object.keys(v).length > 0);
+export const text = (v: Value, seen = new Set<object>(), depth = 0): string => {
   if (v === null) return 'none'; if (typeof v === 'boolean') return v ? 'true' : 'false';
   if (typeof v !== 'object') return String(v);
   if ('builtin' in v) return v.builtin as string;
@@ -72,19 +72,19 @@ const text = (v: Value, seen = new Set<object>(), depth = 0): string => {
   const out = Array.isArray(v) ? `[${v.map((x) => text(x, seen, depth + 1)).join(', ')}]` : `{${Object.entries(v).map(([k, x]) => `${k}: ${text(x, seen, depth + 1)}`).join(', ')}}`;
   seen.delete(v); return out.slice(0, MAX_COLLECTION);
 };
-const nameOf = (v: Value): string => typeof v === 'string' ? v : v && typeof v === 'object' && 'builtin' in v ? String(v.builtin) : text(v);
-const index = (v: Value, size: number, allowEnd = false): number => {
+export const nameOf = (v: Value): string => typeof v === 'string' ? v : v && typeof v === 'object' && 'builtin' in v ? String(v.builtin) : text(v);
+export const index = (v: Value, size: number, allowEnd = false): number => {
   const n = numeric(v), i = n < 0 ? size + n : n;
   if (i < 0 || i >= size + (allowEnd ? 1 : 0)) throw new SproutError('List index is outside its range.'); return i;
 };
-function equal(a: Value, b: Value, depth = 0): boolean {
+export function equal(a: Value, b: Value, depth = 0): boolean {
   if (a === b) return true;
   if (depth > 100 || a === null || b === null || typeof a !== 'object' || typeof b !== 'object' || Array.isArray(a) !== Array.isArray(b)) return false;
   const ak = Object.keys(a), bk = Object.keys(b); if (ak.length !== bk.length) return false;
   return ak.every((k) => Object.hasOwn(b, k) && equal((a as RecordValue)[k]!, (b as RecordValue)[k]!, depth + 1));
 }
-const member = (value: Value, collection: Value): boolean => typeof collection === 'string' ? collection.includes(nameOf(value)) : Array.isArray(collection) ? collection.some((x) => equal(x, value)) : Object.hasOwn(record(collection), nameOf(value));
-function binary(op: string, a: Value, b: Value): Value {
+export const member = (value: Value, collection: Value): boolean => typeof collection === 'string' ? collection.includes(nameOf(value)) : Array.isArray(collection) ? collection.some((x) => equal(x, value)) : Object.hasOwn(record(collection), nameOf(value));
+export function binary(op: string, a: Value, b: Value): Value {
   if (op === '==') return equal(a, b); if (op === '!=') return !equal(a, b);
   if (op === 'in' || op === 'not in') { const found = member(a, b); return op === 'in' ? found : !found; }
   if (op === '+' && (typeof a === 'string' || typeof b === 'string')) { const s = text(a) + text(b); if (s.length > MAX_COLLECTION) throw new SproutError('String is too long.'); return s; }
@@ -324,12 +324,15 @@ class Run implements ScriptRun {
   close(): void { this.closed = true; this.bots = []; }
 }
 export interface RunOptions extends CompileOptions {
+  /** Which engine runs the program. Default 'compiled'. 'reference' is the tree-walking interpreter in this file. */
+  engine?: 'compiled' | 'reference';
   /** Total elements and characters the program may allocate over the whole run. Absent: unlimited (the player's own machine). The source check sets it. */
   allocationBudget?: number;
   /** Total interpreter steps the program may run over the whole run, all bots together. Absent: unlimited. The source check sets it; the run stops with `exhausted` set when it is spent. */
   stepBudget?: number;
 }
-export function createRun(world: World, source: string, opts?: RunOptions): ScriptRun {
+/** The reference interpreter: slow, and the definition of correct. The compiled engine must match it exactly (see test/equivalence.test.ts). */
+export function createReferenceRun(world: World, source: string, opts?: RunOptions): ScriptRun {
   const result = compile(source, opts); if (!result.program) throw new CompileError(result.diagnostics);
   return new Run(world, result.program, opts?.allocationBudget, opts?.stepBudget);
 }
