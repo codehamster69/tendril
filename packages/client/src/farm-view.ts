@@ -364,6 +364,9 @@ export class FarmView {
   /** Turn the camera around the farm by an angle (the sunset result orbit). */
   orbitBy(radians: number): void { if (!this.disposed) { this.rig.spin(radians); this.wake(); } }
 
+  /** True while the camera is still easing or the frame is still sliding beside the code slate (tests and tooling). */
+  get cameraMoving(): boolean { return !this.disposed && this.rig.moving; }
+
   /** Move the camera over a world position (minimap). */
   jumpTo(x: number, z: number): void {
     if (this.disposed) return;
@@ -582,7 +585,7 @@ export class FarmView {
     this.renderer.render(this.scene, this.camera);
     this.canvas.dataset.sceneReady = String(this.world.tileCount > 0);
     if (this.world.tileCount > 0) boot.done('frame');
-    return this.camMoved || dronesMoving || this.fx.active || this.light.busy;
+    return this.camMoved || this.rig.moving || dronesMoving || this.fx.active || this.light.busy;
   }
 
   private updateMinimap(): void {

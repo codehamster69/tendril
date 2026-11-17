@@ -378,6 +378,17 @@ export class FarmCamera {
     const r = this.dom.getBoundingClientRect();
     return [(x - r.left) / (r.width || 1) * 2 - 1, -((y - r.top) / (r.height || 1) * 2 - 1)];
   }
+  /** True while the shown pose is still easing toward the goal (or a slide, glide or key pan is under way). The farm
+   *  view keeps drawing while this holds, so a slow or skipped frame (dt 0 after a long gap) can never stop the loop
+   *  with the camera short of where it is going. */
+  get moving(): boolean {
+    if (this.disposed) return false;
+    const c = this.cur, d = this.des;
+    return this.insetT < 1 || this.keys.size > 0 || Math.abs(this.panVel.x) + Math.abs(this.panVel.z) > 0.01
+      || Math.abs(d.tx - c.tx) > 1e-3 || Math.abs(d.tz - c.tz) > 1e-3 || Math.abs(d.dist - c.dist) > 1e-3
+      || Math.abs(d.pitch - c.pitch) > 1e-4 || Math.abs(wrapAngle(d.yaw - c.yaw)) > 1e-4;
+  }
+
   private place(force: boolean): void {
     const { w, h } = this.canvasSize();
     applyInset(this.camera, this.insetNow, w, h);

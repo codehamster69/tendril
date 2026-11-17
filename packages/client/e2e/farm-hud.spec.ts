@@ -10,7 +10,11 @@ const pose = (page: Page) => page.locator('#farm-canvas').evaluate((c) => c.data
 async function settled(page: Page): Promise<void> {
   // Software-rendered frames can be slow, so require three equal readings in a row, not one.
   let last = '', same = 0;
-  await expect.poll(async () => { const now = await pose(page); same = now === last ? same + 1 : 0; last = now; return same; }, { intervals: [350], timeout: 20_000 }).toBeGreaterThanOrEqual(3);
+  // The pose alone misses the frame sliding beside the code slate (that only moves the projection), so also wait for the rig.
+  await expect.poll(async () => {
+    const now = await pose(page); const moving = await page.evaluate(() => window.tendril!.view.cameraMoving);
+    same = now === last && !moving ? same + 1 : 0; last = now; return same;
+  }, { intervals: [350], timeout: 20_000 }).toBeGreaterThanOrEqual(3);
 }
 
 async function open(page: Page): Promise<void> {
