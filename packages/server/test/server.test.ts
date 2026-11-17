@@ -110,13 +110,13 @@ afterEach(() => { db.close(); });
 
 describe('migrations', () => {
   it('are idempotent, recorded in schema_version, and applied lazily on the first request', async () => {
-    expect(await db.query('SELECT version FROM schema_version')).toEqual([{ version: 1 }, { version: 2 }, { version: 3 }, { version: 4 }, { version: 5 }, { version: 6 }, { version: 7 }, { version: 8 }]);
+    expect(await db.query('SELECT version FROM schema_version')).toEqual([{ version: 1 }, { version: 2 }, { version: 3 }, { version: 4 }, { version: 5 }, { version: 6 }, { version: 7 }, { version: 8 }, { version: 9 }]);
     expect(await migrate(db)).toEqual([]);
     const fresh = createDb({ url: ':memory:' });
     try {
       const lazy = createApp({ db: fresh, env, fetch: github.fetch, setupVersion: 0, now: () => time });
       expect((await lazy(new Request('http://localhost:8787/api/stats'))).status).toBe(200);
-      expect(await fresh.query('SELECT version FROM schema_version')).toEqual([{ version: 1 }, { version: 2 }, { version: 3 }, { version: 4 }, { version: 5 }, { version: 6 }, { version: 7 }, { version: 8 }]);
+      expect(await fresh.query('SELECT version FROM schema_version')).toEqual([{ version: 1 }, { version: 2 }, { version: 3 }, { version: 4 }, { version: 5 }, { version: 6 }, { version: 7 }, { version: 8 }, { version: 9 }]);
     } finally { fresh.close(); }
   });
   it('persist in a file database across reopen', async () => {
@@ -179,7 +179,7 @@ describe('dev login and farms', () => {
   });
   it('generates a pinned checkpoint and returns the existing active farm', async () => {
     expect(farm).toEqual({
-      id: expect.any(String), seed: expect.any(Number), startedAtMs: BASE, tick: 0,
+      id: expect.any(String), seed: expect.any(Number), startedAtMs: BASE, restedMs: 0, tick: 0,
       checkpoint: expect.any(String), checkpointHash: expect.stringMatching(/^[0-9a-f]{8}$/),
       rulesVersion: BASE_RULES_VERSION, coins: 0, netWorth: 0,
     });
@@ -367,6 +367,73 @@ describe('GitHub OAuth', () => {
 });
 
 describe('rules v5 on Endless farms (SIM_SPEC 5.5)', () => {
+  describe('farm rests (6 hour cap)', () => {
+    const CAP = 6 * HOUR_MS;
+    const wake = (atTick = 0, token = user.token) => request('/farms/wake', { token, body: { atTick } });
+    it('adds nothing while the farm is within the cap, and never moves startedAt', async () => {
+      time = BASE + CAP; // exactly at the cap
+      const res = await wake();
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual({ ...farm, restedNowMs: 0 });
+    });
+    it('rests exactly the excess, once, and tightens the server clock check', async () => {
+      time = BASE + 58 * HOUR_MS;
+      const first = await (await wake()).json() as FarmResponse & { restedNowMs: number };
+      expect(first.restedMs).toBe(52 * HOUR_MS);
+      expect(first.restedNowMs).toBe(52 * HOUR_MS);
+      expect(first.startedAtMs).toBe(BASE);
+      expect(first.tick).toBe(0);
+      const again = await (await wake()).json() as FarmResponse & { restedNowMs: number };
+      expect(again.restedMs).toBe(52 * HOUR_MS);
+      expect(again.restedNowMs).toBe(0);
+      expect((await myFarm()).restedMs).toBe(52 * HOUR_MS);
+      // Chunks are at most 20,000 ticks, so the clock bound itself is covered by the unit-level check below; a normal chunk still verifies.
+      expect((await submit(chunkBody([], 100))).status).toBe(200);
+    });
+    it('keeps ticks the player already simulated offline (atTick) and never hands out extra time', async () => {
+      time = BASE + 58 * HOUR_MS;
+      const local = 1_000_000; // played 1M ticks locally, unsynced
+      const res = await (await wake(local)).json() as FarmResponse;
+      expect(res.restedMs).toBe(58 * HOUR_MS - local * 100 - CAP < 0 ? 0 : 58 * HOUR_MS - local * 100 - CAP);
+      // A claim far beyond the clock only means no rest at all; it can never lower rested_ms or add ticks.
+      const huge = await (await wake(Number.MAX_SAFE_INTEGER)).json() as FarmResponse;
+      expect(huge.restedMs).toBe(res.restedMs);
+      time += 10 * HOUR_MS;
+      const later = await (await wake()).json() as FarmResponse;
+      expect(later.restedMs).toBeGreaterThanOrEqual(res.restedMs);
+    });
+    it('the clock check subtracts rested time', async () => {
+      app = createApp({ db, env, fetch: github.fetch, setupVersion: 0, now: () => time, chunkAttemptsPerHour: 100 });
+      time = BASE + 7 * HOUR_MS; // plain clock: tick 252,000
+      expect((await wake()).status).toBe(200); // rests 1 hour: clock is tick 216,000 now
+      let cur = await myFarm();
+      expect(cur.restedMs).toBe(HOUR_MS);
+      for (let from = 0; from < 216_000; from += 20_000) {
+        const res = await submit(chunkBody([], Math.min(216_000, from + 20_000), cur));
+        expect(res.status).toBe(200);
+        cur = await myFarm();
+      }
+      expect(cur.tick).toBe(216_000);
+      const ahead = await submit(chunkBody([], 216_001, cur));
+      expect(ahead.status).toBe(422);
+      expect(((await ahead.json()) as { error: string }).error).toContain('ahead of server clock');
+    });
+    it('rests again after a second long absence, always back to the cap', async () => {
+      time = BASE + 20 * HOUR_MS;
+      expect((await (await wake()).json() as FarmResponse).restedMs).toBe(14 * HOUR_MS);
+      time += 30 * HOUR_MS; // away again with nothing synced
+      expect((await (await wake()).json() as FarmResponse).restedMs).toBe(44 * HOUR_MS);
+    });
+    it('validates input and ownership', async () => {
+      expect((await request('/farms/wake', { token: user.token, body: {} })).status).toBe(422);
+      expect((await request('/farms/wake', { token: user.token, body: { atTick: -1 } })).status).toBe(422);
+      expect((await request('/farms/wake', { token: user.token, body: { atTick: 1.5 } })).status).toBe(422);
+      expect((await request('/farms/wake', { token: user.token, body: { atTick: 0, x: 1 } })).status).toBe(422);
+      expect((await wake(0, 'fake')).status).toBe(401);
+      const other = await login('No farm');
+      expect((await wake(0, other.token)).status).toBe(404);
+    });
+  });
   it('silos switch on at SILO_EPOCH from the start time; the stored checkpoint stays readable by older builds', async () => {
     time = SILO_EPOCH_MS - 50 * 100; // this farm reaches the epoch at tick 50
     const owner = await login('Silo farmer');

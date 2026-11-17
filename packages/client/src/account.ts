@@ -3,6 +3,9 @@ import type { FarmResponse, Profile } from './api-client';
 import type { RealSim } from './real-sim';
 import { el, toast } from './palette';
 import { syncOnce } from './autosync';
+import { kvGetMany } from './store';
+import { MS_PER_TICK, targetTick } from './clock';
+import type { LogChunk } from './chunks';
 
 /** Connects the Endless farm, if requested. Falls back to local play with a toast. */
 /** Starts the same sign-in flow as the account dialog's GitHub button. Set by mountAccount. */
@@ -10,8 +13,33 @@ let signInStarter: () => void = () => {};
 export const startSignIn = (): void => signInStarter();
 
 /** `implicit`: opened because the player is signed in, not because they asked; a stale sign-in then falls back quietly. */
+/** Farm rests: more than this behind the clock and the server pauses the farm's clock at the cap (server REST_CAP_MS). */
+const REST_CAP_MS = 6 * 3_600_000;
+
+/** If the farm is further behind than the cap, ask the server to rest the excess; says so in a toast. Offline or failing: carry on unrested. */
+async function wakeIfBehind(api: FarmApi, farm: FarmResponse): Promise<FarmResponse> {
+  const meta = { seed: farm.seed, startedAtMs: farm.startedAtMs, restedMs: farm.restedMs ?? 0, mode: 'live' as const };
+  // Ticks this device already simulated but has not synced (a farm played offline) are never rested away.
+  let local = farm.tick;
+  try {
+    const key = `ranked.${farm.id}.pendingLog`;
+    const log = (await kvGetMany<Record<string, unknown>>([key]))[key] as LogChunk[] | undefined;
+    const last = log?.[log.length - 1];
+    if (last && Number.isSafeInteger(last.toTick)) local = Math.max(local, last.toTick);
+  } catch { /* no local save */ }
+  if ((targetTick(meta, Date.now()) - local) * MS_PER_TICK <= REST_CAP_MS) return farm;
+  try {
+    const woken = await api.wake(local);
+    if (woken.restedNowMs > 0) {
+      const hours = Math.round(woken.restedNowMs / 3_600_000);
+      toast('Your farm rested', `It rested for ${hours} ${hours === 1 ? 'hour' : 'hours'} while you were away. It ran for the first 6 hours.`);
+    }
+    return woken;
+  } catch { return farm; }
+}
+
 export async function connectRanked(api: FarmApi, implicit = false): Promise<FarmResponse | undefined> {
-  try { return await api.farm(); } catch (e) {
+  try { return await wakeIfBehind(api, await api.farm()); } catch (e) {
     if (e instanceof ApiError && e.status === 404) return api.createFarm();
     if (implicit && e instanceof ApiError && e.status === 401) { setSignedInHint(false); return undefined; }
     toast('Could not connect Endless farm', e instanceof Error ? e.message : 'Sign in first.');
