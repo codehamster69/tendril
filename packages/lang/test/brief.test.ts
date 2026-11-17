@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { createWorld, hashWorld } from '@tendril/sim/src/index.ts';
 import { API, createRun } from '../src/index.ts';
-import type { BriefFields } from '../src/brief.ts';
+import type { BriefState } from '@tendril/sim/src/index.ts';
 
-// K1 adds these fields to the world; until it merges they are stubbed onto a plain world.
-const briefWorld = (fields: BriefFields) => Object.assign(createWorld({ id: 'brief', seed: 5 }, { coins: 5000, unlocks: 511 }), fields);
+type Fields = { brief: BriefState & { deposited?: number[] }; weatherBias?: number };
+const briefWorld = (fields: Fields) => Object.assign(createWorld({ id: 'brief', seed: 5 }, { coins: 5000, unlocks: 511 }), fields);
 const probe = 'say goal()\nsay budget()\nsay twists()\nsay quota(carrot)\nsay quota(pumpkin)\nsay bot_cap()\nsay plot_cap()\nsay bot_cap() is none';
-const both = (fields: BriefFields | null, source = probe) => {
+const both = (fields: Fields | null, source = probe) => {
   const outs = (['reference', 'compiled'] as const).map((engine) => {
     const world = fields ? briefWorld(fields) : createWorld({ id: 'brief', seed: 5 }, { coins: 5000, unlocks: 511 });
     const r = createRun(world, source, { engine }); r.step(50);
@@ -29,12 +29,12 @@ describe('brief queries', () => {
     expect(r.text).toEqual(['wealth', '0', '[]', '0', '0', 'none', 'none', 'true']);
   });
   it('read the brief on both engines', () => {
-    const r = both({ goal: { kind: 'festival', budget: 3000, quotas: [0, 10, 0, 0, 4, 0, 0, 0] }, botCap: 3, twistKeys: ['drought', 'bot_cap'], deposited: [0, 4, 0, 0, 1, 0, 0, 0] });
+    const r = both({ brief: { goal: { kind: 'festival', budget: 3000, quotas: [0, 10, 0, 0, 4, 0, 0, 0] }, maxBots: 3, deposited: [0, 4, 0, 0, 1, 0, 0, 0] }, weatherBias: 2 });
     expect(r.errors).toEqual([]);
     expect(r.text).toEqual(['festival', '3000', '[drought, bot_cap]', '6', '3', '3', 'none', 'false']);
   });
   it('never go below zero once a quota is filled', () => {
-    const r = both({ goal: { kind: 'festival', budget: 3000, quotas: [0, 2, 0, 0, 0, 0, 0, 0] }, deposited: [0, 9, 0, 0, 0, 0, 0, 0] }, 'say quota(carrot)');
+    const r = both({ brief: { goal: { kind: 'festival', budget: 3000, quotas: [0, 2, 0, 0, 0, 0, 0, 0] }, deposited: [0, 9, 0, 0, 0, 0, 0, 0] } }, 'say quota(carrot)');
     expect(r.text).toEqual(['0']);
   });
   it('reject an unknown item and cost no ticks', () => {
