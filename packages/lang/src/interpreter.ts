@@ -24,6 +24,7 @@ export function nearestDrop(w: World, bot: Pos): Pos {
   }
   return best;
 }
+import { briefBotCap, briefBudget, briefGoal, briefPlotCap, briefQuota, briefTwists } from './brief.ts';
 import { compile, type CompileOptions, type Program } from './parser.ts';
 import { CompileError, SproutError } from './errors.ts';
 import { rand } from '@tendril/sim/src/weather.ts';
@@ -264,6 +265,8 @@ class Run implements ScriptRun {
       case 'plot_cost': return plotCost(w); case 'bot_cost': return botCost(w); case 'unlocked': return isUnlocked(w, unlock(0)); case 'unlock_cost': return UNLOCKS[unlock(0)]!.price; case 'price': { const i = item(0); if (i > 7) throw new SproutError('Compost has no price.'); return w.prices ? w.prices[i]! : ITEMS[i]!.price; }
       case 'silo_cost': return silosActive(w) ? siloCost(w) : 0;
       case 'silos': return silos(w);
+      case 'goal': return briefGoal(w); case 'budget': return briefBudget(w); case 'twists': return briefTwists(w);
+      case 'quota': return briefQuota(w, item(0)); case 'bot_cap': return briefBotCap(w); case 'plot_cap': return briefPlotCap(w);
       case 'nearest_drop': return nearestDrop(w, bot);
       case 'say': case 'print': { if (this.output.length < 2000) this.output.push({ bot: b.bot, tick: w.tick, text: a.map((v) => text(v)).join(' ').slice(0, 2000) }); return null; }
       case 'len': { const v = arg(0); return typeof v === 'string' || Array.isArray(v) ? v.length : Object.keys(record(v)).length; }

@@ -14,6 +14,7 @@
 //
 // The generated source is built from fixed text plus JSON-encoded names and integers taken from the parsed program,
 // never from raw program text, so a Sprout program cannot inject JavaScript.
+import { briefBotCap, briefBudget, briefGoal, briefPlotCap, briefQuota, briefTwists } from './brief.ts';
 import {
   applyAction, BUILDINGS, capacity, CROPS, FARM_OPS, forecast, isUnlocked, ITEMS, OP, openOrders, plotCost, botCost,
   scanAt, silosActive, siloCost, UNLOCKS, weatherAt, tickWorld,
@@ -216,6 +217,8 @@ def('unlock_cost', (_R, _b, a) => UNLOCKS[unlockIndex('unlock_cost', a, 0)]!.pri
 def('price', (R, _b, a) => { const i = item('price', a, 0); if (i > 7) throw new SproutError('Compost has no price.'); return R.world.prices ? R.world.prices[i]! : ITEMS[i]!.price; });
 def('silo_cost', (R) => (silosActive(R.world) ? siloCost(R.world) : 0));
 def('silos', (R) => silos(R.world));
+def('goal', (R) => briefGoal(R.world)); def('budget', (R) => briefBudget(R.world)); def('twists', (R) => briefTwists(R.world));
+def('quota', (R, _b, a) => briefQuota(R.world, item('quota', a, 0))); def('bot_cap', (R) => briefBotCap(R.world)); def('plot_cap', (R) => briefPlotCap(R.world));
 def('nearest_drop', (R, b) => nearestDrop(R.world, R.world.bots[b.bot]!));
 const say: Handler = (R, b, a) => { if (R.output.length < 2000) R.output.push({ bot: b.bot, tick: R.world.tick, text: a.map((v) => text(v)).join(' ').slice(0, 2000) }); return null; };
 def('say', say); def('print', say);
