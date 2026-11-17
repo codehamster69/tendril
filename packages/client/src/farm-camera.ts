@@ -191,7 +191,7 @@ export class FarmCamera {
     this.insetFrom = this.insetNow; this.insetTo = to; this.insetT = 0;
     if (snap || this.reducedMotion()) { this.insetNow = to; this.insetT = 1; }
     if (this.framed) this.fit(false);   // re-frame the farm in the new free area
-    else this.place(true);
+    this.place(true);                   // apply the new offset now: a snapped inset gets no eased frame to do it
   }
 
   /** Glide the target over a ground point and keep the distance (double-click, the splash, the result screen). */
@@ -228,6 +228,7 @@ export class FarmCamera {
     }
     this.framed = true;
     if (snap) { Object.assign(this.cur, this.des); this.place(true); }
+    else this.requestRender?.();        // the eased move needs frames even if the view had stopped drawing
   }
 
   focus(x: number, z: number, o: { dist?: number; snap?: boolean } = {}): void {
