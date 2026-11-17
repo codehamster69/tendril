@@ -112,6 +112,7 @@ export class GameLoop {
     this.last = performance.now();
     this.acc = 0;
     this.running = true;
+    if (this.sim.paused) void this.sim.resume().catch(() => {}); // Finish the tick a breakpoint or line step interrupted.
     this.updateStatus();
   }
 

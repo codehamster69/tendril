@@ -111,4 +111,4 @@ window.addEventListener('pageshow', (e) => { if (e.persisted) location.reload();
 void loop.setBreakpoints(editor.breakpoints());
 // ?stress=1 | small: a fixed, local-only farm (its own sandbox keyspace, never synced). Rebuilt from the same seed on every load.
 if (stress) void loop.init(scenario, stress.source).then(() => { boot.done('worker'); }).then(() => loop.startScenario({ ...stress.scenario, seed: stress.seed, source: stress.source })).then(() => loop.step(stress.warmupTicks)).then(() => loop.run()).catch(() => {});
-else void loop.init(scenario, editor.getSource()).then(() => boot.done('worker')).catch((e: unknown) => boot.fail(e instanceof Error ? e.message : 'The simulation could not start.'));
+else void loop.init(scenario, editor.getSource()).then(() => boot.done('worker')).catch(() => boot.release());

@@ -79,6 +79,8 @@ export const boot = {
     if (ended) return;
     (window as unknown as { __splashFail?: (m: string) => void }).__splashFail?.(message);
   },
+  /** Loading failed in a way the game itself reports (console, status): drop the splash so the player can see it and recover. */
+  release(): void { finish(); },
   /** Resolves once the splash is gone and the game is showing. First-run prompts wait on this. */
   whenReady: (): Promise<void> => readyPromise,
   /** Names of steps still pending (for tests and the failure message). */
