@@ -20,7 +20,7 @@ export class Timeline {
   private checkpoints: { tick: number; next: number; state: string }[] = [];
   private finalWorth = 0;
 
-  constructor(private kind: ChallengeKind, private seed: number, ticks: number, private actions: LogEntry[], private setupVersion: number = SETUP_LEGACY, private prices: number[] | null = null) {
+  constructor(private kind: ChallengeKind, private seed: number, ticks: number, private actions: LogEntry[], private setupVersion: number = SETUP_LEGACY, private prices: number[] | null = null, private rulesVersion?: number) {
     this.ticks = ticks;
     this.world = this.fresh();
     this.checkpoints.push({ tick: 0, next: 0, state: serialize(this.world) });
@@ -29,7 +29,7 @@ export class Timeline {
     this.seek(0);
   }
 
-  private fresh(): World { return createWorld({ id: 'replay', seed: this.seed }, challengeSetup(this.kind, this.seed, this.setupVersion, this.prices ? { p: this.prices } : null).setup); }
+  private fresh(): World { return createWorld({ id: 'replay', seed: this.seed }, challengeSetup(this.kind, this.seed, this.setupVersion, this.prices ? { p: this.prices } : null, this.rulesVersion).setup); }
 
   /** Net worth at the last tick of the run, from a full re-run. */
   get finalNetWorth(): number { return this.finalWorth; }

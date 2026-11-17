@@ -120,7 +120,7 @@ export async function getChallenge(id: string): Promise<Challenge> {
 /** Run a Sprout file on the challenge's world, then replay its log with par tracking (the same check the server makes). */
 export function playLocal(c: Challenge, source: string): LastRun & { errors: string[] } {
   if (!SUPPORTED_RULES_VERSIONS.includes(c.rulesVersion)) throw new Error('This day needs a newer Tendril. Update the CLI.');
-  const { setup } = challengeSetup(c.kind, c.seed, c.setupVersion ?? SETUP_LEGACY, c.market ? { p: c.market.prices } : null);
+  const { setup } = challengeSetup(c.kind, c.seed, c.setupVersion ?? SETUP_LEGACY, c.market ? { p: c.market.prices } : null, c.rulesVersion);
   if (c.market && marketPrices(c.market.multipliers).some((p, i) => p !== c.market!.prices[i])) throw new Error('The challenge has an invalid price table.');
   const run = createRun(createWorld({ id: c.id, seed: c.seed }, setup), source);
   for (let left = c.ticks; left > 0; left -= Math.min(left, 20_000)) run.step(Math.min(left, 20_000));

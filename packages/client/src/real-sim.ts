@@ -1,6 +1,6 @@
 // Main-thread worker wrapper. Commands finish after checkpoint and logs are durable.
 import { perfHook } from './perf-meter';
-import { deserialize, hashWorld, replayChunk } from '@tendril/sim/src/index.ts';
+import { deserialize, endlessSiloTick, hashWorld, replayChunk, withEndlessSilos } from '@tendril/sim/src/index.ts';
 import type { LogEntry } from '@tendril/sim/src/index.ts';
 import type { ChunkResponse, FarmResponse } from './api-client';
 import { targetTick, type Meta, type Mode } from './clock';
@@ -114,7 +114,7 @@ export class RealSim implements SimSource {
       if (restored.seed !== meta!.seed || (authoritative && restored.id !== authoritative.id)) throw new Error('Saved world does not match farm metadata.');
       if (saved[keys[4]] && hashWorld(restored) !== saved[keys[4]]) throw new Error('Saved checkpoint hash mismatch.');
       if (this.accepted) {
-        const replay = deserialize(this.accepted.farm.checkpoint);
+        const replay = withEndlessSilos(deserialize(this.accepted.farm.checkpoint), this.accepted.farm.startedAtMs);
         for (const chunk of this.pendingLog) {
           if (chunk.fromTick !== replay.tick || chunk.fromHash !== hashWorld(replay)) throw new Error('Saved pending log chain is inconsistent. Logs retained.');
           replayChunk(replay, chunk.actions, chunk.toTick);
@@ -128,7 +128,13 @@ export class RealSim implements SimSource {
     this.viewEvents = [];
     source = recovering ? (saved[keys[3]] as string | undefined) ?? source : source;
     const nextMeta = meta ?? this.newMeta();
-    await this.command({ type: 'init', saved: world ?? null, seed: nextMeta.seed, source, scenario: this.scenario }, nextMeta, source);
+    await this.command({ type: 'init', saved: world ?? null, seed: nextMeta.seed, source, scenario: this.silos(this.scenario, nextMeta) }, nextMeta, source);
+  }
+
+  /** Endless and sandbox farms get silos by the clock (rules v5, SILO_EPOCH); challenges and lessons take theirs from their setup. */
+  private silos(scenario: Scenario, meta: Meta): Scenario {
+    if (scenario.kind !== 'live' && scenario.kind !== 'sandbox') return scenario;
+    return { ...scenario, siloTick: endlessSiloTick(meta.startedAtMs) };
   }
 
   setSource(source: string): Promise<void> {
@@ -144,7 +150,7 @@ export class RealSim implements SimSource {
       const scenario = over.scenario ?? this.scenario;
       // Never delete the old save first: replace all related keys atomically.
       this.scenario = scenario;
-      return this.command({ type: 'reset', seed: meta.seed, source, scenario }, meta, source, true);
+      return this.command({ type: 'reset', seed: meta.seed, source, scenario: this.silos(scenario, meta) }, meta, source, true);
     });
   }
 
@@ -197,7 +203,7 @@ export class RealSim implements SimSource {
     return this.enqueue(async () => {
       validateFarm(farm);
       if (!this.accepted || !this.snap || farm.id !== this.meta.farmId || farm.seed !== this.meta.seed || farm.startedAtMs !== this.meta.startedAtMs || farm.tick < this.accepted.farm.tick || farm.tick > this.snap.tick) throw new Error('Server checkpoint cannot be reconciled with retained local history. No logs were removed.');
-      const w = deserialize(this.accepted.farm.checkpoint);
+      const w = withEndlessSilos(deserialize(this.accepted.farm.checkpoint), farm.startedAtMs);
       for (const chunk of this.pendingLog) {
         if (chunk.fromTick >= farm.tick) break;
         replayChunk(w, chunk.actions.filter((e) => e[0] < farm.tick), Math.min(chunk.toTick, farm.tick));

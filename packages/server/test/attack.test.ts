@@ -694,7 +694,7 @@ describe('7. cross-user', () => {
     expect((await submit(chunkBody(GOOD, GOOD_TO, victim.farm), victim.user.token, victim.farm.id)).status).toBe(200);
     const r = await api(`/farms/${victim.farm.id}/replay?limit=2`);
     expect(r.status).toBe(200);
-    expect(Object.keys(r.json).sort()).toEqual(['chunks', 'nextFromTick', 'rulesVersion', 'seed']);
+    expect(Object.keys(r.json).sort()).toEqual(['chunks', 'nextFromTick', 'rulesVersion', 'seed', 'siloTick']);
     expect(r.text).not.toContain('checkpoint');
   });
 

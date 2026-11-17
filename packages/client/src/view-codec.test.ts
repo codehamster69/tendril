@@ -55,6 +55,28 @@ describe('compact view', () => {
     assert.ok(planted > 20, 'the run really grew crops');
   });
 
+  it('selling a plot and buying another (rules v5) still ends identical to snapshot()', () => {
+    const w = createWorld({ id: 'view', seed: 77 }, { coins: 1_000_000, unlocks: 0b1111111111, siloTick: 0 });
+    for (const [x, y] of [[1, 0], [2, 0], [0, 1]] as const) act(w, -1, OP.buyPlot, x, y);
+    const enc = new ViewEncoder(), store = new ViewStore();
+    const same = (): void => {
+      assert.ok(store.apply(enc.encode(w, []).update));
+      const rest = { ...store.latest()! } as Partial<ReturnType<ViewStore['latest']>> & object;
+      delete (rest as { delta?: unknown }).delta;
+      assert.deepEqual(rest, snapshot(w));
+    };
+    same();
+    act(w, 0, OP.move, 1); act(w, 0, OP.till); act(w, 0, OP.plant, 1);
+    tickWorld(w); same();
+    act(w, -1, OP.sellPlot, 1, 0 + 0); // refused: it would cut (2,0) off
+    act(w, -1, OP.sellPlot, 2, 0);
+    act(w, -1, OP.sellPlot, 0, 1);
+    act(w, -1, OP.buyPlot, 1, 1);
+    act(w, -1, OP.buyPlot, 0, 1);
+    tickWorld(w); same();
+    assert.deepEqual(w.plots.map((p) => [p.px, p.py]), [[0, 0], [1, 0], [1, 1], [0, 1]]);
+  });
+
   it('an idle farm sends near-empty updates', () => {
     const w = createWorld({ id: 'idle', seed: 7 }, { coins: 100_000 });
     for (const [x, y] of [[1, 0], [0, 1], [1, 1]] as const) act(w, -1, OP.buyPlot, x, y);

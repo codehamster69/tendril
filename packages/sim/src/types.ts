@@ -8,6 +8,8 @@ export interface Setup {
   coins?: number; unlocks?: number; weatherBias?: number;
   /** Rules v4 daily market: centicoin price per item (length 8, index 1..7; 0 and the rest unused). Absent: base prices. */
   prices?: number[];
+  /** Rules v5: silos and sellPlot work from this tick on. Challenges on or after SILO_EPOCH pass 0; Endless passes endlessSiloTick(start). */
+  siloTick?: number;
 }
 export type LogEntry = [t: number, bot: number, op: number, a?: number, b?: number];
 export type WeatherKind = 'rain' | 'frost';
@@ -24,6 +26,11 @@ export interface World {
   weatherBias?: number;
   /** Rules v4 market table in centicoins (length 8, index 1..7). Absent: base prices, exactly rules v3. */
   prices?: number[];
+  /**
+   * Rules v5: silo rules apply from this tick. Absent: none, exactly rules v3/v4. Not part of the state hash (its effects are: tiles,
+   * coins, spent), so an Endless farm can carry it without changing the hash any older client computes.
+   */
+  siloTick?: number;
 }
 export interface ScanResult {
   tilled: number; crop: number; stage: number; moisture: number; nitrogen: number; fatigue: number; barn: boolean;
@@ -41,4 +48,6 @@ export interface Snapshot {
   tiles: SnapshotTile[];
   bots: SnapshotBot[];
   stock: number[]; orders: Order[]; plotCost: number; botCost: number;
+  /** Rules v5 worlds only: price of the next silo, and what sellPlot pays now. */
+  siloCost?: number; plotRefund?: number;
 }

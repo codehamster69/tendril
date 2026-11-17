@@ -1,5 +1,5 @@
 // Pure log-chunk planning for server submission; no worker, no storage.
-import { deserialize, hashWorld, netWorth, replayChunk, SUPPORTED_RULES_VERSIONS, serialize } from '@tendril/sim/src/index.ts';
+import { deserialize, hashWorld, netWorth, replayChunk, SUPPORTED_RULES_VERSIONS, serialize, withEndlessSilos } from '@tendril/sim/src/index.ts';
 import type { LogEntry } from '@tendril/sim/src/index.ts';
 import type { FarmResponse } from './api-client';
 
@@ -47,8 +47,10 @@ export function planSubmission(farm: FarmResponse, logs: LogChunk[], endTick: nu
   appendGroup();
   request.toTick = toTick;
   if (new TextEncoder().encode(JSON.stringify(request)).length > MAX_BYTES) throw new Error('Verifier request exceeds 2 MiB. Logs retained.');
-  const world = deserialize(farm.checkpoint);
+  // Same as the server: silos switch on by a tick derived from the start time, never stored in the checkpoint (SIM_SPEC 5.5).
+  const world = withEndlessSilos(deserialize(farm.checkpoint), farm.startedAtMs);
   replayChunk(world, actions, toTick);
+  delete world.siloTick;
   return { request, checkpoint: serialize(world), hash: hashWorld(world), netWorth: netWorth(world) };
 }
 

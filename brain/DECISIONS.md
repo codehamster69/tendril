@@ -126,3 +126,7 @@ Where `docs/PLAN.md` disagrees with this file, this file wins.
 - **Why:** Rohan approved auto-merging passing patch/minor updates (viral plan) and wants the game to run itself. This is a standing exception to "no merge without permission", limited to Dependabot pull requests that pass the full gate.
 - **Why in the workflow, not branch protection:** the gate is enforced by job order, so it works without repository settings. A golden replay hash change fails `pnpm test` and blocks the merge.
 - **Release tag:** a push made with the workflow token does not start other workflows, so `monthly-release.yml` calls `release.yml` directly (`workflow_call`, inputs `tag` and `publish`).
+
+## D-029 (2026-11-17) Silos and sellPlot are rules v5, switched on by data from SILO_EPOCH (L1)
+- **Decision:** `World.siloTick` switches silos and `sellPlot` on (SIM_SPEC section 5). Dailies from 2026-12-15 and seasons starting from then are v5; Endless farms derive the tick from their start time and never store it, so their stored version, checkpoints and hashes stay readable by older desktop builds.
+- **Why:** one barn makes big farms walk-bound; sellPlot undoes a bad plot purchase. Details and tuning: `brain/notes/L1-silos.md`.

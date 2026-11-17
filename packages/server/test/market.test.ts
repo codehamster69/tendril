@@ -241,15 +241,34 @@ describe('desktop 0.1.x and old clients', () => {
     expect(wrong.json.error).toBe('Rules version mismatch');
   });
 
-  it('endless farms and seasons stay on rules v3 for everyone', async () => {
+  it('endless farms and seasons before SILO_EPOCH stay on rules v3 for everyone', async () => {
     time = at(EPOCH);
     const season = (await call('/challenges/week')).json;
     expect(season).toMatchObject({ kind: 'season', rulesVersion: 3, market: null });
-    expect(RULES_VERSION).toBe(4);
+    expect(RULES_VERSION).toBe(5); // v5 (silos) reaches Endless by start time, not by its stored version (SIM_SPEC 5.5)
     const token = await login('farmer');
     const farm = await call('/farms', { token, body: {} });
     expect(farm.status).toBeLessThan(300);
     expect(farm.json.rulesVersion).toBe(3);
+  });
+});
+
+describe('rules v5: silos from SILO_EPOCH (SIM_SPEC 5.5)', () => {
+  it('dailies from the epoch are v5 with a market, seasons starting from it are v5 without one, and their entries replay with silos on', async () => {
+    time = at('2026-12-14');
+    expect((await call('/challenges/week')).json).toMatchObject({ kind: 'season', rulesVersion: 3, market: null }); // started Monday 14 Dec
+    time = at('2026-12-21');
+    const season = (await call('/challenges/week')).json;
+    expect(season).toMatchObject({ kind: 'season', rulesVersion: 5, market: null });
+    const daily = (await call(`/challenges/${dayId('2026-12-21')}`)).json;
+    expect(daily.rulesVersion).toBe(5);
+    expect(daily.market).not.toBeNull();
+    expect(seen.filter((r) => r.rulesVersion === 5).map((r) => [r.kind, !!r.market])).toEqual(expect.arrayContaining([['daily', true], ['season', false]]));
+    // Silo research is refused for lack of coins (result 0), not as an illegal action: the entry is accepted on both.
+    const log: LogEntry[] = [[0, -1, 15, 9], [0, -1, 16, 1, 0], [0, 0, 11, 3]];
+    expect((await enter(dayId('2026-12-21'), log, 'v5 daily', 5)).status).toBe(200);
+    expect((await enter(season.id, log, 'v5 season', 5)).status).toBe(200);
+    expect((await enter(season.id, log, 'old client', 3)).status).toBe(409);
   });
 });
 
