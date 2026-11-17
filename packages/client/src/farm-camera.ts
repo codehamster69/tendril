@@ -378,6 +378,9 @@ export class FarmCamera {
     const r = this.dom.getBoundingClientRect();
     return [(x - r.left) / (r.width || 1) * 2 - 1, -((y - r.top) / (r.height || 1) * 2 - 1)];
   }
+  /** The canvas changed size: re-apply the slate offset for the new size (the view offset is stored in pixels). */
+  resized(): void { if (!this.disposed) this.place(true); }
+
   /** True while the shown pose is still easing toward the goal (or a slide, glide or key pan is under way). The farm
    *  view keeps drawing while this holds, so a slow or skipped frame (dt 0 after a long gap) can never stop the loop
    *  with the camera short of where it is going. */

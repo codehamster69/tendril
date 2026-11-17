@@ -502,6 +502,7 @@ export class FarmView {
     this.renderer.setSize(width, height, false);
     this.camera.aspect = width / height;
     this.camera.updateProjectionMatrix();
+    this.rig.resized(); // the slate offset is in pixels, so a new size needs it applied again
     this.requestRender();
   };
 
