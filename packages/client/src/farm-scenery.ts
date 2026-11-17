@@ -119,12 +119,13 @@ export class FarmIsland {
     // [width pad, height, centre y]: cap top sits just below the tile tops, strata stack under it.
     const layers: [number, number, number][] = [[0, 0.1, -0.09], [0, 0.22, -0.25], [0.06, 0.32, -0.52], [0.02, 0.3, -0.83]];
     this.slab.forEach((mesh, i) => { const [pad, h, y] = layers[i]!; mesh.scale.set(w + pad, h, d + pad); mesh.position.set(cx, y, cz); });
-    const size = (w + d) / 2;
+    // A long thin farm gets a shallow keel: depth follows the short side, so a strip is not carried by a deep wall.
+    const size = Math.min((w + d) / 2, Math.min(w, d) * 2 + 2);
     const h = Math.min(KEEL_MAX, Math.max(2.6, size * 0.35));
     const [k1, k2] = this.keel as [THREE.Mesh, THREE.Mesh];
     k1.scale.set(w, h, d); k1.position.set(cx, -0.98 - h / 2, cz);
-    // A smaller, turned facet cluster breaks up the perfect pyramid.
-    k2.scale.set(w * 0.72, h * 0.72, d * 0.72); k2.rotation.y = 0.5; k2.position.set(cx + w * 0.04, -0.98 - h * 0.36, cz - d * 0.03);
+    // A smaller, turned facet cluster breaks up the perfect pyramid (not turned on a long thin farm: it would sweep out sideways).
+    k2.scale.set(w * 0.72, h * 0.72, d * 0.72); k2.rotation.y = 0.5 * Math.min(1, 1.5 * Math.min(w, d) / Math.max(w, d)); k2.position.set(cx + w * 0.04, -0.98 - h * 0.36, cz - d * 0.03);
     this.buildTendrils(cx, cz, w, d);
   }
 
