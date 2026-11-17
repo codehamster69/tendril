@@ -134,6 +134,11 @@ Where `docs/PLAN.md` disagrees with this file, this file wins.
 ## D-C3 (2026-11-17) Farm rests after 6 hours away
 A live Endless farm may run at most 6 hours (216,000 ticks) behind the wall clock. `POST /farms/wake {atTick}` adds exactly the excess to `farms.rested_ms` (server-computed, only grows, idempotent; never rests below the caller's own unsynced tick). `started_at` never moves, so silo/market ticks, hashes, replays and rules versions are untouched. Target tick = (now - started_at - rested_ms) / 100 on server (`accept`) and client (`clock.ts`). The client calls wake in `connectRanked` before the farm opens. Applies to backlogs that predate the feature (pending Rohan's choice).
 
+## D-K4 (2026-11-17) Ratings need a verified program; brief contests rate on final scores (K4)
+- **Decision:** `ALGO_VERSION` 2. In every discipline and every contest only entries with `source_verified = 1` are rated (summary `excluded.noProgram`, present only when above 0 so unaffected summaries keep their bytes). Contests with `setup_v >= 2` use `final_score` (Wealth), `final_par_tick` (Speed) and tokens among entries with a final par tick (Brevity); old contests still read `net_worth` / `par_tick`. Migration 010 adds `entries.score`, `final_score`, `final_par_tick`, `hidden_done` (K3 fills them).
+- **Waiting:** a brief contest is rated only when no verified entry of a rateable player (not operator-excluded, GitHub account old enough) has `hidden_done = 0`. The check is read-only and runs before the lock. Order is kept, so it holds later contests too, but only until 48 h after close: then it rates with what is done (unfinished entries have no final score and drop out) and logs a warning.
+- **Why:** an action log alone can come from an offline optimiser; the program has to run on the hidden farms. Details: `brain/notes/K4.md`.
+
 ## D-K5 Sprout brief queries (2026-11-17)
 Six free queries (`goal quota budget twists bot_cap plot_cap`) read optional world fields through `packages/lang/src/brief.ts`; neutral values with no brief. Feature `queries`. Names become reserved words. See brain/notes/K5.md.
 
@@ -144,3 +149,8 @@ Six free queries (`goal quota budget twists bot_cap plot_cap`) read optional wor
 
 ## D-K6 (2026-11-17): brief client
 Live goal progress comes from the sim worker (`tendril:goal`), with `World.brief.orderCoins` added to the sim for the orders score. A practice farm is the real brief on another world seed (`?practice=<seed>`), never submitted. On a brief day the offline fallback is a random practice brief, since today's seed is secret. Duel panel hidden on brief results until K3 confirms duel copies. Details: `brain/notes/K6.md`.
+
+## D-K3 (2026-11-17) Brief challenges on the server: HMAC seeds, hidden farms checked lazily after close (K3)
+- **Decision:** from `setup_v >= 2` a daily or season takes `seed = HMAC-SHA256(CHALLENGE_SALT, "tendril-brief:" + id)` (first 4 bytes), sibling i the same over `id + ":h" + i`. `CHALLENGE_SALT` env, else sha256 of the Turso token; a brief with neither is refused (503). Par = 90% of the reference program's mean score over the visible and every hidden farm, min 1, stored once; if the reference cannot run, the day does not open (503) instead of storing a wrong par. After close, `closeBrief` runs each `source_verified` entry's program on the hidden farms (3 entries per request, hidden farms in parallel, arena_meta lock) and stores `final_score`, `final_par_tick`, `hidden_done`.
+- **Why:** the contract's FNV hash of salt and id lets anyone continue the visible seed's hash with `:h1` and get every sibling seed without the salt (a test proves the HMAC does not). A plain brief par fallback (`DAILY_PAR`) would be meaningless for festival (permille) or orders goals.
+- **Consequences:** on a brief challenge `entries.net_worth` stores the visible score (every board, tie-break and prune already sorts on it); `entries.score` holds the same value. The board stays ordered by the visible score; final scores come as fields and rate in K4.
