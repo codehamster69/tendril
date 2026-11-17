@@ -41,6 +41,7 @@ Update this after every workstream lands. Do not explore the whole repo: find th
 - `src/main.ts`: bootstrap. Picks the mode (live/Endless, sandbox, campaign, daily, `?mode=challenge&id=` for season and duels), mounts editor, view, loop, arena card, account, auto sync, Join duel and site links.
 - `src/game-loop.ts`, `real-sim.ts`, `sim-worker.ts`, `sim-protocol.ts`: buttons and pacing, worker wrapper with reply watchdog, the Sprout worker.
 - `src/autosync.ts`: Endless ranked farm sync (every 15 s, back-to-back while far behind).
+- `src/dry-run-core.ts`, `dry-run-worker.ts`, `dry-run.ts`, `dry-run.css`: Dry run on live farms (copy the farm, play code now vs editor code in a worker, compare, Apply code). See brain/notes/dry-run.md.
 - `src/arena.ts`: daily/season/duel card (run to end, submit, result, Hide/Show details, market panel). `duel.ts`: Challenge a friend and the duel panel. `join-duel.ts` + `duel-id.ts`: Join duel dialog and link parser.
 - `src/replay-main.ts`, `replay-view.ts`, `clip.ts`: `replay.html` (replay, ghost race `?e=&vs=`, Export clip). `room-main.ts`, `room.ts`, `room-core.ts`: `room.html` (up to 16 farms on one clock).
 - `src/account.ts`, `api-client.ts`: sign-in (web cookie, desktop token), `wireSiteLinks` opens site pages in the system browser on desktop.

@@ -173,6 +173,12 @@ export class RealSim implements SimSource {
     void this.enqueue(() => this.command({ type: 'step', ticks }, this.meta, this.source)).catch(() => {});
   }
 
+  /** The last durable checkpoint, read after every queued command. A copy for the dry run; the farm itself is not touched. */
+  async durableWorld(): Promise<string | null> {
+    await this.flush();
+    return this.savedWorld;
+  }
+
   /** FIFO barrier including in-flight stepping and actual IndexedDB completion. */
   flush(): Promise<void> {
     return this.enqueue(() => this.command({ type: 'step', ticks: 0 }, this.meta, this.source));
