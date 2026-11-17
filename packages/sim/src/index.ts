@@ -25,7 +25,7 @@ export type { MarketRow, MarketRowView, MarketTable, MarketView } from './arena.
 export { DAILY_EPOCH, DAILY_PAR, dailyNumber, farmMosaic, replayWithPar, challengeSetup, describeModifiers, parFromReference, MODIFIER_BOUNDS, PAR_PERCENT, PAR_MIN, SETUP_LEGACY, SETUP_VERSION } from './arena.ts';
 export type { ParReplay, ChallengeKind, ChallengeSetup, ChallengeModifiers } from './arena.ts';
 export {
-  BRIEF_EPOCH, SETUP_BRIEF, HIDDEN_FARMS, BRIEF_SALT, TWIST_KEYS, GOAL_KINDS, GOAL_TITLES, GOAL_WEIGHTS, QUOTA_UNIT, briefActive, describeBrief, drawBrief,
+  BRIEF_EPOCH, SETUP_BRIEF, HIDDEN_FARMS, BRIEF_SALT, TWIST_KEYS, GOAL_KINDS, GOAL_TITLES, GOAL_WEIGHTS, QUOTA_UNIT, MAX_REROLLS, BRIEF_FLOOR, briefFloor, rerollSeed, pickBrief, briefActive, describeBrief, drawBrief,
 } from './brief.ts';
 export type { Brief, BriefKind, Twist, TwistKey, DrawnBrief } from './brief.ts';
 export { replayWithGoal, finalOf, festivalScore, setupVersionFor } from './arena.ts';
