@@ -238,7 +238,7 @@ describe('market table: pure helpers', () => {
       expect(isMarketTable(t)).toBe(true);
       prev2 = prev; prev = { id: `d${day}`, m: t.m, t: t.t, sh: t.sh }; history.push(prev);
     }
-  });
+  }, 30_000); // slow Windows runners took over 5s
 
   it('agrees with the E1a reference simulation on 400 random days', () => {
     const r = rng(77);
