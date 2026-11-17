@@ -86,15 +86,17 @@ export function siloCount(w: World): number {
 export function siloCost(w: World): number { return siloPrice(siloCount(w)); }
 /** Coins `sellPlot` pays now: half the price paid for the most recent plot (0 with only the barn plot). */
 export function plotRefund(w: World): number { return w.plots.length > 1 ? Math.floor(plotPrice(w.plots.length - 1) / 2) : 0; }
-/** True when the plot at (px, py) may be sold now: rules v5 active, owned, not the barn plot, on the edge, no bot on it, and the rest stays connected. */
-export function canSellPlot(w: World, px: number, py: number): boolean {
-  if (!silosActive(w) || (px === 0 && py === 0)) return false;
-  const i = w.plotIndex.get(plotKey(px, py));
-  if (i === undefined) return false;
+/** Why the plot at (px, py) cannot be sold now (rules v5), or null when it can: owned, not the barn plot, on the edge, no bot on it, and the rest stays connected. */
+export function sellPlotRefusal(w: World, px: number, py: number): string | null {
+  const at = `Plot (${px}, ${py})`;
+  if (!silosActive(w)) return 'Selling plots is not switched on for this farm yet.';
+  if (px === 0 && py === 0) return 'The barn plot cannot be sold.';
+  if (w.plotIndex.get(plotKey(px, py)) === undefined) return `${at} is not one of your plots. Use plots() to list yours.`;
   let edge = false;
   for (let d = 0; d < 4; d++) if (!w.plotIndex.has(plotKey(px + DX[d]!, py + DY[d]!))) edge = true;
-  if (!edge) return false;
-  for (const b of w.bots) if (Math.floor(b.x / PLOT_SIZE) === px && Math.floor(b.y / PLOT_SIZE) === py) return false;
+  if (!edge) return `${at} is surrounded by your other plots. Only a plot with a free side can be sold.`;
+  const onIt = w.bots.filter((b) => Math.floor(b.x / PLOT_SIZE) === px && Math.floor(b.y / PLOT_SIZE) === py).length;
+  if (onIt > 0) return `${at} has ${onIt === 1 ? 'a bot' : `${onIt} bots`} on it. Move ${onIt === 1 ? 'it' : 'them'} off first.`;
   // Every other plot must still reach the barn plot through owned plots.
   const seen = new Set<string>([plotKey(0, 0)]);
   const queue: number[] = [0, 0];
@@ -106,8 +108,10 @@ export function canSellPlot(w: World, px: number, py: number): boolean {
       seen.add(k); queue.push(nx, ny);
     }
   }
-  return seen.size === w.plots.length - 1;
+  return seen.size === w.plots.length - 1 ? null : `${at} connects other plots to the barn. Sell a plot at the end of a branch instead.`;
 }
+/** True when the plot at (px, py) may be sold now. */
+export function canSellPlot(w: World, px: number, py: number): boolean { return sellPlotRefusal(w, px, py) === null; }
 export function botCost(w: World): number { return botPrice(w.bots.length); }
 export function isUnlocked(w: World, bit: number): boolean {
   return Number.isInteger(bit) && bit >= 0 && bit < UNLOCKS.length && (w.unlocks & (1 << bit)) !== 0;

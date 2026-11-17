@@ -220,8 +220,6 @@ export function marketFits(rulesVersion: number, kind: ChallengeKind, hasMarket:
 export const SILO_EPOCH = '2026-11-17';
 /** SILO_EPOCH as Unix milliseconds. */
 export const SILO_EPOCH_MS = Date.UTC(2026, 10, 17);
-/** Endless ticks run at one per 100 ms from the farm's start. */
-const ENDLESS_MS_PER_TICK = 100;
 /** True when a daily dated `date`, or a season starting that day, uses rules v5. */
 export function siloActive(date: string): boolean {
   utcDay(date);
@@ -229,10 +227,14 @@ export function siloActive(date: string): boolean {
 }
 /** Rules version for a season starting on `date`: 5 from SILO_EPOCH, else 3 (seasons have no market). */
 export function seasonRulesVersion(date: string): number { return siloActive(date) ? RULES_VERSION : BASE_RULES_VERSION; }
-/** First Endless tick at or after SILO_EPOCH for a farm started at `startedAtMs` (0 for farms started after it). */
+/**
+ * Endless silo switch tick: 0, so silos and sellPlot work from the first tick of every Endless farm. The switch was first the first
+ * tick at or after SILO_EPOCH by wall clock, but a farm's clock lags the wall clock by its rested time, so farms that had rested
+ * stayed switched off for days. SILO_EPOCH now only dates dailies, seasons and duels. `startedAtMs` is still validated.
+ */
 export function endlessSiloTick(startedAtMs: number): number {
   if (!Number.isSafeInteger(startedAtMs) || startedAtMs < 0) throw new Error('bad start time');
-  return Math.max(0, Math.ceil((SILO_EPOCH_MS - startedAtMs) / ENDLESS_MS_PER_TICK));
+  return 0;
 }
 /** Give an Endless world its silo switch. Both the server and the client call this on every Endless world they load, since it is never stored. */
 export function withEndlessSilos<W extends World>(w: W, startedAtMs: number): W {

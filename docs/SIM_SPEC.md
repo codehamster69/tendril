@@ -423,8 +423,9 @@ Brought forward from 15 Dec by Rohan on 2026-11-17 (no players yet), so it now c
   requires one on a daily that is v4, or v5 dated from MARKET_EPOCH.
 - Challenges build their world with `challengeSetup(kind, seed, setupVersion, market, rulesVersion)`, which sets `siloTick = 0`
   for v5. Server replay, the verify function, the CLI and the client all pass the stored version.
-- Endless farms keep their stored `rules_version` (3) and checkpoint format. Their switch is derived from the start time:
-  `endlessSiloTick(startedAtMs) = max(0, ceil((SILO_EPOCH_MS - startedAtMs) / 100))`, the first tick at or after the epoch.
+- Endless farms keep their stored `rules_version` (3) and checkpoint format. Their switch is `endlessSiloTick(startedAtMs) = 0`:
+  silos and `sellPlot` work from the first tick. (It was the first tick at or after the epoch by wall clock, which left farms with rested
+  time switched off for days, because a farm's tick lags the wall clock by `restedMs`.)
   Server and client call `withEndlessSilos(world, startedAtMs)` on every Endless world they load and delete `siloTick` before
   storing a checkpoint, so stored checkpoints stay version 3 and older desktop builds keep loading and syncing them. An older
   build cannot produce the new ops, and without them both rule sets give the same result. `GET /farms/:id/replay` returns `siloTick`.
