@@ -9,7 +9,7 @@ import type { BotDebug, Diagnostic, FromWorker, OutputLine, Scenario, SimError, 
 import { ViewStore } from './view-codec';
 import type { ViewSnapshot } from './view-codec';
 import type { SimSource } from './sim-types';
-import { kvGetMany, kvSetMany } from './store';
+import { kvGetMany, kvWrite } from './store';
 
 export type { LogChunk, Accepted, Submission } from './chunks';
 export interface RealSimOptions { authoritative?: FarmResponse; replyTimeoutMs?: number; scenario?: Scenario; storageKey?: string; seed?: number }
@@ -17,6 +17,20 @@ type Command = ToWorker extends infer T ? T extends ToWorker ? Omit<T, 'id'> : n
 
 /** The longest a running farm goes between saves (more for very large farms, see requestStep). */
 const SAVE_EVERY_MS = 2_000;
+/** Behind the clock by more than this, the farm catches up in lean mode (see requestStep). Within it, ticks are watched live. */
+export const LEAN_BEHIND_TICKS = 1_200;
+/** While catching up a full checkpoint (world + log chunk) is saved at least this often, so a reload resumes near where it stopped. */
+export const CHECKPOINT_TICKS = 20_000;
+const CHECKPOINT_MAX_MS = 10_000;
+/** Each lean batch aims to take about this long, so the page, saves and sync stay responsive whatever the farm's size. */
+const BATCH_TARGET_MS = 400;
+const BATCH_MIN = 500;
+const BATCH_MAX = 20_000;
+
+/** Where a catch-up stands; null while the farm is live (see RealSim.catchUp). */
+export interface CatchUp { behind: number; startBehind: number; ticksPerSecond: number; etaSeconds: number | null }
+
+const isLean = (m: Command): boolean => m.type === 'step' && m.lean === true;
 
 export class RealSim implements SimSource {
   onProgress?: (done: number, total: number) => void;
@@ -44,6 +58,14 @@ export class RealSim implements SimSource {
   private saveCostMs = 0;
   private errs: SimError[] = [];
   private pendingLog: LogChunk[] = [];
+  /** Log chunks are stored one key each (`log.<id>`) plus an ordered index, so a save writes only new chunks, never the whole backlog. */
+  private logIds = new WeakMap<LogChunk, number>();
+  private storedIds = new Set<number>();
+  private nextLogId = 1;
+  private lean = false;
+  private batch = 500;
+  private rate = 0;
+  private startBehind = 0;
   readonly prefix: string;
   accepted: Accepted | null = null;
   private savedWorld: string | null = null;
@@ -104,11 +126,11 @@ export class RealSim implements SimSource {
   init(source: string): Promise<void> { return this.enqueue(() => this.restore(source, false)); }
 
   private async restore(source: string, recovering: boolean): Promise<void> {
-    const keys = ['world', 'meta', 'pendingLog', 'source', 'hash', 'accepted'].map((key) => this.prefix + key);
+    const keys = ['world', 'meta', 'pendingLog', 'source', 'hash', 'accepted', 'logIdx'].map((key) => this.prefix + key);
     const saved = await kvGetMany<Record<string, unknown>>(keys);
     let world = saved[keys[0]] as string | undefined;
     let meta = saved[keys[1]] as Meta | undefined;
-    const log = saved[keys[2]] as LogChunk[] | undefined;
+    const log = await this.loadLog(saved[keys[6]] as number[] | undefined, saved[keys[2]] as LogChunk[] | undefined);
     if (recovering && !world) throw new Error('No durable checkpoint exists yet. Reload to initialize explicitly.');
     if (world && !meta) throw new Error('Saved farm is missing its clock. Reset explicitly to start a new farm.');
     if (world && meta && (meta.mode !== this.mode || !Number.isSafeInteger(meta.startedAtMs) || !Number.isSafeInteger(meta.seed))) throw new Error('Saved farm clock is invalid. Reset explicitly to start a new farm.');
@@ -148,6 +170,18 @@ export class RealSim implements SimSource {
     await this.command({ type: 'init', saved: world ?? null, seed: nextMeta.seed, source, scenario: this.silos(this.scenario, nextMeta) }, nextMeta, source);
   }
 
+  /** The stored log: chunk keys named by the index, or (farms saved before the index existed) the old single array, which the next save converts. */
+  private async loadLog(index: number[] | undefined, legacy: LogChunk[] | undefined): Promise<LogChunk[] | undefined> {
+    this.storedIds = new Set();
+    if (!index) return legacy;
+    const keys = index.map((id) => `${this.prefix}log.${id}`);
+    const got = await kvGetMany<Record<string, LogChunk>>(keys);
+    const chunks = keys.map((k) => got[k]);
+    if (chunks.some((c) => !c)) throw new Error('Saved pending log is missing a chunk. Logs retained; no replacement or retry.');
+    index.forEach((id, i) => { this.logIds.set(chunks[i]!, id); this.storedIds.add(id); this.nextLogId = Math.max(this.nextLogId, id + 1); });
+    return chunks as LogChunk[];
+  }
+
   /** Endless and sandbox farms get silos by the clock (rules v5, SILO_EPOCH); challenges and lessons take theirs from their setup. */
   private silos(scenario: Scenario, meta: Meta): Scenario {
     if (scenario.kind !== 'live' && scenario.kind !== 'sandbox') return scenario;
@@ -185,8 +219,24 @@ export class RealSim implements SimSource {
     if (this.busy || this.disposed || this.fatal || this.persistenceError || !this.snap) return;
     if (!Number.isSafeInteger(ticks) || ticks <= 0) return;
     ticks = Math.min(ticks, 20_000);
-    if (this.mode === 'live') ticks = Math.min(ticks, targetTick(this.meta, Date.now()) - this.snap.tick);
+    let behind = 0;
+    if (this.mode === 'live') {
+      behind = targetTick(this.meta, Date.now()) - this.snap.tick;
+      ticks = Math.min(ticks, behind);
+    }
     if (ticks <= 0) return;
+    // Far behind the clock (a long time away): nobody watches single ticks, so run big adaptive batches in lean mode
+    // and checkpoint on a tick schedule. The last stretch before the clock runs normally, with full detail.
+    if (this.mode === 'live' && behind > LEAN_BEHIND_TICKS) {
+      if (!this.lean) { this.lean = true; this.startBehind = behind; this.rate = 0; this.batch = BATCH_MIN; }
+      ticks = Math.min(behind - LEAN_BEHIND_TICKS / 2, this.batch);
+      const full = !this.snap || this.snap.tick - (this.durableTick ?? 0) + ticks >= CHECKPOINT_TICKS || Date.now() - this.lastSaveAt >= CHECKPOINT_MAX_MS;
+      const started = performance.now();
+      void this.enqueue(() => this.command({ type: 'step', ticks, light: !full, lean: true }, this.meta, this.source))
+        .then(() => this.tune(ticks, performance.now() - started), () => {});
+      return;
+    }
+    this.lean = false;
     // Saving costs time that grows with the farm (hash, full-world copy, database write), so a farm that is merely
     // running is saved at most every few seconds, and never spends more than ~5% of its time saving. Pausing,
     // editing, syncing and every other command still save at once. A crash loses at most that window, which the
@@ -194,6 +244,23 @@ export class RealSim implements SimSource {
     const lazy = this.mode === 'live' || this.mode === 'sandbox';
     const light = lazy && Date.now() - this.lastSaveAt < Math.max(SAVE_EVERY_MS, this.saveCostMs * 20);
     void this.enqueue(() => this.command({ type: 'step', ticks, light }, this.meta, this.source)).catch(() => {});
+  }
+
+  /** Steers the next batch toward BATCH_TARGET_MS and keeps a smoothed ticks-per-second figure for the ETA. */
+  private tune(ticks: number, ms: number): void {
+    if (ms <= 0) return;
+    const perSecond = ticks / (ms / 1000);
+    this.rate = this.rate ? this.rate * 0.7 + perSecond * 0.3 : perSecond;
+    this.batch = Math.round(Math.min(BATCH_MAX, Math.max(BATCH_MIN, this.batch * Math.min(2, Math.max(0.5, BATCH_TARGET_MS / ms)))));
+  }
+
+  /** Progress of a long catch-up for the screen, or null when the farm is (nearly) live. */
+  catchUp(nowMs = Date.now()): CatchUp | null {
+    if (!this.lean || !this.snap || this.mode !== 'live') return null;
+    const behind = Math.max(0, targetTick(this.meta, nowMs) - this.snap.tick);
+    if (behind <= LEAN_BEHIND_TICKS / 2) return null;
+    const net = this.rate - 10; // The clock keeps running while the farm catches up.
+    return { behind, startBehind: Math.max(this.startBehind, behind), ticksPerSecond: Math.round(this.rate), etaSeconds: this.rate > 0 && net > 0 ? behind / net : null };
   }
 
   /** The last durable checkpoint, read after every queued command. A copy for the dry run; the farm itself is not touched. */
@@ -325,7 +392,7 @@ export class RealSim implements SimSource {
       view = (await this.ask({ type: 'fullView' })).view;
       if (!this.view.apply(view)) throw new Error('The farm view could not be rebuilt. Cancel and restart the worker.');
     }
-    this.viewEvents.push(...state.view.events);
+    if (!isLean(m)) this.viewEvents.push(...state.view.events);
     if (this.viewEvents.length > 512) this.viewEvents.splice(0, this.viewEvents.length - 512);
     this.snap = this.view.latest();
     const light = state.hash === '';
@@ -333,9 +400,8 @@ export class RealSim implements SimSource {
     this.out.push(...state.output);
     this.errs.push(...state.errors.map((e) => ({ ...e, kind: 'script' as const })));
     this.diagnostics = state.diagnostics;
-    this.debug = state.debug;
+    if (!isLean(m)) { this.debug = state.debug; this.heat = state.heat; }
     this.paused = state.paused;
-    this.heat = state.heat;
     // A breakpoint can stop the world inside tick T (some bots already acted). That state cannot be replayed
     // from a log, so it is kept in memory and only becomes a checkpoint once the tick completes.
     // A light step is not saved: its actions wait in memory with the others until the next full save (see requestStep).
@@ -364,14 +430,26 @@ export class RealSim implements SimSource {
 
   private async persist(world: string, meta: Meta, source: string, logs: LogChunk[], hash: string, accepted: Accepted | null): Promise<void> {
     try {
-      await kvSetMany({
+      // Append-only: only chunks not yet stored are written; chunks the server acknowledged (or trimmed) are deleted.
+      const ids: number[] = [];
+      const entries: Record<string, unknown> = {
         [this.prefix + 'world']: world,
         [this.prefix + 'meta']: meta,
-        [this.prefix + 'pendingLog']: logs,
         [this.prefix + 'hash']: hash,
         [this.prefix + 'source']: source,
         ...(accepted ? { [this.prefix + 'accepted']: accepted } : {}),
-      });
+      };
+      for (const chunk of logs) {
+        let id = this.logIds.get(chunk);
+        if (id === undefined) { id = this.nextLogId++; this.logIds.set(chunk, id); }
+        ids.push(id);
+        if (!this.storedIds.has(id)) entries[`${this.prefix}log.${id}`] = chunk;
+      }
+      entries[this.prefix + 'logIdx'] = ids;
+      const keep = new Set(ids);
+      const remove = [this.prefix + 'pendingLog', ...[...this.storedIds].filter((id) => !keep.has(id)).map((id) => `${this.prefix}log.${id}`)];
+      await kvWrite(entries, remove);
+      this.storedIds = keep;
       this.persistenceError = null;
     } catch (e) {
       this.persistenceError = `Farm save failed: ${e instanceof Error ? e.message : String(e)}. Keep this window open and pause to retry saving.`;

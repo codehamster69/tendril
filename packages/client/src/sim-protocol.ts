@@ -17,7 +17,7 @@ type Command =
   | { type: 'init'; saved: string | null; seed: number; source: string; scenario: Scenario }
   | { type: 'setSource'; source: string }
   /** `light`: the main thread will not save this step, so the worker skips the hash and the full-world copy ('' in the reply). */
-  | { type: 'step'; ticks: number; light?: boolean }
+  | { type: 'step'; ticks: number; light?: boolean; lean?: boolean }
   | { type: 'reset'; seed: number; source: string; scenario: Scenario }
   | { type: 'setBreakpoints'; lines: number[] }
   | { type: 'stepLine' }
