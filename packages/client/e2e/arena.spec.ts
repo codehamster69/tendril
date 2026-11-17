@@ -186,7 +186,7 @@ test('the Season tab opens this week\'s season, runs 6,000 ticks and highlights 
 
 test('a day with rules this app does not know is refused with an update message', async ({ page }) => {
   await mock(page, false);
-  served = { ...challenge, rulesVersion: 5 };
+  served = { ...challenge, rulesVersion: 6 };
   await page.goto('/?mode=daily');
   await expect(page.locator('#update-needed')).toHaveText('This day needs a newer Tendril. Update the app.');
   await expect(page.locator('#arena-head')).toHaveCount(0);

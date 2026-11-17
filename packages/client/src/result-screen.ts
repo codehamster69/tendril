@@ -77,7 +77,11 @@ export function mountResultScreen({ loop, api, challenge: c, view }: ResultDeps)
 
   window.addEventListener('keydown', (e) => {
     if (!layer || e.ctrlKey || e.metaKey || e.altKey || e.key === 'Shift' || e.key === 'Control' || e.key === 'Alt' || e.key === 'Meta') return;
-    if (skip) { e.preventDefault(); e.stopPropagation(); skip(); return; }
+    if (skip) {
+      e.preventDefault(); e.stopPropagation(); skip();
+      // Escape on the card while the medals still count up finishes them and closes the card, as it does once they are done.
+      if (!(e.key === 'Escape' && card)) return;
+    }
     if (!card || layer.hidden) return;
     const onControl = e.target instanceof HTMLElement && !!e.target.closest('button, a, input, select, textarea, summary');
     if (e.key === 'Enter' && !onControl) { e.preventDefault(); e.stopPropagation(); retry(); }
