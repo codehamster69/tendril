@@ -1,5 +1,5 @@
 import { randomBytes, randomUUID } from 'node:crypto';
-import { createWorld, dailyRulesVersion, dailySeed, DAILY_TICKS, deserialize, hashWorld, IllegalAction, netWorth, replayChunk, BASE_RULES_VERSION, serialize } from '@tendril/sim/src/index.ts';
+import { createWorld, dailyRulesVersion, dailySeed, DAILY_TICKS, deserialize, endlessSiloTick, hashWorld, IllegalAction, netWorth, replayChunk, BASE_RULES_VERSION, serialize, withEndlessSilos } from '@tendril/sim/src/index.ts';
 import type { LogEntry, World } from '@tendril/sim/src/index.ts';
 import type { Db, Queryable } from './db.ts';
 import { HttpError } from './validation.ts';
@@ -194,9 +194,12 @@ async function accept(db: Db, farm: FarmRow, input: ChunkInput, t: number, limit
   if (input.fromTick !== farm.tick || input.checkpointHash !== farm.checkpoint_hash) throw new HttpError(409, 'Stale checkpoint');
   if (input.toTick <= input.fromTick) throw new HttpError(422, 'Invalid tick range');
   if (input.toTick > Math.floor((t - farm.started_at) / 100)) throw new HttpError(422, 'Tick is ahead of server clock');
-  const world = deserialize(farm.checkpoint);
+  // Silos switch on at SILO_EPOCH through a tick derived from the start time. It is never stored and not hashed, so checkpoints and
+  // hashes stay readable by older desktop builds (SIM_SPEC 5.5).
+  const world = withEndlessSilos(deserialize(farm.checkpoint), farm.started_at);
   const worth = replayOrReject(world, input.actions, input.toTick);
   const hash = hashWorld(world);
+  delete world.siloTick;
   const checkpoint = serialize(world);
 
   // Buffer the log in the farm row; flush it into `chunks` when old or large.
@@ -253,8 +256,8 @@ export async function leaderboard(db: Db, board: Board, limit: number, _now: num
 }
 
 export async function getReplay(db: Db, farmId: string, fromTick = 0, limit = 1) {
-  const [farm] = await db.query<{ seed: number; rules_version: number; pending_from: number | null; pending_actions: string | null; tick: number }>(
-    'SELECT seed, rules_version, pending_from, pending_actions, tick FROM farms WHERE id = ? AND verified_at IS NOT NULL', [farmId]);
+  const [farm] = await db.query<{ seed: number; rules_version: number; started_at: number; pending_from: number | null; pending_actions: string | null; tick: number }>(
+    'SELECT seed, rules_version, started_at, pending_from, pending_actions, tick FROM farms WHERE id = ? AND verified_at IS NOT NULL', [farmId]);
   if (!farm) throw new HttpError(404, 'Verified farm not found');
   // Bounded in SQL: one page plus a lookahead row for the cursor.
   const rows = await db.query<{ from_tick: number; to_tick: number; actions: string }>(
@@ -267,6 +270,8 @@ export async function getReplay(db: Db, farmId: string, fromTick = 0, limit = 1)
   }
   return {
     seed: farm.seed, rulesVersion: farm.rules_version,
+    /** Rules v5: silos and sellPlot work from this tick (withEndlessSilos). */
+    siloTick: endlessSiloTick(farm.started_at),
     chunks: rows.slice(0, limit).map((row) => ({ fromTick: row.from_tick, toTick: row.to_tick, actions: JSON.parse(row.actions) as LogEntry[] })),
     nextFromTick: rows[limit] ? rows[limit].from_tick : null,
   };

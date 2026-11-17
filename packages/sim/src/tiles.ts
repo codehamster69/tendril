@@ -31,6 +31,15 @@ export function addPlot(w: World, px: number, py: number): Plot {
   return plot;
 }
 
+/** Remove the plot at (px, py): later plots move down one index, keeping their order. */
+export function removePlot(w: World, px: number, py: number): void {
+  const i = w.plotIndex.get(plotKey(px, py));
+  if (i === undefined) return;
+  w.plots.splice(i, 1);
+  w.plotIndex.delete(plotKey(px, py));
+  for (let j = i; j < w.plots.length; j++) w.plotIndex.set(plotKey(w.plots[j]!.px, w.plots[j]!.py), j);
+}
+
 export function findPlot(w: World, x: number, y: number): Plot | undefined {
   const i = w.plotIndex.get(plotKey(Math.floor(x / PLOT_SIZE), Math.floor(y / PLOT_SIZE)));
   return i === undefined ? undefined : w.plots[i];

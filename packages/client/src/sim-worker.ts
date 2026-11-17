@@ -55,6 +55,7 @@ async function handle(m: ToWorker): Promise<void> {
     world = m.type === 'init' && m.saved
       ? deserialize(m.saved)
       : createWorld({ id: scenario.farmId ?? 'farm', seed: m.seed }, scenario.setup);
+    if (scenario.siloTick !== undefined) world.siloTick = scenario.siloTick;
   }
   if (!world) throw new Error('Farm is not initialized. Reload to try again.');
   if (m.type === 'fullView') encoder.reset();

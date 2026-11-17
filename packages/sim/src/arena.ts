@@ -1,5 +1,5 @@
 // Arena helpers (SIM_SPEC.md appendix "Arena helpers"). Pure; no rules change.
-import { BASE_RULES_VERSION, COMPOSTER, DAILY_TICKS, HIVE, ITEMS, ITEM_COUNT, OP, PLOT_SIZE, RULES_VERSION, SEASON_TICKS, UNLOCKS } from './rules.ts';
+import { BASE_RULES_VERSION, COMPOSTER, DAILY_TICKS, HIVE, ITEMS, ITEM_COUNT, MARKET_RULES_VERSION, OP, PLOT_SIZE, RULES_VERSION, SEASON_TICKS, UNLOCKS } from './rules.ts';
 import { IllegalAction } from './types.ts';
 import type { LogEntry, Setup, World } from './types.ts';
 import { applyAction, netWorth, scanAt, tickWorld } from './world.ts';
@@ -121,7 +121,13 @@ function drawer(seed: number): (n: number) => number {
  * (old challenges); version 1 draws the day's modifiers from the seed inside MODIFIER_BOUNDS. Callers must create
  * challenge worlds through this, passing the version stored with the challenge.
  */
-export function challengeSetup(kind: ChallengeKind, seed: number, version: number = SETUP_VERSION, market?: { p: number[] } | null): ChallengeSetup {
+export function challengeSetup(kind: ChallengeKind, seed: number, version: number = SETUP_VERSION, market?: { p: number[] } | null, rulesVersion?: number): ChallengeSetup {
+  const out = baseSetup(kind, seed, version, market);
+  if (rulesVersion === RULES_VERSION) out.setup.siloTick = 0; // rules v5: silos from the first tick
+  return out;
+}
+
+function baseSetup(kind: ChallengeKind, seed: number, version: number, market?: { p: number[] } | null): ChallengeSetup {
   if (kind !== 'daily' && kind !== 'season' && kind !== 'duel') throw new Error(`bad challenge kind ${String(kind)}`);
   if (!Number.isSafeInteger(seed)) throw new Error('seed must be a safe integer');
   if (version !== SETUP_LEGACY && version !== SETUP_VERSION) throw new Error(`bad setup version ${String(version)}`);
@@ -191,8 +197,40 @@ export function marketActive(date: string): boolean {
   utcDay(date);
   return date >= MARKET_EPOCH;
 }
-/** Rules version of the daily dated `date`: 4 from MARKET_EPOCH, else 3. */
-export function dailyRulesVersion(date: string): number { return marketActive(date) ? RULES_VERSION : BASE_RULES_VERSION; }
+/** Rules version of the daily dated `date`: 5 from SILO_EPOCH, 4 from MARKET_EPOCH, else 3. */
+export function dailyRulesVersion(date: string): number {
+  return siloActive(date) ? RULES_VERSION : marketActive(date) ? MARKET_RULES_VERSION : BASE_RULES_VERSION;
+}
+/** True when a challenge of this kind and rules version plays on a market table: v4, and v5 except seasons. */
+export function rulesHaveMarket(rulesVersion: number, kind: ChallengeKind): boolean {
+  return rulesVersion === MARKET_RULES_VERSION || (rulesVersion === RULES_VERSION && kind !== 'season');
+}
+
+// ---- Rules version 5: silos and sellPlot (SIM_SPEC.md section 5). ----
+
+/** Silos and sellPlot switch on at 00:00 UTC on this date: dailies dated from it, seasons starting from it, Endless farms from that moment. */
+export const SILO_EPOCH = '2026-12-15';
+/** SILO_EPOCH as Unix milliseconds. */
+export const SILO_EPOCH_MS = Date.UTC(2026, 11, 15);
+/** Endless ticks run at one per 100 ms from the farm's start. */
+const ENDLESS_MS_PER_TICK = 100;
+/** True when a daily dated `date`, or a season starting that day, uses rules v5. */
+export function siloActive(date: string): boolean {
+  utcDay(date);
+  return date >= SILO_EPOCH;
+}
+/** Rules version for a season starting on `date`: 5 from SILO_EPOCH, else 3 (seasons have no market). */
+export function seasonRulesVersion(date: string): number { return siloActive(date) ? RULES_VERSION : BASE_RULES_VERSION; }
+/** First Endless tick at or after SILO_EPOCH for a farm started at `startedAtMs` (0 for farms started after it). */
+export function endlessSiloTick(startedAtMs: number): number {
+  if (!Number.isSafeInteger(startedAtMs) || startedAtMs < 0) throw new Error('bad start time');
+  return Math.max(0, Math.ceil((SILO_EPOCH_MS - startedAtMs) / ENDLESS_MS_PER_TICK));
+}
+/** Give an Endless world its silo switch. Both the server and the client call this on every Endless world they load, since it is never stored. */
+export function withEndlessSilos<W extends World>(w: W, startedAtMs: number): W {
+  w.siloTick = endlessSiloTick(startedAtMs);
+  return w;
+}
 /** Whole UTC days from today until the market opens (0 once open). */
 export function daysUntilMarket(date: string): number { return Math.max(0, utcDay(MARKET_EPOCH) - utcDay(date)); }
 /** One line of the market board: item, price in coins, change against base, and yesterday's share of units sold. */

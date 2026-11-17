@@ -23,9 +23,9 @@ function stocked(prices?: number[]) {
 
 describe('rules v4: prices as an input', () => {
   it('versions', () => {
-    expect(RULES_VERSION).toBe(4);
+    expect(RULES_VERSION).toBe(5); // v5 = silos (silo.test.ts); the market is version 4
     expect(BASE_RULES_VERSION).toBe(3);
-    expect(SUPPORTED_RULES_VERSIONS).toEqual([3, 4]);
+    expect(SUPPORTED_RULES_VERSIONS).toEqual([3, 4, 5]);
   });
 
   it('a world without prices plays exactly as v3 and base prices in centicoins equal the v3 numbers', () => {
@@ -103,7 +103,7 @@ describe('rules v4: prices as an input', () => {
     expect(netWorth(back)).toBe(netWorth(mk.w));
     expect(() => deserialize(JSON.stringify({ ...JSON.parse(s4), rulesVersion: 3 }))).toThrow();
     expect(() => deserialize(JSON.stringify({ ...JSON.parse(s3), rulesVersion: 4 }))).toThrow();
-    expect(() => deserialize(JSON.stringify({ ...JSON.parse(s3), rulesVersion: 5 }))).toThrow('unsupported rules version');
+    expect(() => deserialize(JSON.stringify({ ...JSON.parse(s3), rulesVersion: 6 }))).toThrow('unsupported rules version');
     expect(() => deserialize(JSON.stringify({ ...JSON.parse(s4), prices: [0, 0, 1, 1, 1, 1, 1, 1] }))).toThrow('bad prices');
   });
 
@@ -306,7 +306,8 @@ describe('MARKET_EPOCH and challengeSetup', () => {
     expect(dailyRulesVersion('2026-12-07')).toBe(3);
     expect(dailyRulesVersion('2026-12-08')).toBe(4);
     expect(dailyRulesVersion('2026-12-09')).toBe(4);
-    expect(dailyRulesVersion('2027-02-01')).toBe(4);
+    expect(dailyRulesVersion('2026-12-14')).toBe(4);
+    expect(dailyRulesVersion('2027-02-01')).toBe(5); // SILO_EPOCH 2026-12-15: market plus silos
     expect(marketActive('2026-12-01')).toBe(false);
     expect(daysUntilMarket('2026-12-01')).toBe(7);
     expect(daysUntilMarket('2026-12-08')).toBe(0);

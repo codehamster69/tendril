@@ -1,6 +1,6 @@
 // Challenge play: daily (`?mode=daily`) and any challenge (`?mode=challenge&id=`). The sim mode is always 'daily'.
 import { setupOf, challengeScenario } from './challenge-setup';
-import { challengeSetup, createWorld, dailyNumber, dailySeed, DAILY_PAR, daysUntilMarket, describeModifiers, describeMarket, replayWithPar, BASE_RULES_VERSION, SETUP_VERSION, SUPPORTED_RULES_VERSIONS } from '@tendril/sim/src/index.ts';
+import { challengeSetup, createWorld, rulesHaveMarket, dailyNumber, dailySeed, DAILY_PAR, daysUntilMarket, describeModifiers, describeMarket, replayWithPar, BASE_RULES_VERSION, SETUP_VERSION, SUPPORTED_RULES_VERSIONS } from '@tendril/sim/src/index.ts';
 import type { LogEntry, Snapshot } from '@tendril/sim/src/index.ts';
 import { ApiError } from './api-client';
 import type { ChallengeInfo, EntryResult, FarmApi } from './api-client';
@@ -41,7 +41,7 @@ export class RulesTooNew extends Error { constructor() { super(UPDATE_NEEDED); t
  * before the game starts, with a visible message instead of a run that could never be accepted.
  */
 export function requireKnownRules(c: ChallengeInfo): ChallengeInfo {
-  const known = SUPPORTED_RULES_VERSIONS.includes(c.rulesVersion) && (c.rulesVersion === BASE_RULES_VERSION) === !c.market;
+  const known = SUPPORTED_RULES_VERSIONS.includes(c.rulesVersion) && rulesHaveMarket(c.rulesVersion, c.kind) === !!c.market;
   if (known) return c;
   const banner = el('div', { id: 'update-needed', class: 'update-needed', role: 'alert' }, UPDATE_NEEDED);
   banner.style.cssText = 'position:fixed;inset:0 0 auto 0;z-index:1000;padding:14px 16px;background:#b3261e;color:#fff;font:600 15px system-ui,sans-serif;text-align:center';

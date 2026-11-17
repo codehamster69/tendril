@@ -1,9 +1,14 @@
 // Constants and cost formulas (SIM_SPEC.md, rules version 3). Integers only.
-/** Newest rules. Version 4 = version 3 plus the optional daily market table (`Setup.prices`); a world without prices plays exactly as version 3. */
-export const RULES_VERSION = 4;
+/**
+ * Newest rules. Version 4 = version 3 plus the optional daily market table (`Setup.prices`); a world without prices plays exactly as version 3.
+ * Version 5 = version 3 or 4 plus silos and `sellPlot` (SIM_SPEC section 5), switched on by `World.siloTick`; a world without it plays exactly as before.
+ */
+export const RULES_VERSION = 5;
+/** The market rules (version 4) without silos: dailies from MARKET_EPOCH until SILO_EPOCH. */
+export const MARKET_RULES_VERSION = 4;
 /** Rules of everything that has no market: endless farms, seasons, duels not copied from a market daily, dailies before MARKET_EPOCH. */
 export const BASE_RULES_VERSION = 3;
-export const SUPPORTED_RULES_VERSIONS: readonly number[] = [3, 4];
+export const SUPPORTED_RULES_VERSIONS: readonly number[] = [3, 4, 5];
 export const PLOT_SIZE = 8;
 export const TILE_INTS = 10;
 export const ITEM_COUNT = 8;
@@ -14,6 +19,9 @@ export const DAILY_TICKS = 3000;
 export const SEASON_TICKS = 6000;
 export const HONEY_INTERVAL = 400;
 export const HONEY_MAX = 6;
+/** Rules v5 silo tuning (brain/notes/L1-silos.md). */
+export const SILO_BASE = 500;
+export const SILO_RESEARCH = 1200;
 
 export interface Crop {
   name: string; stageLen: number; thirst: number; hunger: number; drink: number;
@@ -41,15 +49,16 @@ export const ITEMS: readonly { name: string; price: number }[] = [
 ];
 export const HONEY = 7, COMPOST = 8;
 
-/** Indexable by building kind 1..2. */
+/** Indexable by building kind 1..3. A silo's price is `siloPrice`, not the table (rules v5 only). */
 export const BUILDINGS: readonly { name: string; price: number; unlock: number }[] = [
   { name: 'none', price: 0, unlock: 0 },
   { name: 'hive', price: 120, unlock: 6 },
   { name: 'composter', price: 80, unlock: 7 },
+  { name: 'silo', price: 0, unlock: 9 },
 ];
-export const HIVE = 1, COMPOSTER = 2;
+export const HIVE = 1, COMPOSTER = 2, SILO = 3;
 
-/** Research bits 0..8. */
+/** Research bits 0..9. Bit 9 (silo) exists only in rules v5 worlds. */
 export const UNLOCKS: readonly { name: string; price: number }[] = [
   { name: 'carrot', price: 0 },
   { name: 'wheat', price: 40 },
@@ -60,23 +69,26 @@ export const UNLOCKS: readonly { name: string; price: number }[] = [
   { name: 'hive', price: 300 },
   { name: 'composter', price: 200 },
   { name: 'satchel', price: 500 },
+  { name: 'silo', price: SILO_RESEARCH },
 ];
-export const SATCHEL_BIT = 8;
+export const SATCHEL_BIT = 8, SILO_BIT = 9;
 
 export const OPS = [
   'move', 'till', 'plant', 'water', 'harvest', 'deposit', 'deliver', 'wait', 'sell', 'buyPlot', 'buyBot',
-  'build', 'clear', 'compost', 'fertilize', 'unlock',
+  'build', 'clear', 'compost', 'fertilize', 'unlock', 'sellPlot',
 ] as const;
 /** Ticks per op index. `wait` (7) uses its argument instead. */
-export const COST: readonly number[] = [2, 3, 2, 2, 3, 1, 2, 0, 1, 0, 0, 4, 3, 2, 2, 0];
+export const COST: readonly number[] = [2, 3, 2, 2, 3, 1, 2, 0, 1, 0, 0, 4, 3, 2, 2, 0, 0];
 
 export const OP = {
   move: 0, till: 1, plant: 2, water: 3, harvest: 4, deposit: 5, deliver: 6,
-  wait: 7, sell: 8, buyPlot: 9, buyBot: 10, build: 11, clear: 12, compost: 13, fertilize: 14, unlock: 15,
+  wait: 7, sell: 8, buyPlot: 9, buyBot: 10, build: 11, clear: 12, compost: 13, fertilize: 14, unlock: 15, sellPlot: 16,
 } as const;
 
 /** Ops performed by the farm itself (bot -1, zero ticks). */
-export const FARM_OPS: readonly number[] = [OP.buyPlot, OP.buyBot, OP.unlock];
+export const FARM_OPS: readonly number[] = [OP.buyPlot, OP.buyBot, OP.unlock, OP.sellPlot];
 
 export const plotPrice = (plotsOwned: number): number => 150 * plotsOwned * plotsOwned;
 export const botPrice = (botsOwned: number): number => 80 * botsOwned * botsOwned;
+/** Rules v5. Price of the next silo when `silosOwned` already stand: SILO_BASE * k * k with k = silosOwned + 1. */
+export const siloPrice = (silosOwned: number): number => SILO_BASE * (silosOwned + 1) * (silosOwned + 1);
