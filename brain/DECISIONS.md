@@ -134,6 +134,11 @@ Where `docs/PLAN.md` disagrees with this file, this file wins.
 ## D-C3 (2026-11-17) Farm rests after 6 hours away
 A live Endless farm may run at most 6 hours (216,000 ticks) behind the wall clock. `POST /farms/wake {atTick}` adds exactly the excess to `farms.rested_ms` (server-computed, only grows, idempotent; never rests below the caller's own unsynced tick). `started_at` never moves, so silo/market ticks, hashes, replays and rules versions are untouched. Target tick = (now - started_at - rested_ms) / 100 on server (`accept`) and client (`clock.ts`). The client calls wake in `connectRanked` before the farm opens. Applies to backlogs that predate the feature (pending Rohan's choice).
 
+## D-K4 (2026-11-17) Ratings need a verified program; brief contests rate on final scores (K4)
+- **Decision:** `ALGO_VERSION` 2. In every discipline and every contest only entries with `source_verified = 1` are rated (summary `excluded.noProgram`, present only when above 0 so unaffected summaries keep their bytes). Contests with `setup_v >= 2` use `final_score` (Wealth), `final_par_tick` (Speed) and tokens among entries with a final par tick (Brevity); old contests still read `net_worth` / `par_tick`. Migration 010 adds `entries.score`, `final_score`, `final_par_tick`, `hidden_done` (K3 fills them).
+- **Waiting:** a brief contest is rated only when no verified entry of a rateable player (not operator-excluded, GitHub account old enough) has `hidden_done = 0`. The check is read-only and runs before the lock. Order is kept, so it holds later contests too, but only until 48 h after close: then it rates with what is done (unfinished entries have no final score and drop out) and logs a warning.
+- **Why:** an action log alone can come from an offline optimiser; the program has to run on the hidden farms. Details: `brain/notes/K4.md`.
+
 ## D-K5 Sprout brief queries (2026-11-17)
 Six free queries (`goal quota budget twists bot_cap plot_cap`) read optional world fields through `packages/lang/src/brief.ts`; neutral values with no brief. Feature `queries`. Names become reserved words. See brain/notes/K5.md.
 

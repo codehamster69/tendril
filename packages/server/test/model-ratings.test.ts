@@ -24,7 +24,7 @@ async function world(models: { name: string; days: number; net: number; kind?: '
   let seq = 0, mseq = 0; // model entries get their own ids, so human entry ids match across worlds
   const entry = (c: string, u: string, net: number, kind: string, model: string | null, par = 100): Promise<unknown> => {
     const id = model === null ? `e${++seq}` : `m${++mseq}`;
-    return db.execute('INSERT INTO entries (id, challenge_id, user_id, net_worth, par_tick, tokens, actions_count, log_hash, source, author_kind, model, created_at) VALUES (?, ?, ?, ?, ?, 40, 1, ?, NULL, ?, ?, ?)',
+    return db.execute('INSERT INTO entries (id, challenge_id, user_id, net_worth, par_tick, tokens, actions_count, log_hash, source, source_verified, author_kind, model, created_at) VALUES (?, ?, ?, ?, ?, 40, 1, ?, NULL, 1, ?, ?, ?)',
       [id, c, u, net, par, `h-${id}`, kind, model, model === null ? seq : 1000 + mseq]);
   };
   for (let d = 0; d < DAYS.length; d++) {
