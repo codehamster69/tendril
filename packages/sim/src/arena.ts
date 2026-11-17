@@ -1,8 +1,11 @@
 // Arena helpers (SIM_SPEC.md appendix "Arena helpers"). Pure; no rules change.
 import { BASE_RULES_VERSION, COMPOSTER, DAILY_TICKS, HIVE, ITEMS, ITEM_COUNT, MARKET_RULES_VERSION, OP, PLOT_SIZE, RULES_VERSION, SEASON_TICKS, UNLOCKS } from './rules.ts';
 import { IllegalAction } from './types.ts';
-import type { LogEntry, Setup, World } from './types.ts';
+import type { Goal, LogEntry, Setup, World } from './types.ts';
+import { SETUP_BRIEF, briefActive, drawBrief } from './brief.ts';
+import type { Brief } from './brief.ts';
 import { applyAction, netWorth, scanAt, tickWorld } from './world.ts';
+import { utcDay } from './date.ts';
 
 /** Daily number 1 falls on this UTC date. */
 export const DAILY_EPOCH = '2026-12-01';
@@ -11,17 +14,6 @@ export const DAILY_EPOCH = '2026-12-01';
  * starting at DAILY_EPOCH (its 100-seed range is 286..352). Recalibrate only with a rules version bump.
  */
 export const DAILY_PAR = 290;
-
-const DAY_MS = 86_400_000;
-function utcDay(date: string): number {
-  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date);
-  if (!m) throw new Error('date must be YYYY-MM-DD');
-  const [y, mo, d] = [Number(m[1]), Number(m[2]), Number(m[3])];
-  const ms = Date.UTC(y, mo - 1, d);
-  const back = new Date(ms);
-  if (back.getUTCFullYear() !== y || back.getUTCMonth() !== mo - 1 || back.getUTCDate() !== d) throw new Error('not a real date');
-  return ms / DAY_MS;
-}
 
 /** 1 on DAILY_EPOCH, counting one per UTC day. Dates before the epoch give 0 or negative numbers. */
 export function dailyNumber(date: string): number {
@@ -57,16 +49,44 @@ export interface ParReplay {
   mosaic: string;
 }
 
+export interface GoalReplay {
+  /** The goal's score at the end (net worth when `goal` is null). */
+  score: number;
+  /** First world tick at which the score was at or above `par`, or null. Checked at tick 0, after every action and after every tick. */
+  parTick: number | null;
+  netWorth: number;
+  /** Units sold per item (length 8, index 1..7), counted as in `ParReplay`. */
+  sold: number[];
+  /** Units deposited per item (length 8, index 1..7): the stock a deposit action really added (barn or silo). */
+  deposited: number[];
+  /** Coins paid by order deliveries. */
+  orderCoins: number;
+  mosaic: string;
+}
+
+/** Festival score: filled permille 0..1000, `floor(sum(min(deposited, quota)) * 1000 / sum(quota))`; 0 when no quota is set. */
+export function festivalScore(quotas: readonly number[] | undefined, deposited: readonly number[]): number {
+  let total = 0, filled = 0;
+  for (let c = 1; c < ITEM_COUNT; c++) { const q = quotas?.[c] ?? 0; total += q; filled += Math.min(q, deposited[c] ?? 0); }
+  return total > 0 ? Math.floor(filled * 1000 / total) : 0;
+}
+
 /**
- * Same validation and result as `replayChunk`, plus the mosaic and the first tick net worth reached `par`.
- * Mutates `world`; throws IllegalAction on any bad entry (discard the world).
+ * Replays `actions` to `toTick` like `replayChunk` and scores the run by `goal` (SIM_SPEC 6.5): wealth and specialist = net worth, orders =
+ * coins from deliveries, inherited = net worth minus the net worth when the replay started, festival = filled permille. `goal` null is
+ * today's behaviour (score = net worth). Mutates `world`; throws IllegalAction on any bad entry (discard the world).
  */
-export function replayWithPar(world: World, actions: LogEntry[], toTick: number, par: number): ParReplay {
+export function replayWithGoal(world: World, actions: LogEntry[], toTick: number, goal: Goal | null, par: number): GoalReplay {
   if (!Number.isSafeInteger(toTick) || toTick < world.tick) throw new IllegalAction(`bad toTick ${toTick}`);
   if (!Number.isSafeInteger(par)) throw new IllegalAction(`bad par ${par}`);
   let parTick: number | null = null;
   const sold = new Array<number>(ITEM_COUNT).fill(0);
-  const check = (): void => { if (parTick === null && netWorth(world) >= par) parTick = world.tick; };
+  const deposited = new Array<number>(ITEM_COUNT).fill(0);
+  let orderCoins = 0;
+  const start = netWorth(world);
+  const kind = goal?.kind ?? 'wealth';
+  const score = (): number => (kind === 'festival' ? festivalScore(goal!.quotas, deposited) : kind === 'orders' ? orderCoins : kind === 'inherited' ? netWorth(world) - start : netWorth(world));
+  const check = (): void => { if (parTick === null && score() >= par) parTick = world.tick; };
   check();
   const advance = (to: number): void => { while (world.tick < to) { tickWorld(world); check(); } };
   for (const e of actions) {
@@ -75,14 +95,38 @@ export function replayWithPar(world: World, actions: LogEntry[], toTick: number,
       throw new IllegalAction(`bad action tick ${String(t)}`);
     }
     advance(t);
-    const item = e[2] === OP.sell && Number.isInteger(e[3]) && e[3]! >= 1 && e[3]! < ITEM_COUNT ? e[3]! : 0;
+    const op = e[2];
+    const item = op === OP.sell && Number.isInteger(e[3]) && e[3]! >= 1 && e[3]! < ITEM_COUNT ? e[3]! : 0;
     const before = item ? world.stock[item]! : 0;
-    applyAction(world, e);
+    const stockBefore = op === OP.deposit ? world.stock.slice() : null;
+    const res = applyAction(world, e);
     if (item) sold[item] = sold[item]! + (before - world.stock[item]!);
+    if (stockBefore) for (let c = 1; c < ITEM_COUNT; c++) deposited[c] = deposited[c]! + (world.stock[c]! - stockBefore[c]!);
+    if (op === OP.deliver) orderCoins += res;
     check();
   }
   advance(toTick);
-  return { netWorth: netWorth(world), sold, parTick, mosaic: farmMosaic(world) };
+  return { score: score(), parTick, netWorth: netWorth(world), sold, deposited, orderCoins, mosaic: farmMosaic(world) };
+}
+
+/**
+ * Same validation and result as `replayChunk`, plus the mosaic and the first tick net worth reached `par`.
+ * Mutates `world`; throws IllegalAction on any bad entry (discard the world).
+ */
+export function replayWithPar(world: World, actions: LogEntry[], toTick: number, par: number): ParReplay {
+  const r = replayWithGoal(world, actions, toTick, null, par);
+  return { netWorth: r.netWorth, sold: r.sold, parTick: r.parTick, mosaic: r.mosaic };
+}
+
+/**
+ * Final score of a brief challenge from the per-farm scores (visible farm first, then the hidden ones): the sum. `finalParTick` is the sum of
+ * the per-farm par ticks (a farm that never reached par counts as `budget`) when the summed score is at least `par` per farm, else null.
+ */
+export function finalOf(scores: readonly number[], parTicks: readonly (number | null)[], budget: number, par: number): { finalScore: number; finalParTick: number | null } {
+  if (scores.length === 0 || scores.length !== parTicks.length) throw new Error('one score and one par tick per farm');
+  const finalScore = scores.reduce((a, b) => a + b, 0);
+  const finalParTick = finalScore >= par * scores.length ? parTicks.reduce<number>((a, t) => a + (t ?? budget), 0) : null;
+  return { finalScore, finalParTick };
 }
 
 /** Units sold per item over a log (length 8, index 1..7), exactly as `replayWithPar` counts them. Mutates `world`; throws IllegalAction on a bad log. */
@@ -91,6 +135,9 @@ export function replayStats(world: World, actions: LogEntry[], toTick: number): 
 }
 
 export type ChallengeKind = 'daily' | 'season' | 'duel';
+
+/** Setup version for a new challenge dated `date` (a season: the date it starts): `SETUP_BRIEF` from `BRIEF_EPOCH`, else `SETUP_VERSION`. */
+export function setupVersionFor(date: string): number { return briefActive(date) ? SETUP_BRIEF : SETUP_VERSION; }
 
 /** Challenges created before modifiers existed use version 0 (the plain farm); new rows use SETUP_VERSION. Stored per challenge row. */
 export const SETUP_LEGACY = 0;
@@ -108,7 +155,7 @@ export const PAR_PERCENT = 90;
 export const PAR_MIN = 60;
 
 export interface ChallengeModifiers { coins: number; research: number; weatherBias: number; ticks: number }
-export interface ChallengeSetup { ticks: number; setup: Setup; modifiers: ChallengeModifiers | null }
+export interface ChallengeSetup { ticks: number; setup: Setup; modifiers: ChallengeModifiers | null; /** Setup version 2 only. */ brief?: Brief }
 
 /** xorshift32 draws from the seed; `n` values below the bound, using the high bits. */
 function drawer(seed: number): (n: number) => number {
@@ -121,18 +168,26 @@ function drawer(seed: number): (n: number) => number {
  * (old challenges); version 1 draws the day's modifiers from the seed inside MODIFIER_BOUNDS. Callers must create
  * challenge worlds through this, passing the version stored with the challenge.
  */
-export function challengeSetup(kind: ChallengeKind, seed: number, version: number = SETUP_VERSION, market?: { p: number[] } | null, rulesVersion?: number): ChallengeSetup {
-  const out = baseSetup(kind, seed, version, market);
+export function challengeSetup(kind: ChallengeKind, seed: number, version: number = SETUP_VERSION, market?: { p: number[] } | null, rulesVersion?: number, source?: 'daily' | 'season'): ChallengeSetup {
+  const out = baseSetup(kind, seed, version, market, source);
   if (rulesVersion === RULES_VERSION) out.setup.siloTick = 0; // rules v5: silos from the first tick
   return out;
 }
 
-function baseSetup(kind: ChallengeKind, seed: number, version: number, market?: { p: number[] } | null): ChallengeSetup {
+function baseSetup(kind: ChallengeKind, seed: number, version: number, market?: { p: number[] } | null, source?: 'daily' | 'season'): ChallengeSetup {
   if (kind !== 'daily' && kind !== 'season' && kind !== 'duel') throw new Error(`bad challenge kind ${String(kind)}`);
   if (!Number.isSafeInteger(seed)) throw new Error('seed must be a safe integer');
-  if (version !== SETUP_LEGACY && version !== SETUP_VERSION) throw new Error(`bad setup version ${String(version)}`);
+  if (version !== SETUP_LEGACY && version !== SETUP_VERSION && version !== SETUP_BRIEF) throw new Error(`bad setup version ${String(version)}`);
   if (market && kind === 'season') throw new Error('seasons have no market');
   if (version === SETUP_LEGACY) return { ticks: kind === 'season' ? SEASON_TICKS : DAILY_TICKS, setup: market ? { prices: market.p } : {}, modifiers: null };
+  if (version === SETUP_BRIEF) {
+    const { brief, setup, priceMult } = drawBrief(kind, seed, source);
+    if (priceMult) {
+      // Specialist: the day's price (market table or base) times the multiplier, whole centicoins, at least 1.
+      setup.prices = priceMult.map((m, c) => (c >= 1 && c < ITEM_COUNT ? Math.max(1, Math.floor((market ? market.p[c]! : ITEMS[c]!.price * 100) * m / 1000)) : 0));
+    } else if (market) setup.prices = market.p;
+    return { ticks: brief.ticks, setup, modifiers: null, brief };
+  }
   const draw = drawer(seed);
   const b = MODIFIER_BOUNDS;
   const coins = draw(b.coinsSteps) * b.coinsStep;

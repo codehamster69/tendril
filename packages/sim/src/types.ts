@@ -10,6 +10,44 @@ export interface Setup {
   prices?: number[];
   /** Rules v5: silos and sellPlot work from this tick on. Challenges on rules v5 pass 0; Endless passes endlessSiloTick(start). */
   siloTick?: number;
+  /**
+   * Daily briefs (SIM_SPEC section 6). Every field is optional and absent changes nothing. `weatherBias` also takes 2 (drought:
+   * rain segments have length 0) and -2 (hard frost) here, which `createWorld` accepts.
+   */
+  /** Extra starting plots, flat `[px, py, ...]`, each next to an owned plot, added after the barn plot. */
+  plots?: number[];
+  /** Nitrogen taken off the tiles of 4x4 patches chosen from the world seed (1..50). */
+  poorSoil?: number;
+  /** Starting moisture taken off the tiles of 4x4 patches chosen from the world seed (1..50). */
+  drySoil?: number;
+  /** `buyBot` / `buyPlot` return 0 once this many bots / plots are owned. */
+  maxBots?: number; maxPlots?: number;
+  /** Research bits that `unlock` refuses (result 0). */
+  lockedUnlocks?: number;
+  /** Starting stock per item (length 8, index 1..7). */
+  stock?: number[];
+  /** A hive already standing on tile `[x, y]` of the barn plot. */
+  hive?: [number, number];
+  /** 1: a half-planted, tired farm generated from the world seed (SIM_SPEC 6.4). */
+  inherited?: number;
+  /** 1: orders come about twice as often and pay half as much again. */
+  orderBoost?: number;
+  /** The challenge goal; kept on the world for Sprout to read, never changes a rule by itself. */
+  goal?: Goal;
+}
+export type GoalKind = 'wealth' | 'festival' | 'specialist' | 'orders' | 'inherited';
+export interface Goal {
+  kind: GoalKind;
+  /** Tick budget of the challenge. */
+  budget: number;
+  /** festival: units per item (length 8, index 1..7) to deposit in the barn or silos. */
+  quotas?: number[];
+  /** specialist: item ids whose price is raised / cut. */
+  favoured?: number; shunned?: number;
+}
+/** What a brief keeps on the world after creation (not hashed; only its effects are). Absent on every other world. */
+export interface BriefState {
+  goal?: Goal; maxBots?: number; maxPlots?: number; lockedUnlocks?: number; orderBoost?: number; poorSoil?: number; drySoil?: number;
 }
 export type LogEntry = [t: number, bot: number, op: number, a?: number, b?: number];
 export type WeatherKind = 'rain' | 'frost';
@@ -31,6 +69,8 @@ export interface World {
    * coins, spent), so an Endless farm can carry it without changing the hash any older client computes.
    */
   siloTick?: number;
+  /** Daily briefs: goal and limits. Absent: none of SIM_SPEC section 6 applies. */
+  brief?: BriefState;
 }
 export interface ScanResult {
   tilled: number; crop: number; stage: number; moisture: number; nitrogen: number; fatigue: number; barn: boolean;

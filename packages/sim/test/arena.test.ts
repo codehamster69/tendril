@@ -160,7 +160,7 @@ describe('weatherBias', () => {
     expect(forecast(createWorld(farm(5), { weatherBias: 0 }), 5000)).toEqual(forecast(createWorld(farm(5)), 5000));
   });
   it('rejects other values and survives serialize/deserialize', () => {
-    expect(() => createWorld(farm(1), { weatherBias: 2 })).toThrow();
+    expect(() => createWorld(farm(1), { weatherBias: 3 })).toThrow();
     const w = createWorld(farm(9), { weatherBias: -1, coins: 20 });
     forecast(w, 3000);
     const back = deserialize(serialize(w));
