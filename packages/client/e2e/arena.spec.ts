@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { ready, menu } from './game';
 import { dailyNumber, dailySeed, DAILY_PAR, BASE_RULES_VERSION, RULES_VERSION, baseMarket, marketActive, daysUntilMarket } from '@tendril/sim/src/index.ts';
 
 const date = new Date().toISOString().slice(0, 10);
@@ -32,24 +33,40 @@ async function mock(page: Page, signedIn: boolean, respond: Respond = () => ({ s
   });
 }
 
-test.beforeEach(async ({ context }) => { await context.grantPermissions(['clipboard-read', 'clipboard-write']); });
+test.beforeEach(async ({ context, page }) => {
+  await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+  await page.emulateMedia({ reducedMotion: 'reduce' }); // the result card appears at once, without the sunset orbit
+});
+
+async function open(page: Page, url: string): Promise<void> { await page.goto(url); await ready(page); }
+/** Open the "Arena & lessons" panel, where the challenge card lives now. */
+async function arenaPanel(page: Page): Promise<void> { await menu(page, 'arena'); await expect(page.locator('#panel-overlay')).toBeVisible(); }
+async function closePanel(page: Page): Promise<void> { await page.keyboard.press('Escape'); await expect(page.locator('#panel-overlay')).toBeHidden(); }
+/** Play the day through to sunset; resolves with the result card. */
+async function sunset(page: Page) {
+  await expect(page.locator('#tp-sunset')).toBeEnabled();
+  await page.click('#tp-sunset');
+  return page.locator('.rs-card');
+}
 
 test('signed out: run to end shows the result and copies the share text', async ({ page }) => {
   await mock(page, false);
-  await page.goto('/?mode=daily');
+  await open(page, '/?mode=daily');
+  await arenaPanel(page);
   await expect(page.locator('#arena-head')).toContainText(challenge.number > 0 ? `Daily farm ${label}` : 'Practice farm');
   await expect(page.locator('#arena-stats')).toContainText('Time left');
   await expect(page.locator('#arena-beat')).toHaveText('400 coins');
+  await closePanel(page);
   await expect(page.locator('#status')).toHaveAttribute('data-state', 'paused');
   const started = Date.now();
-  await page.click('#btn-run-end');
-  await expect(page.locator('#arena-result')).toBeVisible({ timeout: 15_000 });
+  const card = await sunset(page);
+  await expect(card).toBeVisible({ timeout: 15_000 });
   expect(Date.now() - started).toBeLessThan(5000); // 3,000 ticks without drawing each one
   await expect(page.locator('#hud-tick')).toHaveText('3000');
-  await expect(page.locator('#arena-facts')).toContainText('net worth');
-  await expect(page.locator('#btn-arena-signin')).toBeVisible();
+  await expect(card.locator('.rs-coins')).toContainText('net worth');
+  await expect(card.locator('.rs-signin')).toBeVisible();
   expect(submitted).toHaveLength(0);
-  await page.click('#btn-copy-result');
+  await card.locator('.rs-share').click();
   const text = await page.evaluate(() => navigator.clipboard.readText());
   const lines = text.split('\n');
   expect(lines[0]).toMatch(new RegExp(`^Tendril ${label} · [\\d,]+ coins$`));
@@ -65,7 +82,8 @@ test('the daily shows the market countdown before 8 Dec and the day\'s prices fr
     const b = baseMarket(); b.m[1] = 1500; b.p[1] = 300;
     served = { ...challenge, rulesVersion: RULES_VERSION, market: { prices: b.p, multipliers: b.m, shares: null } };
   }
-  await page.goto('/?mode=daily');
+  await open(page, '/?mode=daily');
+  await arenaPanel(page);
   const market = page.locator('#arena-market');
   if (marketActive(date)) {
     await expect(market).toContainText("Today's market");
@@ -81,14 +99,15 @@ test('the daily shows the market countdown before 8 Dec and the day\'s prices fr
 
 test('signed in: the finished run is submitted and the rank shown', async ({ page }) => {
   await mock(page, true);
-  await page.goto('/?mode=challenge&id=' + challenge.id);
+  await open(page, '/?mode=challenge&id=' + challenge.id);
   await expect(page.locator('#status')).toHaveAttribute('data-state', 'paused'); // Wait for the farm to load before running it.
-  await page.click('#btn-run-end');
-  await expect(page.locator('#arena-facts')).toContainText('top 4% (rank 4 of 120)', { timeout: 15_000 });
+  const card = await sunset(page);
+  await expect(card.locator('.rs-rank')).toContainText('4th of 120', { timeout: 15_000 });
+  await expect(card.locator('.rs-rank')).toContainText('top 4%');
   expect(submitted).toHaveLength(1);
   expect(submitted[0]!.rulesVersion).toBe(BASE_RULES_VERSION);
   expect(Array.isArray(submitted[0]!.actions)).toBe(true);
-  await page.click('#btn-copy-result');
+  await card.locator('.rs-share').click();
   const text = await page.evaluate(() => navigator.clipboard.readText());
   expect(text.split('\n')[0]).toMatch(/· top 4%$/);
   expect(text.endsWith('tendril.hokora.xyz/r/k3f9Zq1AbCdE')).toBe(true);
@@ -96,15 +115,18 @@ test('signed in: the finished run is submitted and the rank shown', async ({ pag
 
 test('signed in: the program goes with the run, the tick box publishes it, and tokens join the share text', async ({ page }) => {
   await mock(page, true, (body) => ({ status: 200, body: { ...entry, tokens: 112, ranks: { ...entry.ranks, brevity: 3 }, source: body.source } }));
-  await page.goto('/?mode=daily');
+  await open(page, '/?mode=daily');
+  await arenaPanel(page);
   await expect(page.locator('#publish-source')).not.toBeChecked();
   await page.check('#publish-source');
-  await page.click('#btn-run-end');
-  await expect(page.locator('#arena-note')).toContainText('Your program is 112 tokens (Brevity rank 3)', { timeout: 15_000 });
+  await closePanel(page);
+  const card = await sunset(page);
+  await expect(card.locator('.rs-note')).toContainText('Your program is 112 tokens', { timeout: 15_000 });
+  await expect(card.locator('.rs-medal').nth(2)).toContainText('3rd'); // Brevity rank 3
   expect(submitted).toHaveLength(1);
   expect(typeof submitted[0]!.source).toBe('string');
   expect(submitted[0]!.sourcePublic).toBe(true);
-  await page.click('#btn-copy-result');
+  await card.locator('.rs-share').click();
   const lines = (await page.evaluate(() => navigator.clipboard.readText())).split('\n');
   expect(lines[1]).toMatch(/^Par (at tick [\d,]+|not reached) · 112 tokens$/);
   expect(lines).toHaveLength(11);
@@ -112,11 +134,13 @@ test('signed in: the program goes with the run, the tick box publishes it, and t
 
 test('signed in: ticking "a model wrote this" sends the model name with a published program, and is never downgraded to a human run', async ({ page }) => {
   await mock(page, true, (body) => (body.authorKind === 'model' ? { status: 422, body: { error: 'Source does not produce this run' } } : { status: 200, body: entry }));
-  await page.goto('/?mode=daily');
+  await open(page, '/?mode=daily');
+  await arenaPanel(page);
   await expect(page.locator('#model-name')).toBeHidden();
   await page.check('#model-entry');
   await page.fill('#model-name', 'my-model-1');
-  await page.click('#btn-run-end');
+  await closePanel(page);
+  await sunset(page);
   await expect.poll(() => submitted.length, { timeout: 15_000 }).toBe(1);
   expect(submitted[0]).toMatchObject({ authorKind: 'model', model: 'my-model-1', sourcePublic: true });
   expect(typeof submitted[0]!.source).toBe('string');
@@ -126,10 +150,11 @@ test('signed in: ticking "a model wrote this" sends the model name with a publis
 
 test('signed in: a program the server cannot match does not cost the score', async ({ page }) => {
   await mock(page, true, (body) => (body.source !== undefined ? { status: 422, body: { error: 'Source does not produce this run' } } : { status: 200, body: entry }));
-  await page.goto('/?mode=daily');
-  await page.click('#btn-run-end');
-  await expect(page.locator('#arena-facts')).toContainText('top 4% (rank 4 of 120)', { timeout: 15_000 });
-  await expect(page.locator('#arena-note')).toContainText('does not match this run');
+  await open(page, '/?mode=daily');
+  const card = await sunset(page);
+  await expect(card.locator('.rs-rank')).toContainText('4th of 120', { timeout: 15_000 });
+  await expect(card.locator('.rs-rank')).toContainText('top 4%');
+  await expect(card.locator('.rs-note')).toContainText('does not match this run');
   expect(submitted.map((b) => b.source !== undefined)).toEqual([true, false]);
   expect(submitted[1]!.sourcePublic).toBeUndefined();
 });
@@ -141,18 +166,20 @@ test('the Season tab opens this week\'s season, runs 6,000 ticks and highlights 
     if (path === '/api/challenges/week') return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(season) });
     return route.fulfill({ status: 401, contentType: 'application/json', body: JSON.stringify({ error: 'Sign in first.' }) });
   });
-  await page.goto('/');
-  await page.click('#btn-menu');
-  await page.click('#menu-overlay a[data-entry="season"]');
+  await open(page, '/');
+  await menu(page, 'season');
+  await ready(page);
+  await arenaPanel(page);
   await expect(page.locator('#arena-head')).toContainText('Weekly season #1');
+  await closePanel(page);
   await expect(page.locator('#mode-label')).toHaveText('Weekly season');
   await page.click('#btn-menu');
   await expect(page.locator('#menu-overlay a[aria-current="page"]')).toContainText('Season');
   await expect(page.locator('#menu-overlay a[data-entry="live"]')).toContainText('Endless');
   await page.keyboard.press('Escape');
   const started = Date.now();
-  await page.click('#btn-run-end');
-  await expect(page.locator('#arena-result')).toBeVisible({ timeout: 30_000 });
+  const card = await sunset(page);
+  await expect(card).toBeVisible({ timeout: 30_000 });
   expect(Date.now() - started).toBeLessThan(30_000); // well under a minute
   await expect(page.locator('#hud-tick')).toHaveText('6000');
 });
@@ -169,10 +196,12 @@ test('a market day: the run is played and submitted under the day\'s prices (rul
   await mock(page, true);
   const prices = [0, 400, 300, 100, 600, 400, 500, 800]; // carrot at double its base price
   served = { ...challenge, rulesVersion: 4, market: { prices, multipliers: [0, 2000, 1000, 1000, 1000, 1000, 1000, 1000], shares: null } };
-  await page.goto('/?mode=daily');
+  await open(page, '/?mode=daily');
+  await arenaPanel(page);
   await expect(page.locator('#arena-head')).toBeVisible();
-  await page.click('#btn-run-end');
-  await expect(page.locator('#arena-result')).toBeVisible({ timeout: 15_000 });
+  await closePanel(page);
+  const card = await sunset(page);
+  await expect(card).toBeVisible({ timeout: 15_000 });
   await expect.poll(() => submitted.length).toBe(1);
   expect(submitted[0]!.rulesVersion).toBe(4);
 });
