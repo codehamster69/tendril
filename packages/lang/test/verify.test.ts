@@ -38,7 +38,7 @@ describe('verifySource', () => {
     const actions = produce(r);
     expect(actions.length).toBeGreaterThan(50);
     const v = verifySource(r);
-    expect(v).toEqual({ ok: true, tokens: countTokens(daily), logHash: hashLog(actions), actions: actions.length, netWorth: expect.any(Number) });
+    expect(v).toEqual({ ok: true, tokens: countTokens(daily), logHash: hashLog(actions), actions: actions.length, netWorth: expect.any(Number), score: expect.any(Number), parTick: null });
   });
   it('matches a run the client made in uneven chunks, as the game loop does', () => {
     const r = req(daily);
@@ -174,6 +174,7 @@ describe('market days (rules v4)', () => {
   it('checks a program under the day\'s table and the table changes the run\'s value', () => {
     const base = verifySource(req(daily)), market = verifySource(marketReq(daily));
     expect(base.ok && market.ok).toBe(true);
+    if (base.ok) expect(base.score).toBe(base.netWorth); // below setup version 2 the score is net worth
     if (base.ok && market.ok) { expect(market.logHash).toBe(base.logHash); expect(market.netWorth).not.toBe(base.netWorth); }
   });
   it('dispatches by data: v4 needs a table, v3 refuses one, a damaged table is refused', () => {
