@@ -25,7 +25,7 @@ import { FarmApi, signedInHint, wireSiteLinks } from './api-client';
 import { mountJoinDuel } from './join-duel';
 import { mountAutoSync } from './autosync';
 import { mountSound } from './sound';
-import { el } from './palette';
+import { el, toast } from './palette';
 import { mountPerfMeter } from './perf-meter';
 import { mountWorldFeedback } from './world-feedback';
 import { mountDryRun } from './dry-run';
@@ -57,6 +57,7 @@ const sim = new RealSim(mode, {
   scenario, storageKey: `sprout.v1.${mode}${suffix}`, authoritative: ranked ? await connectRanked(api, rankedParam !== '1') : undefined,
   seed: stress ? stress.seed : mode === 'campaign' ? lesson.seed : challenge?.seed,
 });
+window.addEventListener('tendril:recovered', () => toast('Farm restored from the server', 'This device\'s saved copy did not match, so your farm was rebuilt from the last checkpoint the server accepted and is catching up. Nothing on the server was lost.'));
 const names = { live: sim.ranked ? 'Endless · server-verified' : 'Local live · unverified', sandbox: 'Sandbox', campaign: 'Campaign', daily: isSeason ? 'Weekly season' : 'Daily challenge' };
 document.getElementById('mode-label')!.textContent = stress ? `Stress farm · ${stress.plots} plots, ${stress.bots} bots · local only` : names[mode];
 document.getElementById('mode-note')!.textContent = mode === 'live' ? (sim.ranked ? '10 ticks per second · syncs to the server as it runs' : '10 ticks per second · local and unverified until connected') : mode === 'sandbox' ? 'Experiment freely · separate from your live farm' : mode === 'daily' ? `The same seed for everyone · ${challenge?.ticks.toLocaleString('en-US') ?? '3,000'} ticks` : 'Learn one recipe at a time';

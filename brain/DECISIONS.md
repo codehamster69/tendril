@@ -139,6 +139,9 @@ A live Endless farm may run at most 6 hours (216,000 ticks) behind the wall cloc
 - **Waiting:** a brief contest is rated only when no verified entry of a rateable player (not operator-excluded, GitHub account old enough) has `hidden_done = 0`. The check is read-only and runs before the lock. Order is kept, so it holds later contests too, but only until 48 h after close: then it rates with what is done (unfinished entries have no final score and drop out) and logs a warning.
 - **Why:** an action log alone can come from an offline optimiser; the program has to run on the hidden farms. Details: `brain/notes/K4.md`.
 
+## D-K5 Sprout brief queries (2026-11-17)
+Six free queries (`goal quota budget twists bot_cap plot_cap`) read optional world fields through `packages/lang/src/brief.ts`; neutral values with no brief. Feature `queries`. Names become reserved words. See brain/notes/K5.md.
+
 ## D-K1 (2026-11-17) Daily briefs are optional Setup fields, no rules bump (K1)
 - **Decision:** a brief (goal + 0-2 twists, seasons exactly 2) is drawn from the challenge seed by `drawBrief` and carried as optional `Setup` fields (SIM_SPEC section 6). Setup version 2, `BRIEF_EPOCH = '2099-01-01'` (off). `RULES_VERSION` stays 5; absent fields change nothing, every existing golden hash is unchanged. Scores come from `replayWithGoal`; `finalOf` sums the visible and hidden farms.
 - **Why:** the plan (`challenges/plan.md`) needs a different problem every day, and dispatch by stored data keeps old challenges, Endless farms and duels replaying exactly. Drought is `weatherBias 2` (rain segments of length 0), hard frost is `-2`.
