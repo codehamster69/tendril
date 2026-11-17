@@ -26,6 +26,8 @@ export class GameLoop {
   private changing = false;
   private actionBusy = false;
   private pausing = 0;
+  /** While a resume is in flight the worker still reports the old pause; such a snapshot must not cancel the Run just pressed. */
+  private resuming = 0;
   private intent = 0;
   private rendered: Snapshot | null = null;
   private compiled = '';
@@ -116,7 +118,10 @@ export class GameLoop {
     this.last = performance.now();
     this.acc = 0;
     this.running = true;
-    if (this.sim.paused) void this.sim.resume().catch(() => {}); // Finish the tick a breakpoint or line step interrupted.
+    if (this.sim.paused) { // Finish the tick a breakpoint or line step interrupted.
+      this.resuming++;
+      void this.sim.resume().catch(() => {}).finally(() => { this.resuming--; this.rendered = null; /* look again: the worker may have stopped at another breakpoint */ });
+    }
     this.updateStatus();
   }
 
@@ -287,7 +292,7 @@ export class GameLoop {
       this.rendered = s;
       this.progress = null;
       emit('snapshot', s);
-      const p = this.sim.paused;
+      const p = this.resuming ? null : this.sim.paused; // See `resuming`.
       const key = p ? `${p.bot}:${p.line}:${s.tick}` : '';
       if (p) {
         this.running = false;
