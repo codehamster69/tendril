@@ -57,7 +57,10 @@ jobs:
           set -euo pipefail
           cd packages/client
           cur=$(node -p "require('./package.json').version")
-          next=$(node -e "const [a,b,c]='$cur'.split('.').map(Number);console.log([a,b,c+1].join('.'))")
+          bump() { node -e "const [a,b,c]='$1'.split('.').map(Number);console.log([a,b,c+1].join('.'))"; }
+          next=$(bump "$cur")
+          # A tag can exist without its version bump on main (a release tagged by hand); never reuse one.
+          while git rev-parse -q --verify "refs/tags/v$next" >/dev/null; do echo "v$next is taken"; next=$(bump "$next"); done
           echo "Next version: $next (from $cur)"
           if [ "$DRY_RUN" = "true" ]; then echo "Dry run: stopping before commit, tag and release."; echo tag= >> "$GITHUB_OUTPUT"; exit 0; fi
           npm pkg set version="$next"
