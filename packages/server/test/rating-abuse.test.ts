@@ -38,7 +38,7 @@ async function entry(e: E): Promise<string> {
   const id = `e${++seq}`;
   await db.execute(
     'INSERT INTO entries (id, challenge_id, user_id, net_worth, par_tick, tokens, actions_count, log_hash, source, source_public, source_verified, author_kind, model, created_at) VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?)',
-    [id, e.c, e.u, e.net, e.par === undefined ? 100 : e.par, e.tokens ?? null, e.hash ?? `h-${id}`, e.source ?? null, e.source ? 1 : 0, e.source ? 1 : 0, e.kind ?? 'human', e.model ?? null, e.at ?? seq]);
+    [id, e.c, e.u, e.net, e.par === undefined ? 100 : e.par, e.tokens ?? null, e.hash ?? `h-${id}`, e.source ?? null, e.source ? 1 : 0, 1, e.kind ?? 'human', e.model ?? null, e.at ?? seq]);
   return id;
 }
 async function field(c: string, ids: string[]): Promise<void> {

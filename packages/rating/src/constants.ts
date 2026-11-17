@@ -1,5 +1,5 @@
 /** Bump when any maths below changes; ratings are then recomputed from stored standings. */
-export const ALGO_VERSION = 1;
+export const ALGO_VERSION = 2;
 
 export const START_RATING = 1200;
 export const MIN_RATING = 0;
