@@ -72,6 +72,8 @@ export class GameLoop {
   snapshot(): Snapshot | null { return this.sim.latest(); }
   debug(): BotDebug[] { return this.sim.debug; }
   logChunks() { return this.sim.logChunks(); }
+  /** Action kinds seen so far: a cheap stand-in for scanning the whole log on every frame. */
+  opKinds() { return this.sim.opKinds(); }
   get busy(): boolean { return this.actionBusy || this.changing; }
   /** The program the farm runs now (null before the first program loads). */
   get runningSource(): string | null { return this.hasProgram ? this.compiled : null; }

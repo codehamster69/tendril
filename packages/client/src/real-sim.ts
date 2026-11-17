@@ -4,7 +4,7 @@ import { deserialize, endlessSiloTick, hashWorld, replayChunk, withEndlessSilos 
 import type { LogEntry } from '@tendril/sim/src/index.ts';
 import type { ChunkResponse, FarmResponse } from './api-client';
 import { targetTick, type Meta, type Mode } from './clock';
-import { planSubmission, validateFarm, type Accepted, type LogChunk, type Submission } from './chunks';
+import { planSubmission, trimLocalLog, validateFarm, type Accepted, type LogChunk, type Submission } from './chunks';
 import type { BotDebug, Diagnostic, FromWorker, OutputLine, Scenario, SimError, StateMessage, ToWorker, ViewEvent } from './sim-protocol';
 import { ViewStore } from './view-codec';
 import type { ViewSnapshot } from './view-codec';
@@ -14,6 +14,9 @@ import { kvGetMany, kvSetMany } from './store';
 export type { LogChunk, Accepted, Submission } from './chunks';
 export interface RealSimOptions { authoritative?: FarmResponse; replyTimeoutMs?: number; scenario?: Scenario; storageKey?: string; seed?: number }
 type Command = ToWorker extends infer T ? T extends ToWorker ? Omit<T, 'id'> : never : never;
+
+/** The longest a running farm goes between saves (more for very large farms, see requestStep). */
+const SAVE_EVERY_MS = 2_000;
 
 export class RealSim implements SimSource {
   onProgress?: (done: number, total: number) => void;
@@ -34,6 +37,11 @@ export class RealSim implements SimSource {
   /** Actions logged inside a tick a breakpoint interrupted. They become durable only once that tick completes. */
   private held: { from: { tick: number; hash: string }; log: LogEntry[] } | null = null;
   private durableHash: string | null = null;
+  /** True while light steps have run since the last full save, so `hash` no longer describes the world. */
+  private hashStale = false;
+  private lastSaveAt = 0;
+  /** How long the last full save took (worker hash and copy, transfer, database write). */
+  private saveCostMs = 0;
   private errs: SimError[] = [];
   private pendingLog: LogChunk[] = [];
   readonly prefix: string;
@@ -83,6 +91,13 @@ export class RealSim implements SimSource {
   drainEvents(): ViewEvent[] { return this.viewEvents.splice(0); }
   drainOutput(): OutputLine[] { return this.out.splice(0); }
   drainErrors(): SimError[] { return this.errs.splice(0); }
+  /** Every action kind this farm has ever logged, kept cheaply so achievements need not scan or copy the log. */
+  private opsSeen = new Set<number>();
+  opKinds(): ReadonlySet<number> { return this.opsSeen; }
+  /** Server-owned farms keep every unacknowledged action. A local farm submits nothing, so only a recent window stays: a farm left running for hours must not grow its save without end. */
+  private trimLocal(): void {
+    if (!this.accepted && (this.scenario.kind === 'live' || this.scenario.kind === 'sandbox')) this.pendingLog = trimLocalLog(this.pendingLog);
+  }
   /** Copy for future replay/submission. Never evict unacknowledged actions. */
   logChunks(): LogChunk[] { return structuredClone(this.pendingLog); }
 
@@ -109,6 +124,8 @@ export class RealSim implements SimSource {
       meta ??= { seed: authoritative.seed, startedAtMs: authoritative.startedAtMs, mode: 'live', farmId: authoritative.id, rulesVersion: authoritative.rulesVersion };
     }
     this.pendingLog = log ?? [];
+    this.opsSeen = new Set(this.pendingLog.flatMap((c) => c.actions.map((e) => e[2])));
+    this.trimLocal();
     if (world) {
       const restored = deserialize(world);
       if (restored.seed !== meta!.seed || (authoritative && restored.id !== authoritative.id)) throw new Error('Saved world does not match farm metadata.');
@@ -170,7 +187,13 @@ export class RealSim implements SimSource {
     ticks = Math.min(ticks, 20_000);
     if (this.mode === 'live') ticks = Math.min(ticks, targetTick(this.meta, Date.now()) - this.snap.tick);
     if (ticks <= 0) return;
-    void this.enqueue(() => this.command({ type: 'step', ticks }, this.meta, this.source)).catch(() => {});
+    // Saving costs time that grows with the farm (hash, full-world copy, database write), so a farm that is merely
+    // running is saved at most every few seconds, and never spends more than ~5% of its time saving. Pausing,
+    // editing, syncing and every other command still save at once. A crash loses at most that window, which the
+    // clock (live) or the same program (sandbox) re-simulates identically. Challenges and lessons save every step.
+    const lazy = this.mode === 'live' || this.mode === 'sandbox';
+    const light = lazy && Date.now() - this.lastSaveAt < Math.max(SAVE_EVERY_MS, this.saveCostMs * 20);
+    void this.enqueue(() => this.command({ type: 'step', ticks, light }, this.meta, this.source)).catch(() => {});
   }
 
   /** The last durable checkpoint, read after every queued command. A copy for the dry run; the farm itself is not touched. */
@@ -193,7 +216,7 @@ export class RealSim implements SimSource {
     return this.enqueue(async () => {
       if (this.persistenceError || this.fatal) throw new Error('The farm could not be saved, so it cannot sync. Your local logs are kept.');
       if (!this.accepted || !this.snap) return; // Still loading: nothing to sync yet.
-      plan = planSubmission(this.accepted.farm, this.pendingLog, this.snap.tick);
+      plan = planSubmission(this.accepted.farm, this.pendingLog, this.durableTick ?? this.snap.tick);
     }).then(() => plan);
   }
   acknowledge(plan: Submission, response: ChunkResponse): Promise<void> {
@@ -290,7 +313,7 @@ export class RealSim implements SimSource {
 
   private async command(m: Command, meta: Meta, source: string, reset = false): Promise<void> {
     const state = await this.ask(m);
-    if (!reset && this.snap && (state.fromTick !== this.snap.tick || state.fromHash !== this.hash)) {
+    if (!reset && this.snap && (state.fromTick !== this.snap.tick || (state.fromHash !== '' && !this.hashStale && state.fromHash !== this.hash))) {
       throw new Error('Simulation checkpoint is out of order. Cancel and restart before continuing.');
     }
     if (reset) { this.pendingLog = []; this.held = null; }
@@ -305,7 +328,8 @@ export class RealSim implements SimSource {
     this.viewEvents.push(...state.view.events);
     if (this.viewEvents.length > 512) this.viewEvents.splice(0, this.viewEvents.length - 512);
     this.snap = this.view.latest();
-    this.hash = state.hash;
+    const light = state.hash === '';
+    if (!light) { this.hash = state.hash; this.hashStale = false; }
     this.out.push(...state.output);
     this.errs.push(...state.errors.map((e) => ({ ...e, kind: 'script' as const })));
     this.diagnostics = state.diagnostics;
@@ -314,20 +338,28 @@ export class RealSim implements SimSource {
     this.heat = state.heat;
     // A breakpoint can stop the world inside tick T (some bots already acted). That state cannot be replayed
     // from a log, so it is kept in memory and only becomes a checkpoint once the tick completes.
-    const log = [...(this.held?.log ?? []), ...state.log];
-    const from = this.held?.from ?? { tick: state.fromTick, hash: state.fromHash };
-    if (log.some((entry) => entry[0] >= state.view.tick)) {
+    // A light step is not saved: its actions wait in memory with the others until the next full save (see requestStep).
+    const log = this.held ? this.held.log : [];
+    for (const entry of state.log) log.push(entry);
+    const from = this.held?.from ?? { tick: state.fromTick, hash: state.fromHash || this.durableHash || '' };
+    if (light || log.some((entry) => entry[0] >= state.view.tick)) {
+      this.hashStale ||= light;
       this.held = { from, log };
       return;
     }
     this.held = null;
+    for (const entry of log) this.opsSeen.add(entry[2]);
     this.savedWorld = state.saved;
     this.durableHash = state.hash;
     if (from.tick !== state.view.tick || log.length) {
       this.pendingLog.push({ fromTick: from.tick, toTick: state.view.tick, actions: log, fromHash: from.hash, hash: state.hash });
+      this.trimLocal();
     }
+    const started = performance.now();
     await this.persist(state.saved, meta, source, this.pendingLog, state.hash, this.accepted);
     this.durableTick = state.view.tick;
+    this.lastSaveAt = Date.now();
+    this.saveCostMs = performance.now() - started;
   }
 
   private async persist(world: string, meta: Meta, source: string, logs: LogChunk[], hash: string, accepted: Accepted | null): Promise<void> {

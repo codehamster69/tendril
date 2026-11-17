@@ -209,6 +209,8 @@ test('flush is an ordered durability barrier and save failure retains logs for r
       return original.apply(this, args);
     };
     sim.requestStep(100);
+    // A running step is saved lazily (RealSim.requestStep); the barrier is where the failed save surfaces.
+    await sim.flush().catch(() => {});
     while (sim.busy) await new Promise((resolve) => setTimeout(resolve, 5));
     const failure = sim.persistenceError;
     const retained = sim.logChunks();
