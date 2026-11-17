@@ -126,7 +126,7 @@ describe('the brief on a challenge', () => {
 
 describe('old challenges are unchanged', () => {
   it('without a brief setup the seed, setup version and info are exactly as before', async () => {
-    app = make({}, null); // no salt, no pinned version: BRIEF_EPOCH is off, so the date decides
+    app = make({}, SETUP_VERSION); // no salt, version pinned to the old one: a pre-brief day needs neither
     const c = (await call('/challenges/today')).json;
     expect(c).toMatchObject({ seed: dailySeed('2026-12-05'), setupVersion: SETUP_VERSION, brief: null, hiddenFarms: 0, siblingSeeds: null });
     now = NOW + DAY_MS;
