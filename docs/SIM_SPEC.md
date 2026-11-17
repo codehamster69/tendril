@@ -441,3 +441,60 @@ square farms with the barn in a corner, bots = plots / 2. Coins per 1000 ticks o
 the first silo on a 9-plot farm pays back silo plus research in about 1800 ticks; on 4 plots about 3900; a silo on every plot never pays back
 in any sensible time (73k ticks on 9 plots, 690k on 36). The full table is in `brain/notes/L1-silos.md`.
 
+
+## 6. Daily briefs (K1, 2026-11-17): goals, twists, hidden farms, scoring
+A **brief** replaces "make the most money" with one goal and 0-2 twists drawn from the challenge seed. Everything here is an optional input: a world without these `Setup` fields plays exactly as before, no hash changes, and `RULES_VERSION` stays 5. Code: `packages/sim/src/brief.ts` (draw), `arena.ts` (`challengeSetup`, `replayWithGoal`, `finalOf`), `start.ts` (inherited farm, hive).
+
+### 6.1 Switch and version
+- `BRIEF_EPOCH = '2099-01-01'` (off). `briefActive(date)`: dailies dated on or after it, seasons starting on or after it. `setupVersionFor(date)` = `SETUP_BRIEF` (2) from the epoch, else `SETUP_VERSION` (1).
+- Setup version 2 is stored per challenge (`setup_v`); versions 0 and 1 are unchanged and carry no `brief`. Dispatch by stored data only, never by "now".
+- `challengeSetup(kind, seed, 2, market, rulesVersion, source?)` returns `{ ticks, setup, modifiers: null, brief }`. `source` ('daily' | 'season') only matters for a duel: it copies the brief of the challenge it was made from, so use the source's kind and seed. `setup.prices` is the market table, or for a specialist day the table (or base price) times the multiplier; `siloTick = 0` is set for rules v5 as before.
+- `HIDDEN_FARMS = { daily: 2, season: 4, duel: 0 }`. A hidden farm is the same `setup` with another world seed: `createWorld({ id, seed: siblingSeed }, setup)`. The brief, caps, quotas and starting land are identical; soil patches, weather, orders and the inherited farm's layout come from the world seed, so they differ.
+
+### 6.2 The draw (`drawBrief`)
+xorshift32 from `(seed ^ BRIEF_SALT) >>> 0` (`BRIEF_SALT = 0x7B21E5D1`, 0 -> 1), four warm-up steps, each draw `(state >>> 8) % n`. Order: goal (16) -> twist count (daily: 4, giving 0, 1, 1 or 2; season: always 2, no draw) -> twist picks (11 each, rejected picks still use a draw, at most 40 tries) -> twist values in catalogue order -> goal parameters.
+- Goal weights out of 16: wealth 4; festival, specialist, orders, inherited 3 each.
+- Budget: daily 3000 ticks, season 6000 (`SEASON_TICKS`), duel as its source.
+- Twist rules: no repeats; `drought` clashes with `dry_soil` and with `hard_frost`; `land` is never drawn on an inherited farm; `research_given` and `research_locked` never name the same research; a locked research is never one the goal needs (festival items, specialist favoured item).
+
+| Twist | Value | Setup field | Effect |
+|---|---|---|---|
+| `land` | n = 1..3 extra plots | `plots` (flat px,py) | a chain of n plots from the barn plot, each next to the one before (straight, left or right turns) |
+| `poor_soil` | 15, 20, 25 | `poorSoil` | nitrogen minus value on 4x4 tile patches (a patch when `tileHash(seed ^ 0x50304F52, gx>>2, gy>>2) % 3 == 0`, `seed` = world seed), every plot incl. bought ones |
+| `dry_soil` | 20, 30, 40 | `drySoil` | starting moisture minus value on patches (salt `0x44525959`) |
+| `drought` | - | `weatherBias = 2` | every rain segment has length 0 (the draws are unchanged, so later segments shift in time); frost as standard |
+| `hard_frost` | - | `weatherBias = -2` | frost 1 in 2 segments (as bias -1) and 100..199 ticks long |
+| `bot_cap` | 1..3 | `maxBots` | `buyBot` returns 0 at that many bots (the start bot counts) |
+| `plot_cap` | max(1..3, plots at start) | `maxPlots` | `buyPlot` returns 0 at that many plots |
+| `research_given` | bit from 1,2,3,4,6,7,8 | `unlocks \|= 1 << bit` | already researched |
+| `research_locked` | bit from 3..9 (not the given bit) | `lockedUnlocks` | `unlock` of that bit returns 0 (no coins spent, no ticks, as any refused farm op) |
+| `stock` | 20, 40 or 60 units of one crop 1..5 (`item`) | `stock` | starting stock |
+| `hive` | - | `hive = [x, y]`, x and y in 1..7 | a hive on that tile of the barn plot, built at tick 0 (no research needed) |
+`weatherBias` now accepts -2, -1, 0, 1, 2. `serialize` writes `brief` (the world's `BriefState`) only when present; `deserialize` restores it.
+
+### 6.3 Goals
+| Goal | Setup | Score (6.5) |
+|---|---|---|
+| `wealth` | none | net worth |
+| `festival` | `goal.quotas` | filled permille |
+| `specialist` | `goal.favoured`, `goal.shunned`; `prices` | net worth under that day's prices |
+| `orders` | `orderBoost = 1` | coins from deliveries |
+| `inherited` | `inherited = 1`, `unlocks \|= 0b111`, `coins = 30` | net worth minus the start |
+- **Festival**: daily 2 or 3 distinct items, season 3 or 4. Daily pool: carrot, wheat, clover, pumpkin, berry (+ honey only with the `hive` twist); season adds apple and honey (honey only if the hive research is not locked or a hive twist exists). Locked crops are removed. A quota is `QUOTA_UNIT[item] * (2 + draw(3)) / 2` (rounded down; 1x, 1.5x or 2x), times 2 on a season. `QUOTA_UNIT` = carrot 200, wheat 240, clover 80, pumpkin 100, berry 120, apple 144, honey 10. These are first values; K2 calibrates.
+- **Specialist**: favoured is a crop 1..5 (1..6 on a season) that is not locked; shunned is any other crop 1..6. Prices: favoured x3.0, shunned x0.3 of the day's price (the market table when present, else base), floor, at least 1 centicoin.
+- **Orders** (`World.brief.orderBoost`): the next order comes `300 + r % 500` ticks later (standard `800 + r % 1200`) and pays `qty * price * 3 + 10` (standard `* 2`). The draws are the same, so only arithmetic changes.
+- **Inherited** (`inheritFarm`, stream `rand` from `seed ^ 0x1AE71D5A`): one extra plot at (1, 0). Every tile except the barn, on both plots, draws in order: kind (20), crop (3), age (2000), rate (2), moisture 20..60, nitrogen 5..25, fatigue 20..60. Nitrogen, fatigue and moisture are always set; kind < 7 stays untilled (35%), 7..11 is tilled and empty (25%), 12..19 is planted (40%) with carrot, wheat or clover, `planted = -(age % (2 * stageLen))` (a negative planted tick is how a crop is already growing at tick 0) and rate 1 or 2.
+
+### 6.4 Caps and the goal live on the world
+`World.brief` (`BriefState`: `goal`, `maxBots`, `maxPlots`, `lockedUnlocks`, `orderBoost`, `poorSoil`, `drySoil`) is not hashed: only its effects are. Sprout reads `goal`, caps and twists from it (K5). Start-only fields (`plots`, `stock`, `hive`, `inherited`) are not kept.
+
+### 6.5 Scoring (`replayWithGoal(world, actions, toTick, goal, par)`)
+Same validation as `replayChunk`; returns `{ score, parTick, netWorth, sold, deposited, orderCoins, mosaic }`. `goal` null is today's behaviour (score = net worth). `replayWithPar` is a wrapper with the same result as before.
+- `deposited[i]`: the stock a `deposit` action really added (barn or silo), per item 1..7. `orderCoins`: sum of `deliver` results. `sold` as before.
+- wealth and specialist: `netWorth`. orders: `orderCoins`. inherited: `netWorth - netWorth at the start of the replay`. festival: `floor(sum(min(deposited[i], quota[i])) * 1000 / sum(quota))`, 0..1000.
+- `parTick`: first tick (tick 0, after every action, after every tick) at which the score is >= par. Festival and orders scores only grow; net worth scores can fall (selling a plot, clearing a silo), so they use "first time at par", never "last".
+- `finalOf(scores, parTicks, budget, par)`: `finalScore = sum(scores)`; `finalParTick = sum(parTick ?? budget)` when `finalScore >= par * farms`, else null.
+- `describeBrief(brief, kind)`: the village notice (`The village fair wants 300 wheat and 80 pumpkins by sundown.`; seasons say `by the end of the week`) and one short label per twist (`One bot only`, `Drought: no rain`, `Pumpkin research locked`, ...). `GOAL_TITLES` names the goals.
+
+### 6.6 What is not here
+Seeds and salt (K3), par and the reference programs (K2), ratings (K4), the Sprout calls (K5), the client and site (K6, K7). Nothing reads `BRIEF_EPOCH` except `briefActive` and `setupVersionFor`.

@@ -4,12 +4,13 @@ import {
   HONEY_MAX, ITEMS, ITEM_COUNT, OP, OPS, PLOT_SIZE, TILE_INTS, SATCHEL_BIT, SATCHEL_CAPACITY, SILO, SILO_BIT, UNLOCKS, botPrice, plotPrice, siloPrice,
 } from './rules.ts';
 import { IllegalAction } from './types.ts';
-import type { Farm, LogEntry, Order, ScanResult, Setup, World } from './types.ts';
+import type { BriefState, Farm, Goal, LogEntry, Order, ScanResult, Setup, World } from './types.ts';
 import {
   BUILDING, BUILT, CROP, FATIGUE, MOIST, NITRO, PLANTED, RATE, TILLED, addPlot, findPlot, honeyAt, plotKey,
   removePlot, settleInts, stageOf, tileOffset,
 } from './tiles.ts';
 import { rand } from './weather.ts';
+import { inheritFarm, placeHive } from './start.ts';
 
 export * from './types.ts';
 export { forecast, weatherAt, rainTicks, frostTicks } from './weather.ts';
@@ -42,7 +43,7 @@ export function createWorld(farm: Farm, setup?: Setup): World {
       w.unlocks = setup.unlocks | 1;
     }
     if (setup.weatherBias !== undefined) {
-      if (setup.weatherBias !== -1 && setup.weatherBias !== 0 && setup.weatherBias !== 1) throw new Error('bad setup weatherBias');
+      if (![-2, -1, 0, 1, 2].includes(setup.weatherBias)) throw new Error('bad setup weatherBias');
       if (setup.weatherBias !== 0) w.weatherBias = setup.weatherBias;
     }
     if (setup.prices !== undefined) w.prices = checkedPrices(setup.prices);
@@ -51,8 +52,53 @@ export function createWorld(farm: Farm, setup?: Setup): World {
       w.siloTick = setup.siloTick;
     }
   }
-  addPlot(w, 0, 0);
+  applyBriefSetup(w, setup ?? {});
   return w;
+}
+
+/** The Setup fields of daily briefs (SIM_SPEC section 6). Called by createWorld only when a setup is given; fields that are absent do nothing. */
+function applyBriefSetup(w: World, setup: Setup): void {
+  const st: BriefState = {};
+  const int = (v: unknown, lo: number, hi: number, what: string): number => {
+    if (typeof v !== 'number' || !Number.isSafeInteger(v) || v < lo || v > hi) throw new Error(`bad setup ${what}`);
+    return v;
+  };
+  if (setup.goal !== undefined) st.goal = checkedGoal(setup.goal);
+  if (setup.maxBots !== undefined) st.maxBots = int(setup.maxBots, 1, 1000, 'maxBots');
+  if (setup.maxPlots !== undefined) st.maxPlots = int(setup.maxPlots, 1, 1000, 'maxPlots');
+  if (setup.lockedUnlocks !== undefined) st.lockedUnlocks = int(setup.lockedUnlocks, 0, (1 << UNLOCKS.length) - 1, 'lockedUnlocks');
+  if (setup.orderBoost !== undefined) st.orderBoost = int(setup.orderBoost, 0, 1, 'orderBoost');
+  if (setup.poorSoil !== undefined) st.poorSoil = int(setup.poorSoil, 0, 50, 'poorSoil');
+  if (setup.drySoil !== undefined) st.drySoil = int(setup.drySoil, 0, 50, 'drySoil');
+  if (st.goal?.quotas) st.deposited = new Array<number>(ITEM_COUNT).fill(0);
+  for (const k of Object.keys(st) as (keyof BriefState)[]) if (!st[k]) delete st[k]; // zero means off
+  if (Object.keys(st).length) w.brief = st;
+  addPlot(w, 0, 0);
+  if (setup.plots !== undefined) {
+    const ps = setup.plots;
+    if (!Array.isArray(ps) || ps.length % 2 !== 0 || ps.length > 16) throw new Error('bad setup plots');
+    for (let i = 0; i < ps.length; i += 2) {
+      const px = int(ps[i], -1000, 1000, 'plots'), py = int(ps[i + 1], -1000, 1000, 'plots');
+      const adj = [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => w.plotIndex.has(plotKey(px + dx!, py + dy!)));
+      if (w.plotIndex.has(plotKey(px, py)) || !adj) throw new Error('bad setup plots');
+      addPlot(w, px, py);
+    }
+  }
+  if (setup.inherited) inheritFarm(w);
+  if (setup.hive !== undefined) placeHive(w, setup.hive[0], setup.hive[1]);
+  if (setup.stock !== undefined) {
+    if (!Array.isArray(setup.stock) || setup.stock.length !== ITEM_COUNT) throw new Error('bad setup stock');
+    for (let i = 1; i <= MAX_PRICED_ITEM; i++) w.stock[i] = int(setup.stock[i], 0, 100_000, 'stock');
+  }
+}
+
+function checkedGoal(g: Goal): Goal {
+  const kinds = ['wealth', 'festival', 'specialist', 'orders', 'inherited'];
+  if (typeof g !== 'object' || g === null || !kinds.includes(g.kind) || !Number.isSafeInteger(g.budget) || g.budget < 1) throw new Error('bad setup goal');
+  if (g.quotas !== undefined && (!Array.isArray(g.quotas) || g.quotas.length !== ITEM_COUNT || !g.quotas.every((q) => Number.isSafeInteger(q) && q >= 0))) throw new Error('bad setup goal');
+  const item = (v: number | undefined): boolean => v === undefined || (Number.isSafeInteger(v) && v >= 1 && v <= MAX_PRICED_ITEM);
+  if (!item(g.favoured) || !item(g.shunned)) throw new Error('bad setup goal');
+  return g;
 }
 
 /** Centicoin price of an item in this world (1/100 coin): the day's table when there is one, else the base price. Compost and unknown items: 0. */
@@ -128,11 +174,12 @@ export function tickWorld(w: World): void {
     w.orng = rand(w.orng); const crop = pool[w.orng % pool.length]!;
     w.orng = rand(w.orng); const qty = (5 + (w.orng % 16)) * w.plots.length;
     w.orng = rand(w.orng); const life = 1500 + (w.orng % 1500);
+    const boost = w.brief?.orderBoost; // briefs (SIM_SPEC 6.3): same draws, richer and more frequent
     w.orders.push({
-      id: w.nextOrderId++, crop, qty, reward: qty * CROPS[crop]!.price * 2 + 10,
+      id: w.nextOrderId++, crop, qty, reward: boost ? qty * CROPS[crop]!.price * 3 + 10 : qty * CROPS[crop]!.price * 2 + 10,
       opensAt: w.nextOrderAt, deadline: w.nextOrderAt + life,
     });
-    w.orng = rand(w.orng); w.nextOrderAt += 800 + (w.orng % 1200);
+    w.orng = rand(w.orng); w.nextOrderAt += boost ? 300 + (w.orng % 500) : 800 + (w.orng % 1200);
   }
   const os = w.orders;
   for (let i = 0; i < os.length; i++) {
@@ -216,11 +263,13 @@ export function applyAction(w: World, e: LogEntry): number {
     const adj = w.plotIndex.has(plotKey(a + 1, b)) || w.plotIndex.has(plotKey(a - 1, b))
       || w.plotIndex.has(plotKey(a, b + 1)) || w.plotIndex.has(plotKey(a, b - 1));
     const cost = plotCost(w);
+    if (w.brief?.maxPlots !== undefined && w.plots.length >= w.brief.maxPlots) return 0;
     if (!owned && adj && w.coins >= cost) { pay(w, cost); addPlot(w, a, b); res = 1; }
     return res;
   }
   if (op === OP.buyBot) {
     const cost = botCost(w);
+    if (w.brief?.maxBots !== undefined && w.bots.length >= w.brief.maxBots) return 0;
     if (w.coins >= cost) {
       pay(w, cost);
       w.bots.push({ x: 0, y: 0, busyUntil: T, load: new Int32Array(ITEM_COUNT + 1) });
@@ -232,6 +281,7 @@ export function applyAction(w: World, e: LogEntry): number {
   if (op === OP.unlock) {
     const price = UNLOCKS[a]!.price;
     if (a === SILO_BIT && !silosActive(w)) return 0;
+    if (w.brief?.lockedUnlocks && (w.brief.lockedUnlocks & (1 << a))) return 0;
     if (!isUnlocked(w, a) && w.coins >= price) { pay(w, price); w.unlocks |= 1 << a; res = 1; }
     return res;
   }
@@ -316,6 +366,7 @@ export function applyAction(w: World, e: LogEntry): number {
       if (store) {
         for (let k = 1; k < COMPOST; k++) {
           const n = bot.load[k]!; w.stock[k] = w.stock[k]! + n; res += n; bot.load[k] = 0;
+          if (w.brief?.deposited) w.brief.deposited[k] = w.brief.deposited[k]! + n;
         }
       }
       break;
