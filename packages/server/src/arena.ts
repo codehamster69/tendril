@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from 'node:crypto';
-import { BASE_RULES_VERSION, challengeSetup, createWorld, dailyNumber, dailyRulesVersion, dailySeed, DAILY_PAR, DAILY_TICKS, IllegalAction, parFromReference, replayWithPar, rulesHaveMarket, seasonRulesVersion, SEASON_TICKS, SETUP_LEGACY, SETUP_VERSION, SUPPORTED_RULES_VERSIONS } from '@tendril/sim/src/index.ts';
+import { BASE_RULES_VERSION, challengeSetup, createWorld, dailyNumber, dailyRulesVersion, dailySeed, DAILY_PAR, DAILY_TICKS, IllegalAction, parFromReference, replayWithPar, marketActive, marketAllowed, seasonRulesVersion, SEASON_TICKS, SETUP_LEGACY, SETUP_VERSION, SUPPORTED_RULES_VERSIONS } from '@tendril/sim/src/index.ts';
 import type { MarketTable } from '@tendril/sim/src/index.ts';
 import type { ChallengeKind, LogEntry } from '@tendril/sim/src/index.ts';
 import type { Db, Queryable } from './db.ts';
@@ -171,12 +171,12 @@ export function resolveChallengeId(ref: string, now: number): string {
 export async function loadChallenge(db: Db, ref: string, now: number, verify?: SourceVerifier, setupV: number = SETUP_VERSION): Promise<ChallengeRow> {
   const id = resolveChallengeId(ref, now);
   const [found] = await db.query<ChallengeRow>('SELECT * FROM challenges WHERE id = ?', [id]);
-  if (found) return rulesHaveMarket(found.rules_version, found.kind) && found.market == null ? ensureMarket(db, found) : found;
+  if (found) return marketDue(found) && found.market == null ? ensureMarket(db, found) : found;
   const fresh = creatable(id, now, setupV);
   if (!fresh) throw new HttpError(404, 'Challenge not found');
   // A market day gets its table at the first request, in the same insert as the row, so the table and the par that
   // was measured under it are always stored together. The loser of a race re-reads the winner's row below.
-  if (rulesHaveMarket(fresh.rules_version, fresh.kind)) fresh.market = JSON.stringify(await computeDailyMarket(db, id.slice(2)));
+  if (marketDue(fresh)) fresh.market = JSON.stringify(await computeDailyMarket(db, id.slice(2)));
   fresh.par = await referencePar(fresh, verify) ?? fresh.par;
   await insertChallenge(db, fresh);
   const [row] = await db.query<ChallengeRow>('SELECT * FROM challenges WHERE id = ?', [id]);
@@ -196,8 +196,15 @@ export async function ensureMarket(db: Db, c: ChallengeRow): Promise<ChallengeRo
 }
 
 /** The table a challenge row plays under, or null for base prices. A market row without a valid table is a server fault, never a free pass. */
+/** A daily that must have a table: v4, or v5 dated from MARKET_EPOCH (silos switched on before the market). */
+function marketDue(c: Pick<ChallengeRow, 'id' | 'kind' | 'rules_version'>): boolean {
+  return c.kind === 'daily' && (c.rules_version === 4 || (marketAllowed(c.rules_version, c.kind) && marketActive(c.id.slice(2))));
+}
+
 export function marketOf(c: Pick<ChallengeRow, 'id' | 'kind' | 'rules_version' | 'market'>): MarketTable | null {
-  if (!rulesHaveMarket(c.rules_version, c.kind)) return null;
+  if (!marketAllowed(c.rules_version, c.kind)) return null;
+  // A v5 duel copies its daily's table, or has none when the daily had none; a v4 row and a market-day daily must have one.
+  if (c.market == null && c.rules_version !== 4 && !marketDue(c)) return null;
   const t = parseMarket(c.market ?? null);
   if (!SUPPORTED_RULES_VERSIONS.includes(c.rules_version) || !t) throw new HttpError(500, 'Challenge has no valid price table');
   return t;
@@ -245,8 +252,8 @@ export async function createDuel(db: Db, userId: string, input: DuelInput, now: 
   const { ticks: defaultTicks } = challengeSetup('duel', seed, source?.setup_v ?? setupV);
   const ticks = input.ticks ?? defaultTicks;
   // Only the standard length has a calibrated par, so other lengths have no Speed medal.
-  const row: ChallengeRow = { id: `x-${randomBytes(6).toString('base64url')}`, kind: 'duel', number: null, seed, ticks, par: ticks === DAILY_TICKS ? DAILY_PAR : null, opens_at: now, closes_at: null, created_by: userId, rules_version: source?.rules_version ?? BASE_RULES_VERSION, setup_v: source?.setup_v ?? setupV, market: source?.market ?? null };
-  if (source && rulesHaveMarket(source.rules_version, source.kind)) marketOf(source); // refuses a market day whose table is missing or invalid
+  const row: ChallengeRow = { id: `x-${randomBytes(6).toString('base64url')}`, kind: 'duel', number: null, seed, ticks, par: ticks === DAILY_TICKS ? DAILY_PAR : null, opens_at: now, closes_at: null, created_by: userId, rules_version: source?.rules_version ?? seasonRulesVersion(new Date(now).toISOString().slice(0, 10)), setup_v: source?.setup_v ?? setupV, market: source?.market ?? null };
+  if (source && marketAllowed(source.rules_version, source.kind)) marketOf(source); // refuses a market day whose table is missing or invalid
   row.par = await referencePar(row, verify) ?? row.par;
   await insertChallenge(db, row);
   return { challengeId: row.id };

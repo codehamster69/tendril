@@ -70,7 +70,7 @@ describe('verifySource', () => {
     if (!v.ok) { expect(v.reason).toBe('compile'); expect(v.message).toMatch(/^Line \d+: /); }
   });
   it('rejects other rules versions and oversized sources', () => {
-    expect(verifySource(req(daily, { rulesVersion: 5 }))).toMatchObject({ ok: false, reason: 'rules' });
+    expect(verifySource(req(daily, { rulesVersion: 6 }))).toMatchObject({ ok: false, reason: 'rules' });
     expect(verifySource(req(`x = 1\n${'# pad\n'.repeat(8000)}`))).toMatchObject({ ok: false, reason: 'bad' });
     expect(verifySource(req(daily, { ticks: 0 }))).toMatchObject({ ok: false, reason: 'bad' });
   });

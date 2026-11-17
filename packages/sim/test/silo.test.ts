@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   RULES_VERSION, SILO, SILO_BASE, SILO_BIT, SILO_EPOCH, SILO_EPOCH_MS, UNLOCKS, canSellPlot, challengeSetup, createWorld, dailyRulesVersion, deserialize,
-  endlessSiloTick, hashWorld, netWorth, plotPrice, plotRefund, replayChunk, rulesHaveMarket, scanAt, seasonRulesVersion, serialize, siloCost,
+  endlessSiloTick, hashWorld, netWorth, plotPrice, plotRefund, replayChunk, marketAllowed, marketFits, scanAt, seasonRulesVersion, serialize, siloCost,
   siloCount, siloPrice, snapshot, tickWorld, withEndlessSilos,
 } from '../src/index.ts';
 import type { Setup } from '../src/index.ts';
@@ -31,8 +31,8 @@ describe('rules v5: switched on by data and date', () => {
   });
 
   it('an Endless farm gets silos at the first tick at or after SILO_EPOCH', () => {
-    expect(SILO_EPOCH).toBe('2026-12-15');
-    expect(SILO_EPOCH_MS).toBe(Date.parse('2026-12-15T00:00:00Z'));
+    expect(SILO_EPOCH).toBe('2026-11-17');
+    expect(SILO_EPOCH_MS).toBe(Date.parse('2026-11-17T00:00:00Z'));
     expect(endlessSiloTick(SILO_EPOCH_MS - 1000)).toBe(10);
     expect(endlessSiloTick(SILO_EPOCH_MS - 1050)).toBe(11);
     expect(endlessSiloTick(SILO_EPOCH_MS + 5)).toBe(0);
@@ -54,14 +54,17 @@ describe('rules v5: switched on by data and date', () => {
     expect(hashWorld(stamped)).toBe(hashWorld(plain.w));
   });
 
-  it('dailies and seasons from SILO_EPOCH are v5; seasons carry no market', () => {
-    expect(dailyRulesVersion('2026-12-15')).toBe(5);
-    expect(seasonRulesVersion('2026-12-14')).toBe(3);
-    expect(seasonRulesVersion('2026-12-15')).toBe(5);
-    expect(rulesHaveMarket(5, 'daily')).toBe(true);
-    expect(rulesHaveMarket(5, 'season')).toBe(false);
-    expect(rulesHaveMarket(4, 'duel')).toBe(true);
-    expect(rulesHaveMarket(3, 'daily')).toBe(false);
+  it('dailies and seasons from SILO_EPOCH are v5; the market stays optional on v5 and comes by date', () => {
+    expect(dailyRulesVersion('2026-11-16')).toBe(3);
+    expect(dailyRulesVersion('2026-11-17')).toBe(5);
+    expect(dailyRulesVersion('2026-12-08')).toBe(5);
+    expect(seasonRulesVersion('2026-11-16')).toBe(3);
+    expect(seasonRulesVersion('2026-11-23')).toBe(5);
+    expect(marketAllowed(5, 'daily')).toBe(true);
+    expect(marketAllowed(5, 'season')).toBe(false);
+    expect(marketAllowed(3, 'daily')).toBe(false);
+    expect([marketFits(5, 'daily', true), marketFits(5, 'daily', false), marketFits(5, 'season', true), marketFits(5, 'season', false)]).toEqual([true, true, false, true]);
+    expect([marketFits(4, 'duel', true), marketFits(4, 'duel', false), marketFits(3, 'daily', true), marketFits(3, 'daily', false)]).toEqual([true, false, false, true]);
     expect(challengeSetup('daily', 7, 1, null, RULES_VERSION).setup.siloTick).toBe(0);
     expect(challengeSetup('daily', 7, 1, null, 4).setup.siloTick).toBeUndefined();
     expect(challengeSetup('daily', 7, 1).setup.siloTick).toBeUndefined();

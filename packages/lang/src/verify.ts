@@ -1,7 +1,7 @@
 // Source check for the Arena (C3): does this program, run on this challenge, produce exactly the submitted moves?
 // Runs only in the separate verify function (api/verify.mjs). The main API function never imports this file.
 import { createHash } from 'node:crypto';
-import { challengeSetup, createWorld, isMarketTable, replayWithPar, rulesHaveMarket, SETUP_LEGACY, SUPPORTED_RULES_VERSIONS } from '@tendril/sim/src/index.ts';
+import { challengeSetup, createWorld, isMarketTable, replayWithPar, marketFits, SETUP_LEGACY, SUPPORTED_RULES_VERSIONS } from '@tendril/sim/src/index.ts';
 import type { ChallengeKind, LogEntry } from '@tendril/sim/src/index.ts';
 import { compile } from './parser.ts';
 import { createRun } from './interpreter.ts';
@@ -32,7 +32,7 @@ export function verifySource(req: VerifyRequest, options: VerifyOptions = {}): V
   const deadline = now() + (options.deadlineMs ?? VERIFY_DEADLINE_MS);
   if (!SUPPORTED_RULES_VERSIONS.includes(req.rulesVersion)) return { ok: false, reason: 'rules', message: 'Rules version mismatch' };
   // Dispatch by data: a v4 challenge (and a v5 one other than a season) carries its table, a v3 challenge never does.
-  if (rulesHaveMarket(req.rulesVersion, req.kind) !== (req.market != null) || (req.market != null && !isMarketTable(req.market))) return { ok: false, reason: 'rules', message: 'Rules version mismatch' };
+  if (!marketFits(req.rulesVersion, req.kind, req.market != null) || (req.market != null && !isMarketTable(req.market))) return { ok: false, reason: 'rules', message: 'Rules version mismatch' };
   if (typeof req.source !== 'string' || new TextEncoder().encode(req.source).length > MAX_VERIFY_SOURCE_BYTES) return { ok: false, reason: 'bad', message: 'Source is too large' };
   if (!Number.isSafeInteger(req.ticks) || req.ticks < 1 || req.ticks > 20_000 || !Number.isSafeInteger(req.seed)) return { ok: false, reason: 'bad', message: 'Invalid challenge' };
   const compiled = compile(req.source);

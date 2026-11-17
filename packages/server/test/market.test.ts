@@ -2,7 +2,7 @@
 // fewer than 10 players, the table CAS, the 0.1.x refusal, par and source checks under the table, duels.
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
-  BASE_RULES_VERSION, MARKET_EPOCH, RULES_VERSION, baseMarket, challengeSetup, createWorld, dailySeed, marketPrices, nextMarket, parFromReference,
+  MARKET_EPOCH, RULES_VERSION, baseMarket, challengeSetup, createWorld, dailySeed, marketPrices, nextMarket, parFromReference,
   replayStats, replayWithPar,
 } from '@tendril/sim/src/index.ts';
 import type { LogEntry } from '@tendril/sim/src/index.ts';
@@ -50,7 +50,7 @@ async function login(name: string): Promise<string> {
   return r.json.token;
 }
 beforeEach(() => players.clear());
-const enter = async (id: string, actions: LogEntry[], name: string, rulesVersion = BASE_RULES_VERSION, extra: Json = {}) =>
+const enter = async (id: string, actions: LogEntry[], name: string, rulesVersion = RULES_VERSION, extra: Json = {}) =>
   call(`/challenges/${id}/entries`, { token: await login(name), body: { rulesVersion, actions, ...extra } });
 const dayId = (d: string) => `d-${d}`;
 
@@ -65,9 +65,9 @@ describe('the day before the epoch', () => {
   it('is rules v3 at base prices, with no table, and its entries record what they sold', async () => {
     time = at(BEFORE);
     const info = (await call(`/challenges/${dayId(BEFORE)}`)).json;
-    expect(info).toMatchObject({ rulesVersion: 3, market: null });
+    expect(info).toMatchObject({ rulesVersion: 5, market: null });
     const row = (await db.query<{ market: string | null; rules_version: number }>('SELECT market, rules_version FROM challenges WHERE id = ?', [dayId(BEFORE)]))[0]!;
-    expect(row).toEqual({ market: null, rules_version: 3 });
+    expect(row).toEqual({ market: null, rules_version: 5 });
     const r = await enter(dayId(BEFORE), SELLS_CARROTS, 'ann');
     expect(r.status).toBe(200);
     const [e] = await db.query<{ sold: string }>('SELECT sold FROM entries WHERE challenge_id = ?', [dayId(BEFORE)]);
@@ -81,10 +81,10 @@ describe('the day before the epoch', () => {
   it('v3 rows replay and verify after the migration (a v3 verify request carries no table)', async () => {
     time = at(BEFORE);
     await call(`/challenges/${dayId(BEFORE)}`);
-    expect(seen.every((r) => r.rulesVersion === 3 && !r.market)).toBe(true);
+    expect(seen.every((r) => r.rulesVersion === 5 && !r.market)).toBe(true);
     const source = 'x = 1\n';
-    expect((await enter(dayId(BEFORE), [], 'ann', 3, { source })).status).toBe(200);
-    expect(seen.at(-1)).toMatchObject({ rulesVersion: 3, market: null });
+    expect((await enter(dayId(BEFORE), [], 'ann', 5, { source })).status).toBe(200);
+    expect(seen.at(-1)).toMatchObject({ rulesVersion: 5, market: null });
     const replay = await call(`/entries/${(await db.query<{ id: string }>('SELECT id FROM entries'))[0]!.id}/replay`);
     expect(replay.status === 403 || replay.json.market === null).toBe(true);
   });
@@ -92,10 +92,10 @@ describe('the day before the epoch', () => {
 
 describe('the epoch day', () => {
   it('is rules v4 with the base table, even when the day before had a crowd', async () => {
-    await crowd(BEFORE, 12, 3);
+    await crowd(BEFORE, 12, 5);
     time = at(EPOCH);
     const info = (await call(`/challenges/${dayId(EPOCH)}`)).json;
-    expect(info.rulesVersion).toBe(4);
+    expect(info.rulesVersion).toBe(5);
     expect(info.market).toEqual({ prices: [0, 200, 300, 100, 600, 400, 500, 800], multipliers: [0, 1000, 1000, 1000, 1000, 1000, 1000, 1000], shares: null });
     const [row] = await db.query<{ market: string }>('SELECT market FROM challenges WHERE id = ?', [dayId(EPOCH)]);
     expect(JSON.parse(row!.market)).toEqual(baseMarket());
@@ -106,7 +106,7 @@ describe('the epoch day', () => {
     const info = (await call(`/challenges/${dayId(EPOCH)}`)).json;
     const asked = seen.filter((r) => r.challengeId === dayId(EPOCH));
     expect(asked).toHaveLength(1);
-    expect(asked[0]).toMatchObject({ rulesVersion: 4, market: { p: info.market.prices } });
+    expect(asked[0]).toMatchObject({ rulesVersion: 5, market: { p: info.market.prices } });
     const ref = verifySource(asked[0]!);
     expect(ref.ok && info.par).toBe(ref.ok ? parFromReference(ref.netWorth) : -1);
   });
@@ -128,19 +128,19 @@ describe('the epoch day', () => {
     const cs = challengeSetup('daily', seed, info.setupVersion, { p: info.market.prices });
     const run = createRun(createWorld({ id, seed }, cs.setup), REFERENCE_SOURCE); run.step(cs.ticks);
     const actions = run.pending.filter((a) => a[0] < cs.ticks);
-    const r = await enter(id, actions, 'ann', 4, { source: REFERENCE_SOURCE });
+    const r = await enter(id, actions, 'ann', 5, { source: REFERENCE_SOURCE });
     expect(r.status).toBe(200);
-    expect(seen.at(-1)).toMatchObject({ rulesVersion: 4, market: { p: info.market.prices } });
+    expect(seen.at(-1)).toMatchObject({ rulesVersion: 5, market: { p: info.market.prices } });
     expect(r.json.netWorth).toBe(replayWithPar(createWorld({ id, seed }, cs.setup), actions, cs.ticks, 0).netWorth);
   });
 });
 
 describe('the day after the epoch', () => {
   it('with 10 or more players is derived from what they sold', async () => {
-    await crowd(EPOCH, 10, 4);
+    await crowd(EPOCH, 10, 5);
     time = at(AFTER);
     const info = (await call(`/challenges/${dayId(AFTER)}`)).json;
-    expect(info.rulesVersion).toBe(4);
+    expect(info.rulesVersion).toBe(5);
     // everyone sold only carrots: carrot falls the full 25 points, everything else rises 25 points
     expect(info.market.multipliers).toEqual([0, 750, 1250, 1250, 1250, 1250, 1250, 1250]);
     expect(info.market.prices).toEqual(marketPrices(info.market.multipliers));
@@ -149,14 +149,14 @@ describe('the day after the epoch', () => {
     const [row] = await db.query<{ market: string }>('SELECT market FROM challenges WHERE id = ?', [dayId(AFTER)]);
     expect(JSON.parse(row!.market)).toMatchObject({ n: 10, from: dayId(EPOCH) });
     // the run is scored under that table on the server and a later replay of the entry reproduces it
-    const r = await enter(dayId(AFTER), SELLS_CARROTS, 'zed', 4);
+    const r = await enter(dayId(AFTER), SELLS_CARROTS, 'zed', 5);
     expect(r.status).toBe(200);
     const world = createWorld({ id: dayId(AFTER), seed: dailySeed(AFTER) }, challengeSetup('daily', dailySeed(AFTER), 1, { p: info.market.prices }).setup);
     expect(r.json.netWorth).toBe(replayWithPar(world, SELLS_CARROTS, 3000, 0).netWorth);
   });
 
   it('with fewer than 10 players stays neutral: no shares, base prices', async () => {
-    await crowd(EPOCH, 9, 4);
+    await crowd(EPOCH, 9, 5);
     time = at(AFTER);
     const info = (await call(`/challenges/${dayId(AFTER)}`)).json;
     expect(info.market.shares).toBeNull();
@@ -167,7 +167,7 @@ describe('the day after the epoch', () => {
   });
 
   it('uses each player\'s best entry only, and a late entry cannot rewrite a stored table', async () => {
-    await crowd(EPOCH, 10, 4);
+    await crowd(EPOCH, 10, 5);
     time = at(AFTER);
     const before = (await call(`/challenges/${dayId(AFTER)}`)).json.market;
     // a grace-period entry for the epoch day arrives after the next day's table exists
@@ -178,7 +178,7 @@ describe('the day after the epoch', () => {
   });
 
   it('computes the same table from the same data every time', async () => {
-    await crowd(EPOCH, 10, 4);
+    await crowd(EPOCH, 10, 5);
     const a = await computeDailyMarket(db, AFTER), b = await computeDailyMarket(db, AFTER);
     expect(a).toEqual(b);
     const expected = nextMarket(
@@ -191,7 +191,7 @@ describe('the day after the epoch', () => {
 
 describe('one table per day', () => {
   it('a race to create the table leaves exactly one, and everyone reads it', async () => {
-    await crowd(EPOCH, 10, 4);
+    await crowd(EPOCH, 10, 5);
     time = at(AFTER);
     // a market-day row with no table (as an old crash could leave): five requests at once
     const seed = dailySeed(AFTER);
@@ -217,32 +217,32 @@ describe('one table per day', () => {
 });
 
 describe('desktop 0.1.x and old clients', () => {
-  it('see rules version 4 on a market day and are refused cleanly, writing no score', async () => {
+  it('see rules version 5 on a market day and are refused cleanly, writing no score', async () => {
     time = at(EPOCH);
     const daily = await call('/daily');
-    expect(daily.json).toMatchObject({ date: EPOCH, rulesVersion: 4 });
+    expect(daily.json).toMatchObject({ date: EPOCH, rulesVersion: 5 });
     const token = await login('old');
     const old = await call('/daily/submit', { token, body: { date: EPOCH, rulesVersion: 3, actions: SELLS_CARROTS } });
     expect(old.status).toBe(409);
-    expect(old.json.error).toBe('This day uses rules version 4. Update Tendril.');
+    expect(old.json.error).toBe('This day uses rules version 5. Update Tendril.');
     const modern = await enter(dayId(EPOCH), SELLS_CARROTS, 'old', 3);
     expect(modern.status).toBe(409);
-    expect(modern.json.error).toBe('This day uses rules version 4. Update Tendril.');
+    expect(modern.json.error).toBe('This day uses rules version 5. Update Tendril.');
     expect(await db.query('SELECT 1 FROM entries WHERE challenge_id = ?', [dayId(EPOCH)])).toEqual([]);
   });
 
-  it('keep working on a v3 day, and a v4 client cannot submit a v3 day as v4', async () => {
-    time = at(BEFORE);
+  it('keep working on a v3 day (before SILO_EPOCH), and a newer client cannot submit a v3 day as v5', async () => {
+    time = at('2026-11-16');
     expect((await call('/daily')).json.rulesVersion).toBe(3);
     const token = await login('old');
-    expect((await call('/daily/submit', { token, body: { date: BEFORE, rulesVersion: 3, actions: SELLS_CARROTS } })).status).toBe(200);
-    const wrong = await enter(dayId(BEFORE), SELLS_CARROTS, 'new', 4);
+    expect((await call('/daily/submit', { token, body: { date: '2026-11-16', rulesVersion: 3, actions: SELLS_CARROTS } })).status).toBe(200);
+    const wrong = await enter(dayId('2026-11-16'), SELLS_CARROTS, 'new', 5);
     expect(wrong.status).toBe(409);
     expect(wrong.json.error).toBe('Rules version mismatch');
   });
 
   it('endless farms and seasons before SILO_EPOCH stay on rules v3 for everyone', async () => {
-    time = at(EPOCH);
+    time = at('2026-11-16');
     const season = (await call('/challenges/week')).json;
     expect(season).toMatchObject({ kind: 'season', rulesVersion: 3, market: null });
     expect(RULES_VERSION).toBe(5); // v5 (silos) reaches Endless by start time, not by its stored version (SIM_SPEC 5.5)
@@ -255,8 +255,8 @@ describe('desktop 0.1.x and old clients', () => {
 
 describe('rules v5: silos from SILO_EPOCH (SIM_SPEC 5.5)', () => {
   it('dailies from the epoch are v5 with a market, seasons starting from it are v5 without one, and their entries replay with silos on', async () => {
-    time = at('2026-12-14');
-    expect((await call('/challenges/week')).json).toMatchObject({ kind: 'season', rulesVersion: 3, market: null }); // started Monday 14 Dec
+    time = at('2026-11-17');
+    expect((await call('/challenges/week')).json).toMatchObject({ kind: 'season', rulesVersion: 3, market: null }); // started Monday 16 Nov
     time = at('2026-12-21');
     const season = (await call('/challenges/week')).json;
     expect(season).toMatchObject({ kind: 'season', rulesVersion: 5, market: null });
@@ -273,21 +273,21 @@ describe('rules v5: silos from SILO_EPOCH (SIM_SPEC 5.5)', () => {
 });
 
 describe('duels', () => {
-  it('copy the version and table of the market daily they are made from, and are v3 otherwise', async () => {
-    await crowd(EPOCH, 10, 4);
+  it('copy the version and table of the market daily they are made from, and are v5 without a table otherwise', async () => {
+    await crowd(EPOCH, 10, 5);
     time = at(AFTER);
     const daily = (await call(`/challenges/${dayId(AFTER)}`)).json;
     const token = await login('ann');
     const made = await call('/duels', { token, body: { seed: daily.seed, ticks: daily.ticks, from: dayId(AFTER) } });
     expect(made.status).toBe(201);
     const duel = (await call(`/challenges/${made.json.challengeId}`)).json;
-    expect(duel).toMatchObject({ kind: 'duel', rulesVersion: 4, seed: daily.seed });
+    expect(duel).toMatchObject({ kind: 'duel', rulesVersion: 5, seed: daily.seed });
     expect(duel.market).toEqual(daily.market);
-    expect((await enter(made.json.challengeId, SELLS_CARROTS, 'ann', 4)).status).toBe(200);
+    expect((await enter(made.json.challengeId, SELLS_CARROTS, 'ann', 5)).status).toBe(200);
     expect((await enter(made.json.challengeId, SELLS_CARROTS, 'bo', 3)).status).toBe(409);
-    // without `from` a duel is plain v3, and a bad source is refused
+    // without `from` a duel is plain v5 (silos, no table), and a bad source is refused
     const plain = await call('/duels', { token, body: { seed: daily.seed, ticks: 3000 } });
-    expect((await call(`/challenges/${plain.json.challengeId}`)).json).toMatchObject({ rulesVersion: 3, market: null });
+    expect((await call(`/challenges/${plain.json.challengeId}`)).json).toMatchObject({ rulesVersion: 5, market: null });
     expect((await call('/duels', { token, body: { seed: daily.seed + 1, ticks: 3000, from: dayId(AFTER) } })).status).toBe(422);
     expect((await call('/duels', { token, body: { seed: 5, ticks: 3000, from: 'd-2030-01-01' } })).status).toBe(404);
     expect((await call('/duels', { token, body: { seed: 5, ticks: 3000, from: 'x-abcdefgh' } })).status).toBe(422);
@@ -298,12 +298,12 @@ describe('the entry replay carries the table', () => {
   it('a stored market run replays to the same net worth from the API alone', async () => {
     time = at(EPOCH);
     const id = dayId(EPOCH);
-    const r = await enter(id, SELLS_CARROTS, 'ann', 4);
+    const r = await enter(id, SELLS_CARROTS, 'ann', 5);
     time = at(AFTER, 13); // legacy grace over: the epoch day is settled
     const entryId = r.json.entryId as string;
     const rep = await call(`/entries/${entryId}/replay`, { token: await login('ann') });
     expect(rep.status).toBe(200);
-    expect(rep.json).toMatchObject({ rulesVersion: 4, market: { prices: baseMarket().p } });
+    expect(rep.json).toMatchObject({ rulesVersion: 5, market: { prices: baseMarket().p } });
     const world = createWorld({ id, seed: rep.json.seed }, challengeSetup(rep.json.kind, rep.json.seed, rep.json.setupVersion, { p: rep.json.market.prices }).setup);
     expect(replayWithPar(world, rep.json.actions, rep.json.ticks, 0).netWorth).toBe(r.json.netWorth);
     expect(MARKET_EPOCH).toBe(EPOCH);

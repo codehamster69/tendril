@@ -8,7 +8,7 @@ export interface Setup {
   coins?: number; unlocks?: number; weatherBias?: number;
   /** Rules v4 daily market: centicoin price per item (length 8, index 1..7; 0 and the rest unused). Absent: base prices. */
   prices?: number[];
-  /** Rules v5: silos and sellPlot work from this tick on. Challenges on or after SILO_EPOCH pass 0; Endless passes endlessSiloTick(start). */
+  /** Rules v5: silos and sellPlot work from this tick on. Challenges on rules v5 pass 0; Endless passes endlessSiloTick(start). */
   siloTick?: number;
 }
 export type LogEntry = [t: number, bot: number, op: number, a?: number, b?: number];

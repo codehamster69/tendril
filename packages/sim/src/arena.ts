@@ -201,17 +201,25 @@ export function marketActive(date: string): boolean {
 export function dailyRulesVersion(date: string): number {
   return siloActive(date) ? RULES_VERSION : marketActive(date) ? MARKET_RULES_VERSION : BASE_RULES_VERSION;
 }
-/** True when a challenge of this kind and rules version plays on a market table: v4, and v5 except seasons. */
-export function rulesHaveMarket(rulesVersion: number, kind: ChallengeKind): boolean {
+/** True when a challenge of this kind and rules version may carry a market table: v4, and v5 except seasons. */
+export function marketAllowed(rulesVersion: number, kind: ChallengeKind): boolean {
   return rulesVersion === MARKET_RULES_VERSION || (rulesVersion === RULES_VERSION && kind !== 'season');
+}
+/**
+ * Whether a challenge's table (present or not) fits its rules: v4 always has one, v3 and seasons never, and v5 dailies and duels
+ * may (a v5 daily has one from MARKET_EPOCH, since silos switched on before the market). Dispatch by data, as SIM_SPEC 4.1.
+ */
+export function marketFits(rulesVersion: number, kind: ChallengeKind, hasMarket: boolean): boolean {
+  if (rulesVersion === MARKET_RULES_VERSION) return hasMarket;
+  return hasMarket ? marketAllowed(rulesVersion, kind) : true;
 }
 
 // ---- Rules version 5: silos and sellPlot (SIM_SPEC.md section 5). ----
 
 /** Silos and sellPlot switch on at 00:00 UTC on this date: dailies dated from it, seasons starting from it, Endless farms from that moment. */
-export const SILO_EPOCH = '2026-12-15';
+export const SILO_EPOCH = '2026-11-17';
 /** SILO_EPOCH as Unix milliseconds. */
-export const SILO_EPOCH_MS = Date.UTC(2026, 11, 15);
+export const SILO_EPOCH_MS = Date.UTC(2026, 10, 17);
 /** Endless ticks run at one per 100 ms from the farm's start. */
 const ENDLESS_MS_PER_TICK = 100;
 /** True when a daily dated `date`, or a season starting that day, uses rules v5. */
