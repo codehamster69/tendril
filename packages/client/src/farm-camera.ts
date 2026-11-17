@@ -191,7 +191,7 @@ export class FarmCamera {
     this.insetFrom = this.insetNow; this.insetTo = to; this.insetT = 0;
     if (snap || this.reducedMotion()) { this.insetNow = to; this.insetT = 1; }
     if (this.framed) this.fit(false);   // re-frame the farm in the new free area
-    else this.place(true);
+    this.place(true);                   // apply the new offset now: a snapped inset gets no eased frame to do it
   }
 
   /** Glide the target over a ground point and keep the distance (double-click, the splash, the result screen). */
@@ -228,6 +228,7 @@ export class FarmCamera {
     }
     this.framed = true;
     if (snap) { Object.assign(this.cur, this.des); this.place(true); }
+    else this.requestRender?.();        // the eased move needs frames even if the view had stopped drawing
   }
 
   focus(x: number, z: number, o: { dist?: number; snap?: boolean } = {}): void {
@@ -359,6 +360,10 @@ export class FarmCamera {
     return fitDistance(radius, this.camera.fov, this.freeAspect());
   }
   private canvasSize(): { w: number; h: number } {
+    // Layout size, not getBoundingClientRect: a CSS transform on the canvas (the splash's settle-in scale) would
+    // otherwise bake a scaled size into the view offset and leave the frame slightly off once the transform ends.
+    const el = this.dom as HTMLElement;
+    if (el.clientWidth > 0 && el.clientHeight > 0) return { w: el.clientWidth, h: el.clientHeight };
     const r = this.dom.getBoundingClientRect();
     return { w: r.width || 1, h: r.height || 1 };
   }
@@ -378,6 +383,9 @@ export class FarmCamera {
     const r = this.dom.getBoundingClientRect();
     return [(x - r.left) / (r.width || 1) * 2 - 1, -((y - r.top) / (r.height || 1) * 2 - 1)];
   }
+  /** The canvas changed size: re-apply the slate offset for the new size (the view offset is stored in pixels). */
+  resized(): void { if (!this.disposed) this.place(true); }
+
   /** True while the shown pose is still easing toward the goal (or a slide, glide or key pan is under way). The farm
    *  view keeps drawing while this holds, so a slow or skipped frame (dt 0 after a long gap) can never stop the loop
    *  with the camera short of where it is going. */

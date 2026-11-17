@@ -34,6 +34,9 @@ test('wheel zoom keeps the ground point under the cursor', async ({ page }) => {
   const ndc: [number, number] = [-0.35, -0.15]; // left of the code slate, whose grip sits over the right side;
   const px = box.x + (ndc[0] + 1) / 2 * box.width, py = box.y + (1 - ndc[1]) / 2 * box.height;
   const before = (await ground(page, ...ndc))!;
+  const startState = await page.evaluate(() => { const r = (window.tendril!.view as unknown as { rig: Record<string, unknown> }).rig; const cam = r.camera as { aspect: number; view: unknown; fov: number }; const c = document.getElementById('farm-canvas') as HTMLCanvasElement; const rect = c.getBoundingClientRect();
+    const view0 = JSON.stringify(cam.view), mv = matchMedia('(prefers-reduced-motion: reduce)').matches, pos0 = JSON.stringify((r.camera as { position: unknown }).position); const v = window.tendril!.view; const g0 = v.groundAt(-0.35, -0.15); (r as unknown as { resized(): void }).resized(); const g1 = v.groundAt(-0.35, -0.15);
+    return JSON.stringify({ cur: r.cur, insetNow: r.insetNow, insetTo: r.insetTo, framed: r.framed, w: innerWidth, h: innerHeight, rect: [rect.x, rect.y, rect.width, rect.height], client: [c.clientWidth, c.clientHeight], buf: [c.width, c.height], aspect: cam.aspect, fov: cam.fov, view: cam.view, view0, pos0, mv, g0, g1 }); });
   expect(before).not.toBeNull();
   await page.mouse.move(px, py);
   const d0 = (await page.evaluate(() => JSON.parse(document.getElementById('farm-canvas')!.dataset.cameraPosition!) as number[]));
@@ -43,7 +46,9 @@ test('wheel zoom keeps the ground point under the cursor', async ({ page }) => {
   expect(closer).not.toEqual(d0); // the camera really moved in
   // Poll: on a loaded software-GL machine a slow frame can pause the easing, so the settle check alone may read early.
   const drift = async () => { const g = (await ground(page, ...ndc))!; return Math.hypot(g.x - before.x, g.z - before.z); };
-  await expect.poll(drift, { timeout: 15_000 }).toBeLessThan(0.05);
+  const rigState = () => page.evaluate(() => { const r = (window.tendril!.view as unknown as { rig: Record<string, unknown> }).rig; return JSON.stringify({ cur: r.cur, des: r.des, insetNow: r.insetNow, insetTo: r.insetTo, framed: r.framed }); });
+  const atBefore = await rigState().catch(() => '');
+  await expect.poll(drift, { timeout: 15_000, message: `anchor drifted; before=${JSON.stringify(before)} start=${startState} afterZoom=${atBefore}` }).toBeLessThan(0.05);
   await page.mouse.wheel(0, 300);
   await settled(page);
   await expect.poll(drift, { timeout: 15_000 }).toBeLessThan(0.05);
