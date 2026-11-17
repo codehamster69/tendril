@@ -24,6 +24,13 @@ describe('reference worked examples', () => {
     });
   }
   it('sell_plot example shows both refusals and the sale', () => {
-    expect(runDemo(API_DOCS.sell_plot!).lines).toEqual(['middle plot: 0', 'barn plot: 0', 'edge plot: 300', 'plots left: 2']);
+    expect(runDemo(API_DOCS.sell_plot!).lines).toEqual([
+      'sell_plot 1, 0 paid nothing. Plot (1, 0) connects other plots to the barn. Sell a plot at the end of a branch instead.',
+      'middle plot: 0',
+      'sell_plot 0, 0 paid nothing. The barn plot cannot be sold.',
+      'barn plot: 0',
+      'edge plot: 300',
+      'plots left: 2',
+    ]);
   });
 });

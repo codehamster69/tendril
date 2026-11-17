@@ -180,7 +180,7 @@ export const API_DOCS: Record<string, ApiDoc> = {
       'The barn plot, (0, 0), can never be sold.',
       'No bot may be standing on the plot. Move them off first.',
       'The farm must stay connected: every other plot must still reach the barn plot through plots you own. Selling a plot that bridges two parts of the farm is refused.',
-      'Returns 0 and changes nothing when refused. Anything built on a sold plot is lost, and silos on it get no refund. The farm must have silo rules switched on.',
+      'Returns 0 and changes nothing when refused, and prints the reason to the console. Anything built on a sold plot is lost, and silos on it get no refund. The farm must have silo rules switched on.',
     ],
     demo: 'buy_plot 1, 0\nbuy_plot 2, 0\nsay "middle plot:", sell_plot(1, 0)     # 0: (2, 0) would be cut off\nsay "barn plot:", sell_plot(0, 0)      # 0: the barn plot is permanent\nsay "edge plot:", sell_plot(2, 0)      # pays half of what it cost\nsay "plots left:", len(plots())',
   },
@@ -298,6 +298,30 @@ export const API_DOCS: Record<string, ApiDoc> = {
   price: {
     rules: ['Free. What the barn pays for one unit of an item. On a market day it is in hundredths of a coin (250 means 2.5 coins) and changes daily; on other days it is the base price in whole coins.', '`sell` pays `units × price ÷ 100`, using the same day\'s hundredths on market days, so compare prices before you hold produce back.'],
     demo: 'say "carrot:", price(carrot)\nsay "honey:", price(honey)\nsay "pumpkin:", price(pumpkin)',
+  },
+  goal: {
+    rules: ['Free. The day\u2019s goal as a name: `wealth`, `festival`, `specialist`, `orders` or `inherited`. It is `wealth` when there is no brief, which includes Endless and older challenges.'],
+    demo: 'say goal()',
+  },
+  quota: {
+    rules: ['Free. On a festival day, how many units of the item are still to deposit. It is 0 for any other goal, for an item the festival does not ask for, and when there is no brief.'],
+    demo: 'say quota(carrot)',
+  },
+  budget: {
+    rules: ['Free. The challenge\u2019s tick budget, or 0 when there is none (Endless and older challenges).'],
+    demo: 'say budget()',
+  },
+  twists: {
+    rules: ['Free. The brief\u2019s twists as a list of names. The list is empty when there are none, and when there is no brief.'],
+    demo: 'say len(twists())',
+  },
+  bot_cap: {
+    rules: ['Free. The most bots this brief allows, or `none` when there is no limit.'],
+    demo: 'say bot_cap()',
+  },
+  plot_cap: {
+    rules: ['Free. The most plots this brief allows, or `none` when there is no limit.'],
+    demo: 'say plot_cap()',
   },
   silo_cost: {
     rules: ['Free. The price of the next silo: 500 × n², where n counts the silos you will own (500, 2,000, 4,500…). It is 0 while silo rules are off.'],
