@@ -25,6 +25,19 @@ export function addPlot(w: World, px: number, py: number): Plot {
       tiles[o + UPDATED] = w.tick;
     }
   }
+  const b = w.brief;
+  if (b && (b.poorSoil || b.drySoil)) {
+    // Briefs: 4x4 patches of poor or dry soil, chosen from the WORLD seed so hidden farms differ (SIM_SPEC 6.3).
+    for (let dy = 0; dy < PLOT_SIZE; dy++) {
+      for (let dx = 0; dx < PLOT_SIZE; dx++) {
+        const gx = px * PLOT_SIZE + dx, gy = py * PLOT_SIZE + dy;
+        const o = (dy * PLOT_SIZE + dx) * TILE_INTS;
+        const cx = Math.floor(gx / 4), cy = Math.floor(gy / 4);
+        if (b.poorSoil && tileHash(w.seed ^ 0x50304F52, cx, cy) % 3 === 0) tiles[o + NITRO] = Math.max(0, tiles[o + NITRO]! - b.poorSoil);
+        if (b.drySoil && tileHash(w.seed ^ 0x44525959, cx, cy) % 3 === 0) tiles[o + MOIST] = Math.max(0, tiles[o + MOIST]! - b.drySoil);
+      }
+    }
+  }
   const plot: Plot = { px, py, tiles };
   w.plotIndex.set(plotKey(px, py), w.plots.length);
   w.plots.push(plot);

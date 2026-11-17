@@ -4,6 +4,7 @@ import {
 } from '@tendril/sim/src/index.ts';
 import type { LogEntry, World } from '@tendril/sim/src/index.ts';
 import type { Expr, Stmt } from './ast.ts';
+import { explainSellRefusal } from './sell-note.ts';
 
 type Pos = { x: number; y: number };
 /** Silo positions in plot order, then row order (the same order as tiles()). Empty before rules v5. */
@@ -24,6 +25,7 @@ export function nearestDrop(w: World, bot: Pos): Pos {
   }
   return best;
 }
+import { briefBotCap, briefBudget, briefGoal, briefPlotCap, briefQuota, briefTwists } from './brief.ts';
 import { compile, type CompileOptions, type Program } from './parser.ts';
 import { CompileError, SproutError } from './errors.ts';
 import { rand } from '@tendril/sim/src/weather.ts';
@@ -100,6 +102,7 @@ export function binary(op: string, a: Value, b: Value): Value {
 
 class Run implements ScriptRun {
   pending: LogEntry[] = []; errors: ScriptError[] = []; output: OutputLine[] = [];
+  private sellMemo = new Map<string, number>();
   private bots: BotState[] = []; private shared: RecordValue = Object.create(null) as RecordValue;
   private breakpoints = new Set<number>(); private heat = new Map<number, number>(); private cursor = 0;
   private closed = false; private paused: { bot: number; line: number } | null = null;
@@ -224,6 +227,7 @@ class Run implements ScriptRun {
     const farm = FARM_OPS.includes(op);
     const entry: LogEntry = [this.world.tick, farm ? -1 : b.bot, op]; entry.push(...args);
     const result = applyAction(this.world, entry); this.pending.push(entry);
+    if (op === OP.sellPlot && result === 0) explainSellRefusal(this.output, this.sellMemo, this.world, b.bot, args[0]!, args[1]!);
     if (!farm) yield { k: 'action', line };
     return result;
   }
@@ -264,6 +268,8 @@ class Run implements ScriptRun {
       case 'plot_cost': return plotCost(w); case 'bot_cost': return botCost(w); case 'unlocked': return isUnlocked(w, unlock(0)); case 'unlock_cost': return UNLOCKS[unlock(0)]!.price; case 'price': { const i = item(0); if (i > 7) throw new SproutError('Compost has no price.'); return w.prices ? w.prices[i]! : ITEMS[i]!.price; }
       case 'silo_cost': return silosActive(w) ? siloCost(w) : 0;
       case 'silos': return silos(w);
+      case 'goal': return briefGoal(w); case 'budget': return briefBudget(w); case 'twists': return briefTwists(w);
+      case 'quota': return briefQuota(w, item(0)); case 'bot_cap': return briefBotCap(w); case 'plot_cap': return briefPlotCap(w);
       case 'nearest_drop': return nearestDrop(w, bot);
       case 'say': case 'print': { if (this.output.length < 2000) this.output.push({ bot: b.bot, tick: w.tick, text: a.map((v) => text(v)).join(' ').slice(0, 2000) }); return null; }
       case 'len': { const v = arg(0); return typeof v === 'string' || Array.isArray(v) ? v.length : Object.keys(record(v)).length; }
