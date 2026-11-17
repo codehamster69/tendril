@@ -117,7 +117,7 @@ test('sealed and missing runs show clear states', async ({ page }) => {
   await expect(page.locator('#error')).toContainText('does not exist');
 });
 
-test('replay bundle has no Monaco or language package', () => {
+test('replay bundle has no editor or language package', () => {
   const dir = fileURLToPath(new URL(`../${process.env.PW_OUT ?? 'dist'}/`, import.meta.url));
   const html = readFileSync(dir + 'replay.html', 'utf8');
   const entryJs = /src="[^"]*\/(assets\/[^"]+\.js)"/.exec(html)![1]!;
@@ -131,7 +131,7 @@ test('replay bundle has no Monaco or language package', () => {
     return all;
   };
   const code = walk(entryJs);
-  expect(code).not.toMatch(/monaco/i);
+  expect(code).not.toMatch(/monaco|codemirror|cm-editor/i);
   expect(code).not.toMatch(/KEYWORDS|monarchTokens|LANGUAGE_VERSION/);
   expect(readdirSync(dir).length).toBeGreaterThan(0);
 });

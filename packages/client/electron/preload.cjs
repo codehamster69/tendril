@@ -3,6 +3,7 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('tendrilDesktop', Object.freeze({
+  quit() { ipcRenderer.send('tendril:quit'); },
   openExternal(url) {
     if (typeof url === 'string' && url.length < 2048) ipcRenderer.send('tendril:open-external', url);
   },

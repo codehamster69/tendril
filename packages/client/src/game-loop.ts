@@ -4,9 +4,6 @@ import type { RealSim } from './real-sim';
 import type { BotDebug, Diagnostic, Scenario, SimError } from './sim-protocol';
 
 const MAX_TICKS_PER_FRAME = 2000;
-// Match the worker and replay chunk limit when recovering a live farm. Each
-// reply is saved durably, so larger batches avoid repeatedly rewriting the log.
-const MAX_CATCH_UP_TICKS = 20_000;
 const emit = (name: string, detail: unknown): void => { window.dispatchEvent(new CustomEvent(`tendril:${name}`, { detail })); };
 
 /** Human-facing messages for the console. `clear` empties it (new farm). */
@@ -115,6 +112,7 @@ export class GameLoop {
     this.last = performance.now();
     this.acc = 0;
     this.running = true;
+    if (this.sim.paused) void this.sim.resume().catch(() => {}); // Finish the tick a breakpoint or line step interrupted.
     this.updateStatus();
   }
 
@@ -267,7 +265,7 @@ export class GameLoop {
       let n: number;
       if (this.sim.mode === 'live') {
         // Speed cannot mint ticks: the clock is the only source. Behind it, catch up as fast as the worker allows.
-        n = Math.min(MAX_CATCH_UP_TICKS, Math.max(0, targetTick(this.sim.meta, Date.now()) - tick));
+        n = Math.min(MAX_TICKS_PER_FRAME, Math.max(0, targetTick(this.sim.meta, Date.now()) - tick));
       } else {
         this.acc = Math.min(MAX_TICKS_PER_FRAME, this.acc + elapsed * TICKS_PER_SECOND * this.speed);
         n = Math.floor(this.acc);
@@ -303,6 +301,8 @@ export class GameLoop {
     }
     const lines = this.sim.drainOutput();
     if (lines.length) emit('output', lines);
+    const events = this.sim.drainEvents?.();
+    if (events?.length) emit('events', events);
     const errors: SimError[] = this.sim.drainErrors();
     if (!errors.length) return;
     const script = errors.filter((e) => !e.kind || e.kind === 'script');

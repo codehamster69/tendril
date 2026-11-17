@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { FIXTURE_PATH, ISSUE_LABEL, isFailing, replayFixture, runChecks, syncIssue } from './health.mjs';
-import { RULES_VERSION, dailySeed, dailyRulesVersion } from '../packages/sim/src/index.ts';
+import { RULES_VERSION, dailySeed } from '../packages/sim/src/index.ts';
 
 const fixture = JSON.parse(readFileSync(FIXTURE_PATH, 'utf8'));
 const NOW = Date.UTC(2026, 10, 12, 18, 0, 0);
@@ -12,7 +12,7 @@ const json = (body, status = 200) => new Response(JSON.stringify(body), { status
 function healthySite(overrides = {}) {
   return async (url) => {
     if (overrides[url]) return overrides[url]();
-    if (url.endsWith('/api/daily')) return json({ date: DATE, seed: dailySeed(DATE), ticks: 1000, rulesVersion: dailyRulesVersion(DATE) });
+    if (url.endsWith('/api/daily')) return json({ date: DATE, seed: dailySeed(DATE), ticks: 1000, rulesVersion: RULES_VERSION });
     if (url.endsWith('/play/')) return new Response('<html>game</html>');
     if (url.endsWith('/api/budget')) return json({}, 404);
     if (url.endsWith('/')) return new Response('<html>home</html>');
@@ -110,14 +110,3 @@ test('canary passes when the server checkpoint matches a local replay, and fails
   const bad = await runChecks(deps(make('0000'), { canaryToken: 't' }));
   assert.equal(bad.find((r) => r.name === 'canary verify').ok, false);
 });
-
-for (const date of ['2026-12-07', '2026-12-08', '2026-12-09']) {
-  test(`daily check validates scheduled rules on ${date}`, async () => {
-    const expected = dailyRulesVersion(date);
-    for (const version of [3, 4, 99]) {
-      const fetchFn = healthySite({ 'https://example.test/api/daily': () => json({ date, seed: dailySeed(date), ticks: 3000, rulesVersion: version }) });
-      const results = await runChecks(deps(fetchFn, { now: Date.parse(date + 'T12:00:00Z') }));
-      assert.equal(results.find(r => r.name === 'daily challenge').ok, version === expected);
-    }
-  });
-}

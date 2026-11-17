@@ -1,16 +1,18 @@
 import { test, expect } from '@playwright/test';
+import { ready, press } from './game.ts';
 import { API } from '@tendril/lang/src/index.ts';
 
 // Playwright supplies a fresh context (including IndexedDB) per test.
 test.beforeEach(async ({ page }) => {
   await page.goto('/?mode=sandbox');
+  await ready(page);
   await expect(page.locator('#status')).toHaveAttribute('data-state', 'paused');
 });
 
 test('greenhouse loads a real farm and a nonblank canvas', async ({ page }, testInfo) => {
   await expect(page.locator('#mode-label')).toHaveText('Sandbox');
   await expect(page.locator('#hud-tick')).toHaveText('0');
-  await expect(page.locator('#editor .monaco-editor')).toBeVisible();
+  await expect(page.locator('#editor .cm-editor')).toBeVisible();
   const buf = await page.locator('#farm-canvas').screenshot({ animations: 'disabled' });
   const colours = await page.evaluate(async (b64) => {
     const img = new Image();
@@ -28,51 +30,52 @@ test('greenhouse loads a real farm and a nonblank canvas', async ({ page }, test
   expect(colours).toBeGreaterThan(50);
   // Screenshot is observational, not a pixel golden: the renderer has an animated bot.
   await page.setViewportSize({ width: 1400, height: 900 });
-  await page.click('#btn-step');
+  await press(page, '#btn-step');
   await expect(page.locator('#hud-tick')).toHaveText('100');
   await expect(page.locator('#status')).toHaveAttribute('data-state', 'paused');
   await page.screenshot({ path: testInfo.outputPath('greenhouse.png'), fullPage: true, animations: 'disabled' });
 });
 
-test('monaco completion lists the built-ins generated from the language API', async ({ page }) => {
+test('editor completion lists the built-ins generated from the language API', async ({ page }) => {
   await page.getByRole('textbox', { name: 'Sprout program for your farm bots' }).focus();
   await page.keyboard.press('ControlOrMeta+A');
   await page.keyboard.type('pla');
   const expected = API.filter((entry) => entry.name.startsWith('pla')).map((entry) => entry.name);
   expect(expected).toContain('plant');
   for (const name of expected) {
-    await expect(page.locator('.suggest-widget .monaco-list-row', { hasText: name }).first()).toBeVisible();
+    await expect(page.locator('.cm-tooltip-autocomplete li', { hasText: name }).first()).toBeVisible();
   }
   // The row carries the API signature and tick cost as its detail text.
   const plant = API.find((entry) => entry.name === 'plant')!;
-  await expect(page.locator('.suggest-widget .monaco-list-row.focused, .suggest-widget .monaco-list-row', { hasText: 'plant' }).first())
+  await expect(page.locator('.cm-tooltip-autocomplete li', { hasText: 'plant' }).first())
     .toContainText(plant.signature);
 });
 
 test('sandbox steps exactly 100, runs at selected speed and pauses durably', async ({ page }) => {
-  await page.click('#btn-step');
+  await press(page, '#btn-step');
   await expect(page.locator('#hud-tick')).toHaveText('100');
   await expect(page.locator('#save-status')).toHaveText('Saved locally · tick 100');
-  await page.selectOption('#speed', '64');
-  await page.click('#btn-run');
+  await page.locator('#speed').evaluate((el: HTMLSelectElement) => { el.value = '64'; el.dispatchEvent(new Event('change', { bubbles: true })); });
+  await press(page, '#btn-run');
   await expect.poll(async () => Number(await page.locator('#hud-tick').textContent())).toBeGreaterThan(110);
-  await page.click('#btn-pause');
+  await press(page, '#btn-pause');
   await expect(page.locator('#status')).toHaveAttribute('data-state', 'paused');
   const tick = await page.locator('#hud-tick').textContent();
   await page.waitForTimeout(500); // Deliberately prove no new ticks while paused.
   await expect(page.locator('#hud-tick')).toHaveText(tick!);
-  await expect(page.locator('#save-status')).toHaveText(`Saved locally · tick ${tick}`);
+  await expect(page.locator('#save-status')).toHaveText(`Saved locally · tick ${Number(tick).toLocaleString("en-US")}`);
 });
 
 test('examples edit the program without resetting or starting the farm', async ({ page }) => {
-  await page.click('#btn-step');
+  await press(page, '#btn-step');
   await expect(page.locator('#hud-tick')).toHaveText('100');
   page.once('dialog', (dialog) => dialog.accept());
-  await page.selectOption('#examples', 'expander');
+  await page.locator('#examples').evaluate((el: HTMLSelectElement) => { el.value = 'expander'; el.dispatchEvent(new Event('change', { bubbles: true })); });
   expect(await page.evaluate(() => window.tendril!.editor.getSource())).toContain('buy_plot');
   await expect(page.locator('#hud-tick')).toHaveText('100');
   await expect(page.locator('#status')).toHaveAttribute('data-state', 'paused');
   await page.reload();
+  await ready(page);
   await expect(page.locator('#status')).toHaveAttribute('data-state', 'paused');
   expect(await page.evaluate(() => window.tendril!.editor.getSource())).toContain('buy_plot');
   await expect(page.locator('#hud-tick')).toHaveText('100');
@@ -83,9 +86,9 @@ test('mobile layout stays usable with keyboard focus and reduced motion', async 
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await expect(page.locator('#farm-canvas')).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
-  await page.locator('#btn-run').focus();
-  await expect(page.locator('#btn-run')).toBeFocused();
-  expect(await page.locator('#btn-run').evaluate((el) => getComputedStyle(el).outlineStyle)).toBe('solid');
+  await page.locator('#tp-play').focus();
+  await expect(page.locator('#tp-play')).toBeFocused();
+  expect(await page.locator('#tp-play').evaluate((el) => getComputedStyle(el).outlineStyle)).toBe('solid');
   await page.screenshot({ path: testInfo.outputPath('greenhouse-mobile.png'), fullPage: true, animations: 'disabled' });
 });
 
@@ -96,9 +99,10 @@ test('real worker loads without browser errors', async ({ browser }) => {
   page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
   page.on('pageerror', (e) => errors.push(String(e)));
   await page.goto('/?mode=sandbox');
+  await ready(page);
   await expect(page.locator('#status')).toHaveAttribute('data-state', 'paused');
   await expect(page.locator('#btn-step')).toBeEnabled();
-  await page.click('#btn-step');
+  await press(page, '#btn-step');
   await expect(page.locator('#hud-tick')).toHaveText('100');
   expect(errors).toEqual([]);
   await context.close();

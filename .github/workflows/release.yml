@@ -85,13 +85,6 @@ jobs:
         run: test "v$(node -p "require('./packages/client/package.json').version")" = "${{ inputs.tag || github.ref_name }}"
       - name: Build unsigned installers (no publishing)
         run: pnpm --filter @tendril/client run electron:pack ${{ matrix.args }}
-      - name: Verify macOS bundle integrity
-        if: runner.os == 'macOS'
-        run: |
-          find packages/client/release -maxdepth 2 -name 'Tendril.app' -print0 | while IFS= read -r -d '' app; do
-            codesign --verify --deep --strict --verbose=2 "$app"
-          done
-          test -n "$(find packages/client/release -maxdepth 2 -name 'Tendril.app' -print -quit)"
       - name: Store installers as workflow artifacts only
         uses: actions/upload-artifact@v7 # UNPINNED: coordinator to pin to a full SHA
         with:

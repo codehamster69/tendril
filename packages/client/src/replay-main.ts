@@ -1,9 +1,11 @@
+import { boot } from './boot';
 import { FarmView } from './farm-view';
 import { clipSupport, downloadClip, exportClip, UNSUPPORTED_MESSAGE } from './clip';
 import { paneHeader, Timeline } from './replay-view';
 import type { ReplayData, ReplayEntry } from './replay-view';
 
 const $ = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T;
+boot.profile('lite');
 const params = new URLSearchParams(location.search);
 const idA = params.get('e') ?? params.get('entry');
 const idB = params.get('vs');
@@ -11,6 +13,7 @@ if (params.get('embed') === '1') document.body.classList.add('embed');
 const api = (path: string): string => `/api${path}`;
 
 function fail(message: string): void {
+  boot.fail(message);
   const el = $('error');
   el.textContent = message;
   el.hidden = false;
@@ -49,7 +52,8 @@ async function main(): Promise<void> {
   const views = runs.map((run, i) => {
     panes[i]!.hidden = false;
     const header = paneHeader(panes[i]!, run.entry);
-    const view = new FarmView(panes[i]!.querySelector('canvas')!);
+    const view = new FarmView(panes[i]!.querySelector('canvas')!, { lite: true });
+    view.setDay({ runTicks: run.timeline.ticks });
     return { ...run, header, view };
   });
   const total = Math.max(...runs.map((r) => r.timeline.ticks));

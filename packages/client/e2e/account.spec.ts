@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { ready, menu } from './game.ts';
 import { createWorld, deserialize, hashWorld, netWorth, replayChunk, serialize, BASE_RULES_VERSION } from '@tendril/sim/src/index.ts';
 
 const KEY = 'tendril.unrankedNotice.dismissedUntil';
@@ -46,14 +47,19 @@ const notice = (page: Page) => page.locator('#unranked-notice');
 test('live mode, signed out: notice with sign-in and dismiss, dismissal survives reload', async ({ page }, testInfo) => {
   await mockApi(page, false);
   await page.goto('/?mode=live');
+  await ready(page);
   await expect(notice(page)).toBeVisible();
   await expect(notice(page)).toHaveAttribute('role', 'status');
   await expect(notice(page)).toContainText(WRAP);
   await expect(notice(page).getByRole('button', { name: 'Sign in' })).toBeVisible();
   await expect(notice(page).getByRole('button', { name: 'Dismiss this notice' })).toBeVisible();
-  // It sits above the workbench and never overlaps the canvas.
-  const bar = (await notice(page).boundingBox())!, canvas = (await page.locator('#farm-canvas').boundingBox())!;
-  expect(bar.y + bar.height).toBeLessThanOrEqual(canvas.y);
+  // It floats over the stage but stays on screen and never covers the transport bar.
+  const bar = (await notice(page).boundingBox())!, transport = (await page.locator('#tp-play').boundingBox())!;
+  const view = page.viewportSize()!;
+  expect(bar.y).toBeGreaterThanOrEqual(0);
+  expect(bar.y + bar.height).toBeLessThanOrEqual(view.height);
+  expect(bar.x + bar.width).toBeLessThanOrEqual(view.width);
+  expect(bar.y + bar.height <= transport.y || transport.y + transport.height <= bar.y || bar.x + bar.width <= transport.x || transport.x + transport.width <= bar.x).toBe(true);
   await page.setViewportSize({ width: 1400, height: 900 });
   await page.screenshot({ path: 'e2e/notice.png' });
   await page.screenshot({ path: testInfo.outputPath('notice.png') });
@@ -69,6 +75,7 @@ test('live mode, signed out: notice with sign-in and dismiss, dismissal survives
 test('the notice Sign in button opens the same flow as the account button', async ({ page }) => {
   await mockApi(page, false);
   await page.goto('/?mode=live');
+  await ready(page);
   const navigation = page.waitForRequest((request) => new URL(request.url()).pathname === '/api/auth/github');
   await page.route('**/api/auth/github**', (route) => route.fulfill({ status: 200, contentType: 'text/html', body: 'ok' }));
   await notice(page).getByRole('button', { name: 'Sign in' }).click();
@@ -79,8 +86,11 @@ test('sandbox, campaign and daily modes show no notice', async ({ page }) => {
   await mockApi(page, false);
   for (const mode of ['sandbox', 'campaign', 'daily']) {
     await page.goto(`/?mode=${mode}`);
+    await ready(page);
     await expect(page.locator('#mode-label')).not.toHaveText('Endless farm');
-    await expect(page.locator('#btn-account')).toBeVisible();
+    await page.click('#btn-menu');
+    await expect(page.locator('#menu-overlay [data-entry="account"]')).toBeVisible();
+    await page.keyboard.press('Escape');
     await expect(notice(page)).toBeHidden();
   }
 });
@@ -88,6 +98,7 @@ test('sandbox, campaign and daily modes show no notice', async ({ page }) => {
 test('signed in on the local farm: wording changes and links to the Endless farm', async ({ page }) => {
   await mockApi(page, true);
   await page.goto('/?mode=live&ranked=0');
+  await ready(page);
   await expect(page.locator('#mode-label')).toContainText('Local');
   await expect(page.locator('#btn-account')).toHaveText('octo');
   await expect(notice(page)).toContainText("You're signed in, but this is your local farm. Open your Endless farm to compete.");
@@ -98,6 +109,7 @@ test('signed in on the local farm: wording changes and links to the Endless farm
 test('signed in on the Endless farm: no notice', async ({ page }) => {
   await mockApi(page, true);
   await page.goto('/?mode=live&ranked=1');
+  await ready(page);
   await expect(page.locator('#btn-account')).toHaveText('octo');
   await expect(page.locator('#mode-label')).toContainText('Endless');
   await expect(notice(page)).toBeHidden();
@@ -106,6 +118,7 @@ test('signed in on the Endless farm: no notice', async ({ page }) => {
 test('signed in: the live farm is the Endless farm by default', async ({ page }) => {
   await mockApi(page, true);
   await page.goto('/?mode=live');
+  await ready(page);
   await expect(page.locator('#btn-account')).toHaveText('octo');
   await expect(page.locator('#mode-label')).toContainText('Endless');
   await expect(notice(page)).toBeHidden();
@@ -115,6 +128,7 @@ test('a stale sign-in falls back to the local farm quietly', async ({ page }) =>
   await mockApi(page, false);
   await page.addInitScript(() => localStorage.setItem('tendril.signedin', '1'));
   await page.goto('/?mode=live');
+  await ready(page);
   await expect(page.locator('#mode-label')).toContainText('Local');
   await expect(page.getByText('Could not connect Endless farm')).toHaveCount(0);
 });
@@ -122,10 +136,11 @@ test('a stale sign-in falls back to the local farm quietly', async ({ page }) =>
 test('Sync now verifies the Endless farm without pausing it', async ({ page }) => {
   await mockApi(page, true);
   await page.goto('/?mode=live');
+  await ready(page);
   await expect(page.locator('#mode-label')).toContainText('Endless');
   await expect.poll(() => page.evaluate(() => window.tendril?.sim.latest()?.tick ?? 0)).toBeGreaterThan(5);
   const before = chunks.length;
-  await page.locator('#btn-account').click();
+  await menu(page, 'account');
   await page.getByRole('button', { name: 'Sync now' }).click();
   await expect(page.getByText('Farm verified').first()).toBeVisible();
   await expect.poll(() => chunks.length).toBeGreaterThan(before);
@@ -135,6 +150,7 @@ test('Sync now verifies the Endless farm without pausing it', async ({ page }) =
 test('auto-sync reaches the leaderboard by itself and shows the rank', async ({ page }) => {
   await mockApi(page, true);
   await page.goto('/?mode=live');
+  await ready(page);
   await expect(page.locator('#mode-note')).toContainText('On the leaderboard · rank 1', { timeout: 15_000 });
   expect(chunks.length).toBeGreaterThan(0);
   await expect.poll(() => page.evaluate(() => window.tendril?.sim.accepted?.farm.tick ?? 0)).toBe(server.world.tick);
@@ -145,6 +161,7 @@ test('a farm far behind catches up with chunks sent back to back', async ({ page
   await mockApi(page, true);
   farmAgeMs = 4_500_000; // 45,000 ticks: three chunks of at most 20,000.
   await page.goto('/?mode=live');
+  await ready(page);
   await expect(page.locator('#mode-note')).toContainText('On the leaderboard', { timeout: 60_000 });
   await expect.poll(() => server.world.tick, { timeout: 60_000 }).toBeGreaterThan(44_000);
   expect(chunks.length).toBeGreaterThanOrEqual(3);

@@ -1,4 +1,5 @@
 import { test, expect, type BrowserContext, type Page } from '@playwright/test';
+import { ready } from './game';
 import { dailyNumber, dailySeed, DAILY_PAR, BASE_RULES_VERSION } from '@tendril/sim/src/index.ts';
 
 const date = new Date().toISOString().slice(0, 10);
@@ -45,9 +46,12 @@ function makeServer() {
 }
 
 async function runToEnd(page: Page): Promise<void> {
+  await page.emulateMedia({ reducedMotion: 'reduce' }); // no sunset orbit
   await expect(page.locator('#status')).toHaveAttribute('data-state', 'paused'); // The farm must be loaded before it can run.
-  await page.click('#btn-run-end');
-  await expect(page.locator('#arena-result')).toBeVisible({ timeout: 15_000 });
+  await expect(page.locator('#tp-sunset')).toBeEnabled();
+  await page.click('#tp-sunset');
+  await expect(page.locator('.rs-card')).toBeVisible({ timeout: 15_000 });
+  await page.locator('.rs-duel summary').click(); // the duel box is folded on the result card
 }
 
 test('create a duel as one player, accept it as another in a fresh context, reach the race', async ({ browser }) => {
@@ -55,7 +59,7 @@ test('create a duel as one player, accept it as another in a fresh context, reac
   const a = await browser.newContext({ permissions: ['clipboard-read', 'clipboard-write'] });
   await server.install(a, 'ann');
   const pa = await a.newPage();
-  await pa.goto('/?mode=daily');
+  await pa.goto('/?mode=daily'); await ready(pa);
   await runToEnd(pa);
   await pa.click('#btn-challenge');
   const link = await pa.locator('#duel-link').inputValue();
@@ -68,7 +72,7 @@ test('create a duel as one player, accept it as another in a fresh context, reac
   const b = await browser.newContext(); // fresh browser: no storage, no cookies
   await server.install(b, 'bo');
   const pb = await b.newPage();
-  await pb.goto(`/?mode=challenge&id=${DUEL}`);
+  await pb.goto(`/?mode=challenge&id=${DUEL}`); await ready(pb);
   await expect(pb.locator('#arena-head')).toContainText('Duel');
   await runToEnd(pb);
   await expect(pb.locator('#duel-status')).toContainText('Ann 321');
@@ -86,12 +90,12 @@ test('signed out: a local result against the challenger and a sign-in prompt, no
   const c = await browser.newContext();
   await server.install(c, null);
   const p = await c.newPage();
-  await p.goto(`/?mode=challenge&id=${DUEL}`);
+  await p.goto(`/?mode=challenge&id=${DUEL}`); await ready(p);
   await runToEnd(p);
-  await expect(p.locator('#arena-facts')).toContainText('net worth');
+  await expect(p.locator('.rs-coins')).toContainText('net worth');
   await expect(p.locator('#duel-status')).toContainText('Ann 321');
   await expect(p.locator('#btn-duel-signin')).toBeVisible();
-  await expect(p.locator('#btn-arena-signin')).toBeVisible();
+  await expect(p.locator('.rs-signin')).toBeVisible();
   await expect(p.locator('#duel-race')).toHaveCount(0);
   expect(server.s.entries).toHaveLength(1);
   expect(server.s.accepted).toEqual([]);

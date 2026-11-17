@@ -1,1 +1,1 @@
-{"name": "tile_grass", "group": "tile", "tris": 34, "budget": 300, "size": [0.94, 0.94, 0.315]}
+{"name":"tile_grass","group":"tile","tris":30,"budget":300,"size":[0.94,0.94,0.305]}

@@ -1,1 +1,1 @@
-{"name": "tile_soil", "group": "tile", "tris": 76, "budget": 300, "size": [0.94, 0.94, 0.226]}
+{"name":"tile_soil","group":"tile","tris":32,"budget":300,"size":[0.94,0.94,0.305]}

@@ -133,22 +133,6 @@ def harvester():
                     (0.239, 0.287), (0.209, 0.285)], (-0.168, -0.153), 'metal')
 
 
-def lantern_tender():
-    """Cream lantern hull, amber heart and three broad leaf rotors."""
-    sphere(0.19, (0, 0, 0.39), 'cream', 2, (1, 1, 0.78))
-    sphere(0.09, (0, 0, 0.255), 'amber', 2, (1, 1, 1.1))
-    cyl(0.105, 0.035, (0, 0, 0.20), 'teal_dark', 10)
-    cyl(0.05, 0.14, (0, 0, 0.58), 'teal_dark', 8)
-    sphere(0.065, (0, 0, 0.66), 'amber', 1)
-    for i in range(3):
-        angle = i * math.tau / 3
-        a = (0.03 * math.cos(angle), 0.03 * math.sin(angle), 0.65)
-        b = (0.30 * math.cos(angle), 0.30 * math.sin(angle), 0.67)
-        leaf(a, b, 0.085, 'leaf_light')
-    for x in (-0.09, 0.09):
-        sphere(0.025, (x, -0.17, 0.41), 'teal_dark', 1)
-
-
 def tender(version=0):
     track(-0.213)
     track(0.213)
@@ -482,7 +466,7 @@ def grounded(fn, footprint=None, height=None):
 
 
 BUILDS = {
-    'bot_tender': ('bot', partial(grounded, lantern_tender, 0.6, 0.8)),
+    'bot_tender': ('bot', partial(grounded, partial(tender, 0), 0.6, 0.8)),
     'bot_tender_v1': ('bot', partial(grounded, partial(tender, 1), 0.6, 0.8)),
     'bot_tender_v2': ('bot', partial(grounded, partial(tender, 2), 0.6, 0.8)),
     'bot_tender_v3': ('bot', partial(grounded, partial(tender, 3), 0.6, 0.8)),

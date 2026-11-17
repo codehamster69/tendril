@@ -38,10 +38,10 @@ import { PLATFORMS, RELEASES_PAGE } from '../data/downloads';
       </section>
       <section>
         <h2>First launch warnings</h2>
-        <p>Early builds do not yet have a verified publisher signature. macOS bundles are ad-hoc signed for integrity, but are not Apple-notarized.</p>
+        <p>Early builds aren't signed yet, so your system will ask before opening them.</p>
         <ul>
           <li><b>Windows:</b> if SmartScreen appears, choose More info, then Run anyway.</li>
-          <li><b>macOS:</b> Gatekeeper may block this unnotarized build. A damaged-app warning should be reported; use <a href="/play/">the browser game</a> while the installer is investigated. Developer ID signing and Apple notarization are still pending.</li>
+          <li><b>macOS:</b> if macOS blocks the app, open System Settings, Privacy &amp; Security, and choose Open Anyway.</li>
           <li><b>Linux:</b> make the AppImage executable with <code>chmod +x Tendril-*.AppImage</code>, then run it.</li>
         </ul>
       </section>

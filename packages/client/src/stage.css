@@ -1,0 +1,98 @@
+/* Full-screen game stage: the island fills the window, everything else floats over it. Uses hud-kit.css tokens. */
+:root { --slate-w: 440px; }
+body.game-stage { display: block; min-height: 0; height: 100vh; overflow: hidden; font-family: var(--hk-body); }
+.game-stage #topbar, .game-stage #workbench > #view > .panel-heading, .game-stage #view > .deck-tabs, .game-stage #view > .deck { display: none; }
+.game-stage #workbench { display: block; padding: 0; margin: 0; }
+.game-stage #view { position: static; background: none; border: 0; box-shadow: none; backdrop-filter: none; overflow: visible; display: block; }
+.game-stage #farm-stage { position: fixed; inset: 0; height: auto; flex: none; z-index: 0; min-height: 0; border: 0; background: radial-gradient(120% 90% at 50% 20%, #1f5a58, #0d2b30 70%); }
+.game-stage #stage-tools { top: 62px; left: 14px; right: calc(var(--slate-w) + 40px); }
+.game-stage.slate-hidden #stage-tools { right: 70px; }
+.game-stage .farm-caption { left: 14px; right: calc(var(--slate-w) + 40px); bottom: 92px; }
+.game-stage.slate-hidden .farm-caption { right: 14px; }
+.game-stage #toast-host { top: 62px; right: calc(var(--slate-w) + 40px); }
+.game-stage.slate-hidden #toast-host { right: 14px; }
+.game-stage .farm-market:not(.in-panel) { display: none; }
+.game-stage:not(.farm-large) #farm-minimap { display: none; }
+.game-stage #farm-minimap.in-panel { position: static; }
+.game-stage .farm-market.in-panel { position: static; width: 100%; }
+
+/* code slate */
+.game-stage #side {
+  position: fixed; z-index: 20; top: 62px; right: 12px; bottom: 36px; width: var(--slate-w); min-width: 0; overflow: visible;
+  background: var(--hk-code-bg); border: 1px solid var(--hk-line); border-radius: var(--hk-r-md); box-shadow: var(--hk-shadow); backdrop-filter: var(--hk-blur);
+  transition: transform .22s ease, visibility .22s;
+}
+.game-stage.slate-hidden #side { transform: translateX(calc(100% + 24px)); visibility: hidden; }
+.game-stage #side > #lesson-card, .game-stage #toolbar { display: none; }
+.game-stage #side .panel-heading { padding: 8px 14px 6px; }
+.game-stage #side .panel-heading h2 { font: 700 1.1rem/1.1 var(--hk-display); }
+.game-stage #editor { flex: 1 1 0; height: auto; min-height: 120px; border-radius: 0; }
+.game-stage .slate-hide { padding: .15rem .7rem; min-height: 1.8rem; }
+.slate-grip { position: absolute; left: -7px; top: 0; bottom: 0; width: 14px; cursor: col-resize; z-index: 2; touch-action: none; }
+.slate-grip::after { content: ""; position: absolute; left: 6px; top: 50%; width: 3px; height: 44px; margin-top: -22px; border-radius: 2px; background: var(--hk-line); }
+.slate-grip:hover::after, .slate-grip:focus-visible::after { background: var(--hk-lantern); }
+body.resizing { cursor: col-resize; user-select: none; }
+body.resizing iframe, body.resizing canvas { pointer-events: none; }
+.game-stage .dock-tabs { padding: 0 8px; border-top: 1px solid var(--line-soft); border-bottom: 0; align-items: center; }
+.strip-toggle { background: none !important; border: 0 !important; box-shadow: none !important; color: var(--hk-dim); font: 600 .75rem var(--hk-mono) !important; text-transform: uppercase; letter-spacing: .1em; padding: 6px 8px !important; }
+.strip-toggle::after { content: " ▾"; } .strip-toggle[data-open="false"]::after { content: " ▴"; }
+.game-stage #side.strip-closed #console, .game-stage #side.strip-closed #debugger, .game-stage #side.strip-closed .dock-tabs button:not(.strip-toggle) { display: none; }
+.game-stage .dock { height: 150px; }
+.game-stage .editor-footer { padding: 4px 14px; }
+
+/* HUD */
+.hud-tl { position: fixed; z-index: 25; top: 14px; left: 14px; display: flex; gap: var(--hk-s2); flex-wrap: wrap; }
+.hud-tr { position: fixed; z-index: 25; top: 14px; right: 14px; }
+.slate-toggle { position: fixed; z-index: 25; top: 16px; right: 64px; }
+.slate-toggle .hk-button { min-height: 2rem; padding: .2rem .8rem; background: var(--hk-glass); backdrop-filter: var(--hk-blur); }
+
+/* transport */
+.transport { position: fixed; z-index: 25; bottom: 40px; left: calc((100vw - var(--slate-w) - 24px) / 2); transform: translateX(-50%); gap: 4px; padding: .3rem; transition: left .22s ease; }
+.game-stage.slate-hidden .transport { left: 50%; }
+.transport .hk-button { background: none; border-color: transparent; color: var(--hk-dim); padding: .35rem .75rem; }
+.transport .hk-button:hover:not(:disabled) { color: var(--hk-text); }
+.transport .hk-button[aria-pressed="true"] { background: rgba(244, 234, 216, .16); color: var(--hk-text); }
+.transport .tp-play { background: var(--hk-lantern); color: #2a1c05; width: 2.5rem; height: 2.5rem; padding: 0; border-radius: 50%; font-size: 1rem; }
+.transport .tp-play:hover:not(:disabled) { background: #ffcc66; color: #2a1c05; }
+.transport .tp-sunset { color: var(--hk-lantern); }
+
+/* status line: a thin strip at the very bottom */
+.game-stage #statusbar { position: fixed; z-index: 24; left: 0; right: 0; bottom: 0; padding: 4px 14px; background: rgba(12, 9, 7, .72); border-top: 1px solid var(--hk-line); }
+.game-stage #unranked-notice { position: fixed; z-index: 30; top: 14px; left: 50%; transform: translateX(-50%); width: min(560px, calc(100vw - 340px)); border: 1px solid rgba(255, 198, 90, .4); border-radius: var(--hk-r-md); background: var(--hk-glass-strong); }
+.game-stage #unranked-notice[hidden] { display: none; }
+
+/* menu and panel overlays */
+.menu-card, .panel-card { width: min(46rem, 100%); max-height: calc(100vh - 32px); overflow: auto; display: flex; flex-direction: column; gap: var(--hk-s3); }
+.panel-overlay { z-index: 70; } .panel-overlay.wide .panel-card { width: min(64rem, 100%); }
+.menu-card > header, .panel-card > header { display: flex; justify-content: space-between; align-items: center; gap: var(--hk-s3); }
+.menu-card h2, .panel-card h2 { font: 700 1.5rem/1.1 var(--hk-display); margin: 0; }
+.menu-label { margin: 0; color: var(--hk-dim); font: 600 .7rem var(--hk-mono); letter-spacing: .1em; text-transform: uppercase; }
+.menu-entries { display: grid; grid-template-columns: repeat(auto-fill, minmax(13rem, 1fr)); gap: var(--hk-s2); }
+.menu-entry { flex-direction: column; align-items: flex-start; gap: 2px; border-radius: var(--hk-r-md); padding: .6rem .8rem; text-align: left; font-family: var(--hk-body); }
+.menu-entry b { font: 700 .95rem var(--hk-display); } .menu-entry small { color: var(--hk-dim); font: 400 .78rem var(--hk-body); }
+.menu-links .top-actions { display: flex; gap: var(--hk-s4); align-items: center; }
+.panel-body { display: flex; flex-direction: column; gap: var(--hk-s3); overflow: auto; }
+.panel-body .deck { height: auto; max-height: none; flex: none; padding: 0; }
+.panel-body #lesson-card:empty::before { content: "Nothing here for this mode yet. Lessons and daily results appear here."; color: var(--hk-dim); }
+.panel-body #farm-minimap { padding: 6px; }
+.panel-body #farm-minimap-canvas { width: min(420px, 80vw); height: min(420px, 80vw); }
+.panel-body #forecast { min-height: 40px; }
+
+@media (max-width: 1100px) {
+  :root { --slate-w: 380px; }
+  .game-stage #unranked-notice { width: min(520px, calc(100vw - 200px)); }
+}
+@media (prefers-reduced-motion: reduce) { .game-stage #side, .transport { transition: none; } }
+.panel-body #lesson-card, .panel-body #lesson-card.in-panel { max-height: none; overflow: visible; }
+
+/* First-run prompts (firstrun.ts): a floating card plus a lantern ring on the control it points at. */
+.fr-card { position: fixed; z-index: 60; display: grid; gap: var(--hk-s2); }
+.fr-card[hidden] { display: none; }
+.fr-card .fr-title { font: 700 1.05rem var(--hk-display); }
+.fr-card .fr-text { margin: 0; color: var(--hk-dim); font: 400 .9rem/1.4 var(--hk-body); }
+.fr-card .fr-step { color: var(--hk-dim); font: 600 .7rem var(--hk-mono); letter-spacing: .08em; text-transform: uppercase; }
+.fr-card .fr-actions { display: flex; gap: var(--hk-s2); justify-content: flex-end; }
+.fr-spot { outline: 2px solid var(--hk-lantern); outline-offset: 3px; animation: fr-pulse 1.6s ease-in-out infinite; }
+#farm-canvas.fr-spot { outline: none; animation: none; }
+@keyframes fr-pulse { 50% { outline-offset: 6px; } }
+@media (prefers-reduced-motion: reduce) { .fr-spot { animation: none; } }

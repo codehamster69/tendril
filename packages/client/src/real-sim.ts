@@ -1,15 +1,15 @@
 // Main-thread worker wrapper. Commands finish after checkpoint and logs are durable.
+import { perfHook } from './perf-meter';
 import { deserialize, hashWorld, replayChunk } from '@tendril/sim/src/index.ts';
-import type { LogEntry, Snapshot } from '@tendril/sim/src/index.ts';
+import type { LogEntry } from '@tendril/sim/src/index.ts';
 import type { ChunkResponse, FarmResponse } from './api-client';
 import { targetTick, type Meta, type Mode } from './clock';
-import { validateFarm, type Accepted, type LogChunk, type Submission } from './chunks';
-import { ChunkPlanner } from './chunk-planner';
-import { RestoreValidator } from './restore-validation';
-import type { BotDebug, Diagnostic, FromWorker, OutputLine, Scenario, SimError, StateMessage, ToWorker } from './sim-protocol';
+import { planSubmission, validateFarm, type Accepted, type LogChunk, type Submission } from './chunks';
+import type { BotDebug, Diagnostic, FromWorker, OutputLine, Scenario, SimError, StateMessage, ToWorker, ViewEvent } from './sim-protocol';
+import { ViewStore } from './view-codec';
+import type { ViewSnapshot } from './view-codec';
 import type { SimSource } from './sim-types';
-import { kvGetFarm, kvCommitFarm } from './store';
-import { journalDelta, type JournalIndex } from './log-journal';
+import { kvGetMany, kvSetMany } from './store';
 
 export type { LogChunk, Accepted, Submission } from './chunks';
 export interface RealSimOptions { authoritative?: FarmResponse; replyTimeoutMs?: number; scenario?: Scenario; storageKey?: string; seed?: number }
@@ -22,9 +22,9 @@ export class RealSim implements SimSource {
   durableTick: number | null = null;
   hash: string | null = null;
   private worker: Worker;
-  private planner = new ChunkPlanner();
-  private restoreValidator = new RestoreValidator();
-  private snap: Snapshot | null = null;
+  private snap: ViewSnapshot | null = null;
+  private view = new ViewStore();
+  private viewEvents: ViewEvent[] = [];
   private out: OutputLine[] = [];
   diagnostics: Diagnostic[] = [];
   debug: BotDebug[] = [];
@@ -36,8 +36,6 @@ export class RealSim implements SimSource {
   private durableHash: string | null = null;
   private errs: SimError[] = [];
   private pendingLog: LogChunk[] = [];
-  private journal: JournalIndex | undefined;
-  private durableLogs: LogChunk[] = [];
   readonly prefix: string;
   accepted: Accepted | null = null;
   private savedWorld: string | null = null;
@@ -80,7 +78,9 @@ export class RealSim implements SimSource {
   }
 
   get busy(): boolean { return this.count > 0; }
-  latest(): Snapshot | null { return this.snap; }
+  latest(): ViewSnapshot | null { return this.snap; }
+  /** Events the screen must not miss (harvest, sale, order filled, error), oldest first. */
+  drainEvents(): ViewEvent[] { return this.viewEvents.splice(0); }
   drainOutput(): OutputLine[] { return this.out.splice(0); }
   drainErrors(): SimError[] { return this.errs.splice(0); }
   /** Copy for future replay/submission. Never evict unacknowledged actions. */
@@ -90,8 +90,7 @@ export class RealSim implements SimSource {
 
   private async restore(source: string, recovering: boolean): Promise<void> {
     const keys = ['world', 'meta', 'pendingLog', 'source', 'hash', 'accepted'].map((key) => this.prefix + key);
-    const { saved, journal } = await kvGetFarm(this.prefix);
-    this.journal = journal;
+    const saved = await kvGetMany<Record<string, unknown>>(keys);
     let world = saved[keys[0]] as string | undefined;
     let meta = saved[keys[1]] as Meta | undefined;
     const log = saved[keys[2]] as LogChunk[] | undefined;
@@ -110,12 +109,23 @@ export class RealSim implements SimSource {
       meta ??= { seed: authoritative.seed, startedAtMs: authoritative.startedAtMs, mode: 'live', farmId: authoritative.id, rulesVersion: authoritative.rulesVersion };
     }
     this.pendingLog = log ?? [];
-    this.durableLogs = journal ? [...this.pendingLog] : [];
-    if (world) await this.restoreValidator.validate({
-      world, meta: meta!, hash: saved[keys[4]], accepted: this.accepted,
-      logs: this.pendingLog, authoritative,
-    }, (done, total) => this.onProgress?.(done, total));
+    if (world) {
+      const restored = deserialize(world);
+      if (restored.seed !== meta!.seed || (authoritative && restored.id !== authoritative.id)) throw new Error('Saved world does not match farm metadata.');
+      if (saved[keys[4]] && hashWorld(restored) !== saved[keys[4]]) throw new Error('Saved checkpoint hash mismatch.');
+      if (this.accepted) {
+        const replay = deserialize(this.accepted.farm.checkpoint);
+        for (const chunk of this.pendingLog) {
+          if (chunk.fromTick !== replay.tick || chunk.fromHash !== hashWorld(replay)) throw new Error('Saved pending log chain is inconsistent. Logs retained.');
+          replayChunk(replay, chunk.actions, chunk.toTick);
+          if (chunk.hash !== hashWorld(replay)) throw new Error('Saved pending log hash mismatch. Logs retained.');
+        }
+        if (hashWorld(replay) !== hashWorld(restored)) throw new Error('Saved pending logs do not reach the durable checkpoint.');
+      }
+    }
     this.snap = null;
+    this.view = new ViewStore();
+    this.viewEvents = [];
     source = recovering ? (saved[keys[3]] as string | undefined) ?? source : source;
     const nextMeta = meta ?? this.newMeta();
     await this.command({ type: 'init', saved: world ?? null, seed: nextMeta.seed, source, scenario: this.scenario }, nextMeta, source);
@@ -163,15 +173,15 @@ export class RealSim implements SimSource {
   }
 
   /**
-   * Captures a durable prefix inside the queue, then replays it outside the renderer.
-   * Catch-up may continue while planning; acknowledgement still checks the accepted prefix.
+   * Plans the next chunk from inside the command queue, so it reads a consistent durable state without
+   * pausing the program. Steps queued after it simply become part of a later chunk.
    */
   planChunk(): Promise<Submission | null> {
-    let plan: Promise<Submission | null> = Promise.resolve(null);
+    let plan: Submission | null = null;
     return this.enqueue(async () => {
       if (this.persistenceError || this.fatal) throw new Error('The farm could not be saved, so it cannot sync. Your local logs are kept.');
       if (!this.accepted || !this.snap) return; // Still loading: nothing to sync yet.
-      plan = this.planner.plan(this.accepted.farm, this.pendingLog, this.snap.tick);
+      plan = planSubmission(this.accepted.farm, this.pendingLog, this.snap.tick);
     }).then(() => plan);
   }
   acknowledge(plan: Submission, response: ChunkResponse): Promise<void> {
@@ -209,8 +219,6 @@ export class RealSim implements SimSource {
 
   dispose(): void {
     this.disposed = true;
-    this.planner.dispose();
-    this.restoreValidator.dispose();
     this.generation++;
     this.clearWatchdog();
     this.worker.terminate();
@@ -258,21 +266,33 @@ export class RealSim implements SimSource {
     return next;
   }
 
-  private async command(m: Command, meta: Meta, source: string, reset = false): Promise<void> {
+  private async ask(m: Command): Promise<StateMessage> {
     const id = ++this.nextId;
-    const state = await new Promise<StateMessage>((resolve, reject) => {
+    return new Promise<StateMessage>((resolve, reject) => {
       this.waiting = { id, total: m.type === 'step' ? m.ticks : 0, done: 0, resolve, reject };
       this.armWatchdog();
       try { this.worker.postMessage({ ...m, id } satisfies ToWorker); }
       catch (e) { this.stopWorker(e instanceof Error ? e.message : String(e)); }
     });
+  }
+
+  private async command(m: Command, meta: Meta, source: string, reset = false): Promise<void> {
+    const state = await this.ask(m);
     if (!reset && this.snap && (state.fromTick !== this.snap.tick || state.fromHash !== this.hash)) {
       throw new Error('Simulation checkpoint is out of order. Cancel and restart before continuing.');
     }
     if (reset) { this.pendingLog = []; this.held = null; }
     this.meta = meta;
     this.source = source;
-    this.snap = state.snapshot;
+    // A delta that does not follow the last update (or another format version) is answered with a full view.
+    let view = state.view;
+    if (!this.view.apply(view)) {
+      view = (await this.ask({ type: 'fullView' })).view;
+      if (!this.view.apply(view)) throw new Error('The farm view could not be rebuilt. Cancel and restart the worker.');
+    }
+    this.viewEvents.push(...state.view.events);
+    if (this.viewEvents.length > 512) this.viewEvents.splice(0, this.viewEvents.length - 512);
+    this.snap = this.view.latest();
     this.hash = state.hash;
     this.out.push(...state.output);
     this.errs.push(...state.errors.map((e) => ({ ...e, kind: 'script' as const })));
@@ -284,37 +304,30 @@ export class RealSim implements SimSource {
     // from a log, so it is kept in memory and only becomes a checkpoint once the tick completes.
     const log = [...(this.held?.log ?? []), ...state.log];
     const from = this.held?.from ?? { tick: state.fromTick, hash: state.fromHash };
-    if (log.some((entry) => entry[0] >= state.snapshot.tick)) {
+    if (log.some((entry) => entry[0] >= state.view.tick)) {
       this.held = { from, log };
       return;
     }
     this.held = null;
     this.savedWorld = state.saved;
     this.durableHash = state.hash;
-    if (from.tick !== state.snapshot.tick || log.length) {
-      this.pendingLog.push({ fromTick: from.tick, toTick: state.snapshot.tick, actions: log, fromHash: from.hash, hash: state.hash });
+    if (from.tick !== state.view.tick || log.length) {
+      this.pendingLog.push({ fromTick: from.tick, toTick: state.view.tick, actions: log, fromHash: from.hash, hash: state.hash });
     }
     await this.persist(state.saved, meta, source, this.pendingLog, state.hash, this.accepted);
-    this.durableTick = state.snapshot.tick;
+    this.durableTick = state.view.tick;
   }
 
   private async persist(world: string, meta: Meta, source: string, logs: LogChunk[], hash: string, accepted: Accepted | null): Promise<void> {
     try {
-      const delta = journalDelta(this.prefix, this.durableLogs, logs);
-      const journal: JournalIndex = { version: 1, revision: (this.journal?.revision ?? 0) + 1, ends: delta.ends };
-      const retained = new Set(delta.ends);
-      const remove = [...new Set([...delta.remove, ...(this.journal?.ends ?? []).filter(end => !retained.has(end)).map(end => this.prefix + 'log.' + end), this.prefix + 'pendingLog'])];
-      await kvCommitFarm(this.prefix, this.journal, {
-        ...delta.entries,
-        [this.prefix + 'journal']: journal,
+      await kvSetMany({
         [this.prefix + 'world']: world,
         [this.prefix + 'meta']: meta,
+        [this.prefix + 'pendingLog']: logs,
         [this.prefix + 'hash']: hash,
         [this.prefix + 'source']: source,
         ...(accepted ? { [this.prefix + 'accepted']: accepted } : {}),
-      }, remove);
-      this.journal = journal;
-      this.durableLogs = [...logs];
+      });
       this.persistenceError = null;
     } catch (e) {
       this.persistenceError = `Farm save failed: ${e instanceof Error ? e.message : String(e)}. Keep this window open and pause to retry saving.`;
@@ -330,6 +343,7 @@ export class RealSim implements SimSource {
     this.clearWatchdog();
     const waiting = this.waiting;
     this.waiting = null;
+    perfHook.update?.(m);
     if (m.type === 'fatal') waiting.reject(new Error(m.message));
     else waiting.resolve(m);
   }

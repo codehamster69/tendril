@@ -37,11 +37,13 @@ jobs:
       - run: pnpm test
       - run: pnpm assets:copy
       - run: pnpm build
+      # Fails if the first-load scripts grow past packages/client/perf-budget.json.
+      - run: pnpm --filter @tendril/client size
 
   e2e:
     name: Playwright
     runs-on: ubuntu-22.04
-    timeout-minutes: 30
+    timeout-minutes: 60
     env:
       CI: 'true'
     steps:

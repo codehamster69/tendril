@@ -1,15 +1,15 @@
 #api-reference {
-  width: min(860px, 94vw); max-height: 86vh; padding: 20px 22px; border: 1px solid var(--line); border-radius: 16px;
-  background: var(--deep); color: var(--mist); box-shadow: 0 30px 80px rgba(0,0,0,.6);
+  width: min(860px, 94vw); max-height: 86vh; padding: 20px 22px; border: 1px solid var(--line); border-radius: 20px;
+  background: var(--deep); color: var(--mist); box-shadow: 0 30px 80px rgba(0,0,0,.6), 0 0 0 1px rgba(255,198,90,.12);
 }
-#api-reference::backdrop { background: rgba(5,18,20,.6); backdrop-filter: blur(3px); }
+#api-reference::backdrop { background: rgba(4,16,18,.7); backdrop-filter: blur(4px); }
 .ref-head { display: flex; justify-content: space-between; align-items: flex-start; }
 .ref-head h2 { font: italic 600 24px/1.2 var(--serif); margin-top: 4px; }
-#api-reference input[type=search] { width: 100%; padding: 9px 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--ink); margin: 6px 0 14px; }
-.ref-group h3 { font: 600 11px var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--sage); margin: 16px 0 8px; }
-.api-entry { border: 1px solid var(--line-soft); border-radius: 11px; padding: 10px 12px; margin-bottom: 8px; background: rgba(0,0,0,.15); }
+#api-reference input[type=search] { width: 100%; padding: 9px 12px; border-radius: 12px; border: 1px solid var(--line); background: var(--ink); margin: 6px 0 14px; }
+.ref-group h3 { font: 600 11px var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--tendril); margin: 16px 0 8px; }
+.api-entry { border: 1px solid var(--line-soft); border-radius: 12px; padding: 10px 12px; margin-bottom: 8px; background: linear-gradient(180deg, rgba(255,255,255,.03), rgba(0,0,0,.18)); }
 .api-entry header { display: flex; justify-content: space-between; gap: 10px; }
-.api-entry code { font: 600 13px var(--mono); color: var(--wheat); }
+.api-entry code { font: 600 13px var(--mono); color: var(--lantern); }
 .api-cost { font: 11px var(--mono); color: var(--mist-2); border: 1px solid var(--line); border-radius: 20px; padding: 1px 8px; }
 .api-entry p { margin: 6px 0; color: var(--mist-2); }
 .api-entry .ex { display: flex; gap: 8px; align-items: flex-start; }

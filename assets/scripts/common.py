@@ -15,34 +15,20 @@ ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 EXPORT = os.path.join(ROOT, 'export')
 THUMBS = os.path.join(ROOT, 'thumbs')
 
-def _lin(c):
-    return c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4
-
-
-def _hex(h):
-    return tuple(round(_lin(int(h[i:i + 2], 16) / 255), 4) for i in (0, 2, 4))
-
-
-# One shared "living floating island" palette, written as sRGB hex, stored linear for glTF.
-# Asset scripts must use these names, never raw colours. Albedo is rich but slightly desaturated: the scene is
-# lit golden-hour (warm sun, teal fill) so nothing here should be neon. Tile tops are lifted a touch so the
-# renderer's instanceColor tint (x0.68..1.0) still lands on the brand palette.
-PALETTE = {k: _hex(v) for k, v in {
-    'grass': '5aa86c', 'grass_hi': '7cc47e', 'grass_dark': '3f7f52',
-    'soil': '7a5040', 'soil_side': '5a3a2e', 'soil_hi': '93664d', 'soil_wet': '4f3229', 'soil_wet_hi': '63423a',
-    'path': 'd1b98a', 'path_dark': 'b39e72',
-    'stone': '6b7a80', 'stone_dark': '47545a', 'stone_light': '8f9ea3',
-    'wood': 'a8764a', 'wood_dark': '6e4a2f', 'wood_light': 'c99d68',
-    'red': 'b8453a', 'red_dark': '7e2f2c', 'roof': '46606c', 'roof_dark': '34494f',
-    'leaf': '5fae62', 'leaf_dark': '3f8a52', 'leaf_light': '8cc96a',
-    'teal': '4fd1b0', 'teal_dark': '2f9e8a', 'glass': 'a9e4dc',
-    'amber': 'ffc65a', 'amber_deep': 'e69a2e', 'honey': 'f2b035',
-    'plum': '8a5a9e', 'violet': '6f4aa0', 'pink': 'f0a0ba',
-    'cream': 'f3ead6', 'cream_shade': 'd8cbb0', 'white': 'f4f1e8', 'black': '1d2226', 'metal': '9aa7ad',
-    'carrot': 'f08a2c', 'wheat': 'e2b94a', 'wheat_dark': 'c99a32', 'pumpkin': 'e0701f',
-    'berry': '6f3f9a', 'apple': 'cf3c34', 'water': '3fa7b8', 'water_deep': '2a7f96',
-    'compost': '5b4026', 'hay': 'dcb85a', 'hay_dark': 'b8923a',
-}.items()}
+# One shared palette. Asset scripts must use these names, never raw colours.
+PALETTE = {
+    'grass': (0.353, 0.620, 0.294), 'grass_dark': (0.247, 0.478, 0.220),
+    'soil': (0.478, 0.322, 0.188), 'soil_wet': (0.290, 0.192, 0.118), 'path': (0.773, 0.682, 0.510),
+    'stone': (0.561, 0.553, 0.529), 'stone_dark': (0.400, 0.392, 0.376),
+    'wood': (0.620, 0.431, 0.259), 'wood_dark': (0.400, 0.267, 0.157),
+    'red': (0.690, 0.188, 0.165), 'red_dark': (0.431, 0.102, 0.086),
+    'leaf': (0.420, 0.690, 0.310), 'leaf_dark': (0.243, 0.478, 0.200), 'leaf_light': (0.600, 0.800, 0.400),
+    'carrot': (0.941, 0.541, 0.141), 'wheat': (0.902, 0.765, 0.290), 'clover': (0.561, 0.749, 0.416),
+    'clover_flower': (0.910, 0.890, 0.960), 'pumpkin': (0.824, 0.376, 0.102), 'berry': (0.545, 0.157, 0.369),
+    'bot_body': (0.290, 0.565, 0.851), 'bot_light': (0.875, 0.902, 0.933), 'bot_dark': (0.180, 0.220, 0.282),
+    'metal': (0.620, 0.650, 0.690), 'accent': (0.973, 0.796, 0.235), 'water': (0.302, 0.600, 0.850),
+    'honey': (0.957, 0.690, 0.157), 'white': (0.950, 0.950, 0.940), 'black': (0.080, 0.080, 0.090),
+}
 
 BUDGETS = {'tile': 300, 'crop': 300, 'bot': 1500, 'building': 3000, 'prop': 1500}
 

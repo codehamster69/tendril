@@ -1,164 +1,189 @@
 import * as THREE from 'three';
 
-export interface FxBot { x: number; z: number; color: number }
+/** Pooled sparkle bursts plus fireflies that stay around the camera focus. Nothing is allocated per frame. */
 
-const TRAIL_POINTS = 44;
-const SPARKS = 400;
-const MOTES = 120;
+const POOL = 500;
+const FIREFLIES = 160;
+const POPS = 48;
+const POP_LIFE = 0.22; // seconds; the whole pop stays under 250 ms
+const FIREFLY_HALF = 24; // fireflies live in a square of this half-width around the focus
 
-const glowTexture = (): THREE.CanvasTexture => {
-  const canvas = document.createElement('canvas');
-  canvas.width = canvas.height = 64;
-  const context = canvas.getContext('2d')!;
-  const gradient = context.createRadialGradient(32, 32, 0, 32, 32, 32);
-  gradient.addColorStop(0, 'rgba(255,255,255,1)');
-  gradient.addColorStop(0.25, 'rgba(255,255,255,0.35)');
-  gradient.addColorStop(1, 'rgba(255,255,255,0)');
-  context.fillStyle = gradient;
-  context.fillRect(0, 0, 64, 64);
-  return new THREE.CanvasTexture(canvas);
-};
+/** Wrap `v` into [centre - half, centre + half). Used to keep fireflies near the camera focus on an unbounded farm. */
+export function wrapAround(v: number, centre: number, half: number): number {
+  const span = half * 2;
+  return centre - half + ((((v - (centre - half)) % span) + span) % span);
+}
 
-interface Trail { history: [number, number][]; mesh: THREE.Mesh; positions: Float32Array; colors: Float32Array; color: THREE.Color }
+/** Size multiplier for point sprites so they stay readable when the view is zoomed far out. */
+export function pointScale(scale: number): number {
+  return Math.max(1, scale * 0.5);
+}
 
-/** Vine trails behind drones, work sparks and drifting motes. All additive, all pooled. */
+/** Firefly opacity from the light rig's glow (0.2..1.5). */
+export function fireflyOpacity(glow: number): number {
+  return Math.min(0.85, 0.12 + 0.45 * glow);
+}
+
+/** Pop animation at age `t` of 0..1: scale grows fast then settles, brightness fades out. */
+export function popCurve(t: number): { scale: number; fade: number } {
+  const u = Math.min(1, Math.max(0, t));
+  return { scale: 0.45 + 0.85 * (1 - (1 - u) * (1 - u)), fade: 1 - u * u };
+}
+
 export class FarmFx {
-  trailsOn = true;
-  private glow = 1;
-  private lod = 0;
-  private trails: Trail[] = [];
-  private sparkPositions = new Float32Array(SPARKS * 3);
-  private sparkColors = new Float32Array(SPARKS * 3);
-  private sparkVelocities = new Float32Array(SPARKS * 3);
-  private sparkLife = new Float32Array(SPARKS);
-  private sparkHead = 0;
-  private sparkGeometry = new THREE.BufferGeometry();
-  private sparks = new THREE.Points(this.sparkGeometry, new THREE.PointsMaterial({ size: 0.14, vertexColors: true, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }));
-  private motePositions = new Float32Array(MOTES * 3);
-  private moteSeeds = new Float32Array(MOTES);
-  private moteGeometry = new THREE.BufferGeometry();
-  private motes = new THREE.Points(this.moteGeometry, new THREE.PointsMaterial({ size: 0.1, color: 0xffd68a, transparent: true, opacity: 0.7, blending: THREE.AdditiveBlending, depthWrite: false }));
-  private clock = 0;
-  private texture = glowTexture();
+  /** Fireflies around the camera focus. Small embedded views turn them off. */
+  get fireflies(): boolean { return this.fly.visible; }
+  set fireflies(on: boolean) { this.fly.visible = on; }
+  private pos = new Float32Array(POOL * 3);
+  private col = new Float32Array(POOL * 3);
+  private base = new Float32Array(POOL * 3);
+  private vel = new Float32Array(POOL * 3);
+  private life = new Float32Array(POOL);
+  private head = 0;
+  private points: THREE.Points;
+  private fly: THREE.Points;
+  private flyPos = new Float32Array(FIREFLIES * 3);
+  private flySeed = new Float32Array(FIREFLIES);
+  private flyReady = false;
+  private tmp = new THREE.Color();
+  private reduced = window.matchMedia('(prefers-reduced-motion: reduce)');
+  /** True while any sparkle is still flying (the farm view keeps drawing until they are gone). */
+  active = false;
 
-  constructor(private scene: THREE.Scene) {
-    this.sparkGeometry.setAttribute('position', new THREE.BufferAttribute(this.sparkPositions, 3));
-    this.sparkGeometry.setAttribute('color', new THREE.BufferAttribute(this.sparkColors, 3));
-    this.sparks.frustumCulled = false;
-    this.moteGeometry.setAttribute('position', new THREE.BufferAttribute(this.motePositions, 3));
-    this.motes.frustumCulled = false;
-    for (let i = 0; i < MOTES; i++) {
-      this.moteSeeds[i] = Math.random() * 100;
-      this.motePositions[i * 3] = (Math.random() - 0.5) * 60;
-      this.motePositions[i * 3 + 1] = Math.random() * 5 - 1;
-      this.motePositions[i * 3 + 2] = (Math.random() - 0.5) * 60;
-    }
-    scene.add(this.sparks, this.motes);
+  private popMesh = new THREE.InstancedMesh(new THREE.RingGeometry(0.2, 0.3, 20).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }), POPS);
+  private popAge = new Float32Array(POPS).fill(-1);
+  private popX = new Float32Array(POPS);
+  private popZ = new Float32Array(POPS);
+  private popRgb = new Float32Array(POPS * 3);
+  private popHead = 0;
+  private popDirty = false;
+  private popObj = new THREE.Object3D();
+  private popTint = new THREE.Color();
+
+  private scene: THREE.Scene;
+
+  constructor(scene: THREE.Scene) {
+    this.scene = scene;
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.BufferAttribute(this.pos, 3));
+    g.setAttribute('color', new THREE.BufferAttribute(this.col, 3));
+    // Hidden below the world until used.
+    for (let i = 0; i < POOL; i++) this.pos[i * 3 + 1] = -1000;
+    this.points = new THREE.Points(g, new THREE.PointsMaterial({ size: 0.14, vertexColors: true, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }));
+    this.points.frustumCulled = false;
+    const fg = new THREE.BufferGeometry();
+    fg.setAttribute('position', new THREE.BufferAttribute(this.flyPos, 3));
+    this.fly = new THREE.Points(fg, new THREE.PointsMaterial({ size: 0.1, color: 0xffd68a, transparent: true, opacity: 0.5, blending: THREE.AdditiveBlending, depthWrite: false }));
+    this.fly.frustumCulled = false;
+    this.popMesh.count = 0;
+    this.popMesh.frustumCulled = false;
+    this.popMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    scene.add(this.points, this.fly, this.popMesh);
   }
 
-  setGlow(strength: number): void { this.glow = strength; }
-  setLod(lod: number): void { this.lod = lod; }
-
-  spark(x: number, y: number, z: number, color: number, count: number): void {
-    const c = new THREE.Color(color);
-    for (let k = 0; k < count; k++) {
-      const i = this.sparkHead++ % SPARKS;
-      this.sparkPositions.set([x, y, z], i * 3);
-      this.sparkVelocities.set([(Math.random() - 0.5) * 1.6, Math.random() * 2 + 0.8, (Math.random() - 0.5) * 1.6], i * 3);
-      this.sparkLife[i] = 0.6 + Math.random() * 0.5;
-      this.sparkColors.set([c.r, c.g, c.b], i * 3);
-    }
+  /** A short ring pop at a tile when something is planted or harvested. Skipped under reduced motion. */
+  pop(x: number, z: number, hex: number): void {
+    if (this.reduced.matches) return;
+    const i = this.popHead++ % POPS;
+    this.popAge[i] = 0; this.popX[i] = x; this.popZ[i] = z;
+    this.tmp.set(hex);
+    this.popRgb[i * 3] = this.tmp.r; this.popRgb[i * 3 + 1] = this.tmp.g; this.popRgb[i * 3 + 2] = this.tmp.b;
+    this.popDirty = true;
   }
 
-  private trail(index: number, color: number): Trail {
-    let trail = this.trails[index];
-    if (trail && trail.color.getHex() === color) return trail;
-    if (trail) { this.scene.remove(trail.mesh); trail.mesh.geometry.dispose(); (trail.mesh.material as THREE.Material).dispose(); }
-    const positions = new Float32Array(TRAIL_POINTS * 2 * 3);
-    const colors = new Float32Array(TRAIL_POINTS * 2 * 3);
-    const indices: number[] = [];
-    for (let i = 0; i < TRAIL_POINTS - 1; i++) { const a = i * 2; indices.push(a, a + 1, a + 2, a + 1, a + 3, a + 2); }
-    const geometry = new THREE.BufferGeometry();
-    geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-    geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-    geometry.setIndex(indices);
-    const mesh = new THREE.Mesh(geometry, new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
-    mesh.frustumCulled = false;
-    this.scene.add(mesh);
-    trail = { history: [], mesh, positions, colors, color: new THREE.Color(color) };
-    this.trails[index] = trail;
-    return trail;
-  }
-
-  update(dt: number, bots: FxBot[], botScale: number, center: { x: number; z: number }): void {
-    this.clock += dt;
-    for (let i = 0; i < this.trails.length; i++) {
-      const trail = this.trails[i];
-      if (!trail) continue;
-      if (i >= bots.length) { this.scene.remove(trail.mesh); trail.mesh.geometry.dispose(); (trail.mesh.material as THREE.Material).dispose(); this.trails[i] = undefined as unknown as Trail; continue; }
-      const bot = bots[i]!;
-      const history = trail.history;
-      const [lx, lz] = history.length ? history[history.length - 1]! : [Infinity, Infinity];
-      if (Math.hypot(bot.x - lx, bot.z - lz) > 0.12) { history.push([bot.x, bot.z]); if (history.length > TRAIL_POINTS) history.shift(); }
-      trail.mesh.visible = this.trailsOn && history.length > 2 && this.lod < 2;
-      if (!trail.mesh.visible) continue;
-      const width = 0.045 * Math.max(1, botScale * 0.7);
-      const n = history.length;
-      for (let k = 0; k < TRAIL_POINTS; k++) {
-        const src = history[Math.min(n - 1, Math.max(0, k - (TRAIL_POINTS - n)))]!;
-        const next = history[Math.min(n - 1, Math.max(0, k - (TRAIL_POINTS - n) + 1))]!;
-        const prev = history[Math.min(n - 1, Math.max(0, k - (TRAIL_POINTS - n) - 1))]!;
-        let tx = next[0] - prev[0], tz = next[1] - prev[1];
-        const length = Math.hypot(tx, tz) || 1;
-        tx /= length; tz /= length;
-        const w = width * (0.25 + (k / (TRAIL_POINTS - 1)) * 0.75);
-        trail.positions[k * 6] = src[0] - tz * w; trail.positions[k * 6 + 1] = 0.07; trail.positions[k * 6 + 2] = src[1] + tx * w;
-        trail.positions[k * 6 + 3] = src[0] + tz * w; trail.positions[k * 6 + 4] = 0.07; trail.positions[k * 6 + 5] = src[1] - tx * w;
-        const alpha = (k / (TRAIL_POINTS - 1)) ** 2 * (0.9 + 0.4 * this.glow);
-        for (let q = 0; q < 2; q++) {
-          trail.colors[k * 6 + q * 3] = trail.color.r * alpha;
-          trail.colors[k * 6 + q * 3 + 1] = trail.color.g * alpha;
-          trail.colors[k * 6 + q * 3 + 2] = trail.color.b * alpha;
-        }
+  private updatePops(dt: number, scale: number): void {
+    let live = false;
+    for (let i = 0; i < POPS; i++) {
+      const age = this.popAge[i]!;
+      if (age < 0) continue;
+      live = true;
+      const next = age + dt;
+      const { scale: s, fade } = popCurve(next / POP_LIFE);
+      if (next >= POP_LIFE) { this.popAge[i] = -1; this.popObj.scale.setScalar(0); this.popTint.setRGB(0, 0, 0); } else {
+        this.popAge[i] = next;
+        this.popObj.scale.setScalar(s * Math.max(1, scale * 0.5));
+        this.popTint.setRGB(this.popRgb[i * 3]! * fade, this.popRgb[i * 3 + 1]! * fade, this.popRgb[i * 3 + 2]! * fade);
       }
-      trail.mesh.geometry.attributes.position!.needsUpdate = true;
-      trail.mesh.geometry.attributes.color!.needsUpdate = true;
+      this.popObj.position.set(this.popX[i]!, 0.06, this.popZ[i]!);
+      this.popObj.updateMatrix();
+      this.popMesh.setMatrixAt(i, this.popObj.matrix);
+      this.popMesh.setColorAt(i, this.popTint);
     }
-    for (let i = 0; i < SPARKS; i++) {
-      if (this.sparkLife[i] > 0) {
-        this.sparkLife[i] -= dt;
-        this.sparkVelocities[i * 3 + 1] -= 4 * dt;
-        this.sparkPositions[i * 3] += this.sparkVelocities[i * 3] * dt;
-        this.sparkPositions[i * 3 + 1] = Math.max(0.02, this.sparkPositions[i * 3 + 1] + this.sparkVelocities[i * 3 + 1] * dt);
-        this.sparkPositions[i * 3 + 2] += this.sparkVelocities[i * 3 + 2] * dt;
-      } else this.sparkPositions[i * 3 + 1] = -50;
+    if (live || this.popDirty) {
+      this.popDirty = false;
+      this.popMesh.count = live ? POPS : 0;
+      this.popMesh.instanceMatrix.needsUpdate = true;
+      if (this.popMesh.instanceColor) this.popMesh.instanceColor.needsUpdate = true;
     }
-    this.sparkGeometry.attributes.position!.needsUpdate = true;
-    this.sparkGeometry.attributes.color!.needsUpdate = true;
-    (this.sparks.material as THREE.PointsMaterial).size = 0.14 * Math.max(1, botScale * 0.6);
-    for (let i = 0; i < MOTES; i++) {
-      this.motePositions[i * 3 + 1] += dt * 0.18;
-      this.motePositions[i * 3] += Math.sin(this.clock * 0.4 + this.moteSeeds[i]!) * dt * 0.12;
-      if (this.motePositions[i * 3 + 1] > 5) this.motePositions[i * 3 + 1] = -1;
+  }
+
+  /** A sparkle burst of up to `n` particles (default 8). Skipped under reduced motion. */
+  burst(x: number, y: number, z: number, hex: number, n = 8): void {
+    if (this.reduced.matches) return;
+    this.tmp.set(hex);
+    this.active = true;
+    for (let k = 0; k < n; k++) {
+      const i = this.head++ % POOL;
+      this.pos[i * 3] = x; this.pos[i * 3 + 1] = y; this.pos[i * 3 + 2] = z;
+      this.vel[i * 3] = (Math.random() - 0.5) * 1.6;
+      this.vel[i * 3 + 1] = Math.random() * 2 + 0.8;
+      this.vel[i * 3 + 2] = (Math.random() - 0.5) * 1.6;
+      this.life[i] = 0.6 + Math.random() * 0.5;
+      this.base[i * 3] = this.tmp.r; this.base[i * 3 + 1] = this.tmp.g; this.base[i * 3 + 2] = this.tmp.b;
     }
-    this.motes.position.set(Math.round(center.x / 20) * 20, 0, Math.round(center.z / 20) * 20);
-    this.moteGeometry.attributes.position!.needsUpdate = true;
-    const material = this.motes.material as THREE.PointsMaterial;
-    material.opacity = 0.7 * this.glow;
-    material.size = 0.1 * Math.max(1, botScale * 0.5);
+  }
+
+  update(dt: number, time: number, focus: { x: number; z: number }, glow: number, scale: number): void {
+    const reduced = this.reduced.matches;
+    let live = false;
+    for (let i = 0; i < POOL; i++) {
+      if (this.life[i]! <= 0) continue;
+      live = true;
+      this.life[i]! -= dt;
+      if (this.life[i]! <= 0) { this.pos[i * 3 + 1] = -1000; continue; }
+      const fade = Math.min(1, this.life[i]! / 0.35);
+      this.col[i * 3] = this.base[i * 3]! * fade; this.col[i * 3 + 1] = this.base[i * 3 + 1]! * fade; this.col[i * 3 + 2] = this.base[i * 3 + 2]! * fade;
+      this.vel[i * 3 + 1]! -= 5 * dt;
+      this.pos[i * 3]! += this.vel[i * 3]! * dt;
+      this.pos[i * 3 + 1]! += this.vel[i * 3 + 1]! * dt;
+      this.pos[i * 3 + 2]! += this.vel[i * 3 + 2]! * dt;
+    }
+    this.active = live;
+    if (live) {
+      (this.points.geometry.getAttribute('position') as THREE.BufferAttribute).needsUpdate = true;
+      (this.points.geometry.getAttribute('color') as THREE.BufferAttribute).needsUpdate = true;
+    }
+    (this.points.material as THREE.PointsMaterial).size = 0.14 * pointScale(scale);
+    this.updatePops(dt, scale);
+
+    if (!this.flyReady) {
+      for (let i = 0; i < FIREFLIES; i++) {
+        this.flySeed[i] = Math.random() * 100;
+        this.flyPos[i * 3] = focus.x + (Math.random() - 0.5) * FIREFLY_HALF * 2;
+        this.flyPos[i * 3 + 1] = Math.random() * 5 - 0.5;
+        this.flyPos[i * 3 + 2] = focus.z + (Math.random() - 0.5) * FIREFLY_HALF * 2;
+      }
+      this.flyReady = true;
+    }
+    const half = FIREFLY_HALF * Math.max(1, Math.sqrt(scale));
+    for (let i = 0; i < FIREFLIES; i++) {
+      if (!reduced) {
+        this.flyPos[i * 3 + 1]! += dt * 0.18;
+        this.flyPos[i * 3]! += Math.sin(time * 0.4 + this.flySeed[i]!) * dt * 0.12;
+        if (this.flyPos[i * 3 + 1]! > 5) this.flyPos[i * 3 + 1] = -0.5;
+      }
+      this.flyPos[i * 3] = wrapAround(this.flyPos[i * 3]!, focus.x, half);
+      this.flyPos[i * 3 + 2] = wrapAround(this.flyPos[i * 3 + 2]!, focus.z, half);
+    }
+    (this.fly.geometry.getAttribute('position') as THREE.BufferAttribute).needsUpdate = true;
+    const fm = this.fly.material as THREE.PointsMaterial;
+    fm.opacity = fireflyOpacity(glow);
+    fm.size = 0.1 * pointScale(scale);
   }
 
   dispose(): void {
-    for (const trail of this.trails) {
-      if (!trail) continue;
-      this.scene.remove(trail.mesh);
-      trail.mesh.geometry.dispose();
-      (trail.mesh.material as THREE.Material).dispose();
-    }
-    this.trails = [];
-    this.scene.remove(this.sparks, this.motes);
-    this.sparkGeometry.dispose(); (this.sparks.material as THREE.Material).dispose();
-    this.moteGeometry.dispose(); (this.motes.material as THREE.Material).dispose();
-    this.texture.dispose();
+    this.scene.remove(this.points, this.fly, this.popMesh);
+    this.popMesh.geometry.dispose(); (this.popMesh.material as THREE.Material).dispose(); this.popMesh.dispose();
+    for (const o of [this.points, this.fly]) { o.geometry.dispose(); (o.material as THREE.Material).dispose(); }
   }
 }

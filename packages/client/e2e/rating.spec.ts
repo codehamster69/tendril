@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { ready, press } from './game';
 import { dailySeed, DAILY_PAR, BASE_RULES_VERSION } from '@tendril/sim/src/index.ts';
 
 const profile = { id: 'u1', login: 'octo', displayName: 'Octo Cat', avatarUrl: null };
@@ -87,7 +88,7 @@ test('signed in but never rated: no chip, no card', async ({ page }) => {
   await expect(page.locator('#rating-card')).toHaveCount(0);
 });
 
-test('result panel says whether the run is on course to be rated', async ({ page }) => {
+test('result card says whether the run is on course to be rated', async ({ page }) => {
   const date = new Date().toISOString().slice(0, 10);
   const challenge = { id: `d-${date}`, kind: 'daily', number: 5, seed: dailySeed(date), ticks: 3000, par: DAILY_PAR, opensAt: Date.now() - 3_600_000, closesAt: Date.now() + 3_600_000, rulesVersion: BASE_RULES_VERSION, players: 3, best: 400 };
   let parTick: number | null = 1140;
@@ -101,14 +102,15 @@ test('result panel says whether the run is on course to be rated', async ({ page
     if (path === `/api/challenges/${challenge.id}/entries`) return json(200, { entryId: 'k3f9Zq1AbCdE', netWorth: 512, parTick, tokens: null, mosaic: 'B' + '1'.repeat(63), ranks: { wealth: 4, speed: null, brevity: null }, percentile: 97, improved: true, total: 120 });
     return json(404, { error: 'not mocked' });
   });
-  await page.goto('/?mode=daily');
-  await page.click('#btn-run-end');
-  await expect(page.locator('#arena-rated')).toContainText('On course to be rated', { timeout: 15_000 });
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.goto('/?mode=daily'); await ready(page);
+  await expect(page.locator('#tp-sunset')).toBeEnabled();
+  await page.click('#tp-sunset');
+  await expect(page.locator('.rs-rating')).toContainText('On course to be rated', { timeout: 15_000 });
   parTick = null;
-  // Start an explicit second attempt; reloading can race the asynchronous checkpoint save.
-  await page.click('#btn-reset');
-  await expect(page.locator('#hud-tick')).toHaveText('0');
-  await expect(page.locator('#btn-run-end')).toBeEnabled();
-  await page.click('#btn-run-end');
-  await expect(page.locator('#arena-rated')).toContainText('Not on course to be rated', { timeout: 15_000 });
+  await page.reload(); await ready(page);
+  await press(page, '#btn-reset'); await ready(page); // the finished day is restored on reload: start a fresh one
+  await expect(page.locator('#tp-sunset')).toBeEnabled();
+  await page.click('#tp-sunset');
+  await expect(page.locator('.rs-rating')).toContainText('Not on course to be rated', { timeout: 15_000 });
 });

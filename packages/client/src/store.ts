@@ -1,5 +1,3 @@
-import { journalKey, validateJournal, type JournalIndex } from './log-journal';
-import type { LogChunk } from './chunks';
 // IndexedDB "tendril" / "kv". A write resolves at transaction completion, not put success.
 const DB = 'tendril';
 const STORE = 'kv';
@@ -65,69 +63,3 @@ function write(entries: Record<string, unknown>, remove: string[]): Promise<void
 /** Ordered, atomic checkpoint/meta/log writes. */
 export function kvSetMany(entries: Record<string, unknown>): Promise<void> { return write(entries, []); }
 export function kvDelete(keys: string[]): Promise<void> { return write({}, keys); }
-
-/** Reads the checkpoint and dynamically indexed log records from one revision. */
-export async function kvGetFarm(prefix: string): Promise<{ saved: Record<string, unknown>; journal?: JournalIndex }> {
-  await writes;
-  const db = await open();
-  const tx = db.transaction(STORE, 'readonly');
-  const complete = done(tx);
-  const store = tx.objectStore(STORE);
-  const saved: Record<string, unknown> = {};
-  let journal: JournalIndex | undefined;
-  let failure: unknown;
-  for (const name of ['world', 'meta', 'pendingLog', 'source', 'hash', 'accepted']) {
-    const key = prefix + name;
-    const request = store.get(key);
-    request.onsuccess = () => { saved[key] = request.result; };
-  }
-  const request = store.get(prefix + 'journal');
-  request.onsuccess = () => {
-    if (request.result === undefined) return;
-    try {
-      journal = validateJournal(request.result);
-      const logs: LogChunk[] = new Array(journal.ends.length);
-      // Override legacy only after the complete transaction succeeds.
-      journal.ends.forEach((end, i) => {
-        const chunk = store.get(journalKey(prefix, end));
-        chunk.onsuccess = () => {
-          if (!chunk.result || chunk.result.toTick !== end) { failure = new Error('Saved log journal is missing a chunk. Logs retained.'); tx.abort(); return; }
-          logs[i] = chunk.result;
-        };
-      });
-      saved[prefix + 'journalLogs'] = logs;
-    } catch (error) { failure = error; tx.abort(); }
-  };
-  try { await complete; } catch (error) { throw failure ?? error; }
-  if (journal) { saved[prefix + 'pendingLog'] = saved[prefix + 'journalLogs']; delete saved[prefix + 'journalLogs']; }
-  return { saved, journal };
-}
-
-/** Compare and mutate in the same strict transaction so another app window
- * cannot overwrite a newer durable farm. Failed writes leave every old key intact. */
-export function kvCommitFarm(prefix: string, expected: JournalIndex | undefined, entries: Record<string, unknown>, remove: string[]): Promise<void> {
-  const values = structuredClone(entries);
-  const expectedRevision = expected?.revision;
-  const next = writes.then(async () => {
-    const db = await open();
-    const tx = db.transaction(STORE, 'readwrite', { durability: 'strict' });
-    const complete = done(tx);
-    const store = tx.objectStore(STORE);
-    let conflict = false;
-    let failure: unknown;
-    const request = store.get(prefix + 'journal');
-    request.onsuccess = () => {
-      if (request.result?.revision !== expectedRevision) { conflict = true; tx.abort(); return; }
-      try {
-        for (const [key, value] of Object.entries(values)) store.put(value, key);
-        for (const key of remove) store.delete(key);
-      } catch (error) { failure = error; tx.abort(); }
-    };
-    try { await complete; } catch (error) {
-      if (conflict) throw new Error('Farm changed in another window. Reload before continuing; local logs are kept.', { cause: error });
-      throw failure ?? error;
-    }
-  });
-  writes = next.catch(() => {});
-  return next;
-}
