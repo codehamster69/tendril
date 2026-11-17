@@ -18,9 +18,11 @@ export function ensureWeather(w: World, upTo: number): void {
     w.wrng = rand(w.wrng);
     let kind: Segment['kind']; let len: number;
     // Standard: 1 in 4 segments is frost. Bias -1 makes it 1 in 2, bias 1 makes it 1 in 8 (a subset of the standard ones).
-    const frostMod = w.weatherBias === -1 ? 2 : w.weatherBias === 1 ? 8 : 4;
-    if (w.wrng % frostMod === 0) { kind = 'frost'; w.wrng = rand(w.wrng); len = 60 + (w.wrng % 60); }
-    else { kind = 'rain'; w.wrng = rand(w.wrng); len = 80 + (w.wrng % 120); }
+    // Briefs (SIM_SPEC 6.3): bias -2 (hard frost) is as frosty as -1 with longer frosts; bias 2 (drought) keeps the standard schedule
+    // but every rain segment has length 0, so it never rains and the draws stay the same.
+    const frostMod = w.weatherBias === -1 || w.weatherBias === -2 ? 2 : w.weatherBias === 1 ? 8 : 4;
+    if (w.wrng % frostMod === 0) { kind = 'frost'; w.wrng = rand(w.wrng); len = w.weatherBias === -2 ? 100 + (w.wrng % 100) : 60 + (w.wrng % 60); }
+    else { kind = 'rain'; w.wrng = rand(w.wrng); len = w.weatherBias === 2 ? 0 : 80 + (w.wrng % 120); }
     segs.push({ kind, start: t, end: t + len });
   }
 }
@@ -78,6 +80,7 @@ export function forecast(w: World, n: number): Segment[] {
   for (let i = firstEndAfter(w, a); i < w.weather.length; i++) {
     const s = w.weather[i]!;
     if (s.start >= b) break;
+    if (s.end === s.start) continue; // drought: a rain segment of length 0
     out.push({ kind: s.kind, start: s.start, end: s.end });
   }
   return out;

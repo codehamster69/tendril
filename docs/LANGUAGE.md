@@ -130,6 +130,13 @@ plot purchase order then row-major, `forecast(n)` -> list of `{kind, start, end}
 `orders()` -> list of `{id, crop, qty, reward, deadline}`, `stock()` -> record, `coins()`, `plot_cost()`,
 `bot_cost()`, `bots()`, `unlocked(name)`, `unlock_cost(name)`, `price(item)` (on a market day: today's price in hundredths of a coin, so 200 is 2 coins; on other days the base price in whole coins).
 
+**Brief queries** (free, feature `queries`; the arena offers them without a lesson): `goal()` -> `"wealth"`,
+`"festival"`, `"specialist"`, `"orders"` or `"inherited"` (`"wealth"` when there is no brief); `quota(item)` -> units
+of the item still to deposit for a festival (0 when none); `budget()` -> the challenge's tick budget (0 when none, e.g.
+Endless); `twists()` -> list of twist names (`[]` when none); `bot_cap()` and `plot_cap()` -> the cap or `none`.
+Worlds with no brief (Endless, older challenges) return `wealth`, 0, 0, `[]`, `none`, `none`. See
+`packages/lang/examples/brief-reader.sprout`.
+
 **Utilities** (free): `say ...` / `print ...` (output line, values joined by spaces), `len`, `abs`,
 `min`, `max` (args or one list), `range(n)` / `range(a, b)` (b exclusive), `append(list, v)`,
 `pop(list)` (last), `insert(list, i, v)`, `remove(list, i)`, `contains(c, v)`, `keys(record)`,

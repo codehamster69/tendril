@@ -133,3 +133,11 @@ Where `docs/PLAN.md` disagrees with this file, this file wins.
 
 ## D-C3 (2026-11-17) Farm rests after 6 hours away
 A live Endless farm may run at most 6 hours (216,000 ticks) behind the wall clock. `POST /farms/wake {atTick}` adds exactly the excess to `farms.rested_ms` (server-computed, only grows, idempotent; never rests below the caller's own unsynced tick). `started_at` never moves, so silo/market ticks, hashes, replays and rules versions are untouched. Target tick = (now - started_at - rested_ms) / 100 on server (`accept`) and client (`clock.ts`). The client calls wake in `connectRanked` before the farm opens. Applies to backlogs that predate the feature (pending Rohan's choice).
+
+## D-K5 Sprout brief queries (2026-11-17)
+Six free queries (`goal quota budget twists bot_cap plot_cap`) read optional world fields through `packages/lang/src/brief.ts`; neutral values with no brief. Feature `queries`. Names become reserved words. See brain/notes/K5.md.
+
+## D-K1 (2026-11-17) Daily briefs are optional Setup fields, no rules bump (K1)
+- **Decision:** a brief (goal + 0-2 twists, seasons exactly 2) is drawn from the challenge seed by `drawBrief` and carried as optional `Setup` fields (SIM_SPEC section 6). Setup version 2, `BRIEF_EPOCH = '2099-01-01'` (off). `RULES_VERSION` stays 5; absent fields change nothing, every existing golden hash is unchanged. Scores come from `replayWithGoal`; `finalOf` sums the visible and hidden farms.
+- **Why:** the plan (`challenges/plan.md`) needs a different problem every day, and dispatch by stored data keeps old challenges, Endless farms and duels replaying exactly. Drought is `weatherBias 2` (rain segments of length 0), hard frost is `-2`.
+- **Open:** festival quota sizes are first values for K2 to calibrate (`brain/notes/K1.md`).
