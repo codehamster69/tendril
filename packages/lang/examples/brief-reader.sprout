@@ -1,0 +1,35 @@
+# Read today's brief and switch strategy on the goal.
+define farm_crop(crop):
+    for each tile in tiles():
+        go_to tile
+        if scan().ripe:
+            harvest
+        if scan().empty:
+            till
+            plant crop
+
+repeat forever:
+    if goal() is "festival":
+        # Grow whichever festival crop is furthest from its quota.
+        want = carrot
+        for each crop in [carrot, wheat, clover, pumpkin, berry, apple]:
+            if quota(crop) > quota(want):
+                want = crop
+        farm_crop(want)
+        go_to nearest_drop()
+        deposit
+    elif goal() is "orders":
+        farm_crop(carrot)
+        go_to barn
+        deposit
+        for each order in orders():
+            if stock()[order.crop] >= order.qty:
+                deliver order
+    else:
+        farm_crop(carrot)
+        go_to barn
+        deposit
+        sell carrot, all
+    if budget() > 0 and tick() > budget():
+        stop
+    wait 50

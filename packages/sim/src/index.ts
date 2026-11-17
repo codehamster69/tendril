@@ -1,6 +1,6 @@
 export {
   createWorld, applyAction, tickWorld, netWorth, scan, scanAt, forecast, weatherAt, openOrders, plotCost, botCost,
-  capacity, isUnlocked, dailySeed, price, silosActive, siloCount, siloCost, plotRefund, canSellPlot,
+  capacity, isUnlocked, dailySeed, price, silosActive, siloCount, siloCost, plotRefund, canSellPlot, sellPlotRefusal,
 } from './world.ts';
 export { hashWorld, serialize, deserialize } from './hash.ts';
 export { replayChunk } from './replay.ts';

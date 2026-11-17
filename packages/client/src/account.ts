@@ -22,9 +22,12 @@ async function wakeIfBehind(api: FarmApi, farm: FarmResponse): Promise<FarmRespo
   // Ticks this device already simulated but has not synced (a farm played offline) are never rested away.
   let local = farm.tick;
   try {
-    const key = `ranked.${farm.id}.pendingLog`;
-    const log = (await kvGetMany<Record<string, unknown>>([key]))[key] as LogChunk[] | undefined;
-    const last = log?.[log.length - 1];
+    // The log is stored one chunk per key plus an index (RealSim.persist); farms saved before that kept one array.
+    const prefix = `ranked.${farm.id}.`;
+    const saved = await kvGetMany<Record<string, unknown>>([`${prefix}logIdx`, `${prefix}pendingLog`]);
+    const index = saved[`${prefix}logIdx`] as number[] | undefined;
+    let last = (saved[`${prefix}pendingLog`] as LogChunk[] | undefined)?.at(-1);
+    if (index?.length) { const key = `${prefix}log.${index[index.length - 1]}`; last = (await kvGetMany<Record<string, LogChunk>>([key]))[key]; }
     if (last && Number.isSafeInteger(last.toTick)) local = Math.max(local, last.toTick);
   } catch { /* no local save */ }
   if ((targetTick(meta, Date.now()) - local) * MS_PER_TICK <= REST_CAP_MS) return farm;
