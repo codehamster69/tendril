@@ -311,6 +311,8 @@ export class GameLoop {
       this.rendered = s;
       this.progress = null;
       emit('snapshot', s);
+      const goal = this.sim.goalProgress?.();
+      if (goal) emit('goal', goal);
       const p = this.resuming ? null : this.sim.paused; // See `resuming`.
       const key = p ? `${p.bot}:${p.line}:${s.tick}` : '';
       if (p) {

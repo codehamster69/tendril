@@ -56,3 +56,11 @@ body.menu-open #farm-stage { filter: blur(2px); }
 .cm-editor .cm-scroller { line-height: calc(var(--editor-font, 14px) * 1.55) !important; }
 html[data-motion="reduced"] *, html[data-motion="reduced"] *::before, html[data-motion="reduced"] *::after { transition: none !important; animation: none !important; scroll-behavior: auto !important; }
 @media (max-width: 640px) { .menu-entries { grid-template-columns: 1fr 1fr; } .start-row { grid-template-columns: 1fr; gap: 2px; } }
+
+/* start card: daily briefs (K6) */
+.start-notice { margin: 0; padding: .2rem 0 .2rem .8rem; border-left: 3px solid var(--hk-lantern); font: italic 1.02rem/1.35 var(--hk-display); color: var(--hk-text); }
+.start-offline { margin: 0; padding: .5rem .7rem; border-radius: var(--hk-r-sm); background: rgba(239, 122, 102, .14); border: 1px solid rgba(239, 122, 102, .4); font-size: .9rem; }
+.start-twists { margin: 0; padding-left: 1.1rem; display: flex; flex-direction: column; gap: 2px; }
+.start-actions { flex-wrap: wrap; }
+.start-another { margin-left: auto; }
+@media (max-width: 640px) { .start-another { margin-left: 0; } }

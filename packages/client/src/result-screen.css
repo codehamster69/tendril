@@ -36,3 +36,15 @@
 html[data-motion="reduced"] .rs-card { transition: none; transform: none; opacity: 1; }
 html[data-motion="reduced"] .rs-layer::before, html[data-motion="reduced"] .rs-stamp { animation: none !important; }
 .rs-rank:empty, .rs-rating:empty, .rs-note:empty { display: none; }
+
+/* daily briefs (K6): what the hidden farms add to the score */
+.rs-final { display: grid; gap: 2px; margin: 0 0 var(--hk-s2, 8px); padding: .5rem .7rem; border-radius: var(--hk-r-sm, 8px); border: 1px solid var(--hk-line); font-size: .9rem; }
+.rs-final[hidden] { display: none; }
+.rs-final b { font: 700 .95rem var(--hk-display); }
+.rs-final span { color: var(--hk-dim); }
+.rs-final[data-state="provisional"] { border-style: dashed; }
+.rs-final[data-state="provisional"] b { color: var(--hk-lantern); }
+.rs-final[data-state="final"] { border-color: var(--hk-leaf); }
+
+/* phones: the slate is as wide as the screen, so the card takes the whole width and sits above it */
+@media (max-width: 720px) { .game-stage .rs-layer { padding-right: 0; padding-bottom: 48px; } .rs-card { max-height: calc(100vh - 5rem); } }

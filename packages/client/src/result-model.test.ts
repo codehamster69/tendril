@@ -49,3 +49,18 @@ test('best line compares with the last best and the score to beat', () => {
   assert.match(bestLine(500, 500, 400), /Matches your best \(500\) · at or above/);
   assert.match(bestLine(600, 500, null), /^100 below your best \(600\)$/);
 });
+
+test('brief goals name the first medal and use their own unit', () => {
+  const m = medals({ ...base, kind: 'festival', par: 800, netWorth: 700, parTick: null, server: null, program: null });
+  assert.equal(m[0]!.name, 'Festival');
+  assert.equal(m[0]!.line, '10.0% short of par');
+  assert.equal(medals({ ...base, kind: 'orders', par: 300, netWorth: 450 })[0]!.line, '150 coins over par');
+  assert.equal(bestLine(500, 700, 900, 'festival'), 'New personal best, 20.0% above your last best (50.0%) · 20.0% below the score to beat');
+  assert.match(hintFor({ lastSale: null, lastGrow: 400, error: null }, 3000, 700, 800, 'festival'), /Your score stopped growing at tick 400.*10\.0% short of par/);
+});
+
+test('a practice farm is never rated', () => {
+  const m = medals({ ...base, practice: true, signedIn: true });
+  assert.equal(m[2]!.state, 'locked');
+  assert.equal(m[2]!.line, 'Practice farms are not rated');
+});

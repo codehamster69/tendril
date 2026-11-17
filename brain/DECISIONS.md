@@ -138,3 +138,6 @@ A live Endless farm may run at most 6 hours (216,000 ticks) behind the wall cloc
 - **Decision:** a brief (goal + 0-2 twists, seasons exactly 2) is drawn from the challenge seed by `drawBrief` and carried as optional `Setup` fields (SIM_SPEC section 6). Setup version 2, `BRIEF_EPOCH = '2099-01-01'` (off). `RULES_VERSION` stays 5; absent fields change nothing, every existing golden hash is unchanged. Scores come from `replayWithGoal`; `finalOf` sums the visible and hidden farms.
 - **Why:** the plan (`challenges/plan.md`) needs a different problem every day, and dispatch by stored data keeps old challenges, Endless farms and duels replaying exactly. Drought is `weatherBias 2` (rain segments of length 0), hard frost is `-2`.
 - **Open:** festival quota sizes are first values for K2 to calibrate (`brain/notes/K1.md`).
+
+## D-K6 (2026-11-17): brief client
+Live goal progress comes from the sim worker (`tendril:goal`), with `World.brief.orderCoins` added to the sim for the orders score. A practice farm is the real brief on another world seed (`?practice=<seed>`), never submitted. On a brief day the offline fallback is a random practice brief, since today's seed is secret. Duel panel hidden on brief results until K3 confirms duel copies. Details: `brain/notes/K6.md`.

@@ -9,11 +9,18 @@ export interface WorldFields {
   market?: { prices: number[] } | null;
   /** Rules v5 switches silos on from the first tick. */
   rulesVersion?: number;
+  /** A duel copied from a brief challenge: its source kind (the same brief is drawn). */
+  briefSource?: 'daily' | 'season';
+  /** The world seed when it is not the challenge seed (a practice farm runs the brief on another farm). */
+  farmSeed?: number;
 }
 
+/** The seed of the world a challenge is played on. */
+export const worldSeedOf = (c: Pick<WorldFields, 'seed' | 'farmSeed'>): number => c.farmSeed ?? c.seed;
+
 /** The starting conditions of a challenge, from the same function and stored version the server replays with. */
-export const setupOf = (c: Pick<WorldFields, 'kind' | 'seed' | 'setupVersion' | 'market' | 'rulesVersion'>) =>
-  challengeSetup(c.kind, c.seed, c.setupVersion ?? SETUP_LEGACY, c.market ? { p: c.market.prices } : null, c.rulesVersion);
+export const setupOf = (c: Pick<WorldFields, 'kind' | 'seed' | 'setupVersion' | 'market' | 'rulesVersion' | 'briefSource'>) =>
+  challengeSetup(c.kind, c.seed, c.setupVersion ?? SETUP_LEGACY, c.market ? { p: c.market.prices } : null, c.rulesVersion, c.briefSource);
 
 /** Scenario fields for the sim worker; the server builds the same world from the same function. */
 export const challengeScenario = (c: WorldFields) => ({ tickLimit: c.ticks, farmId: c.id, setup: setupOf(c).setup });

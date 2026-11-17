@@ -1,11 +1,12 @@
 // Owns the World and the Sprout run. Player code never runs on the main thread or the server.
-import { createWorld, deserialize, hashWorld, OP, serialize, tickWorld } from '@tendril/sim/src/index.ts';
+import { createWorld, deserialize, hashWorld, netWorth, OP, serialize, tickWorld } from '@tendril/sim/src/index.ts';
 import type { LogEntry, World } from '@tendril/sim/src/index.ts';
 import { compile, createRun } from '@tendril/lang/src/index.ts';
 import type { Diagnostic, ScriptError, ScriptRun } from '@tendril/lang/src/index.ts';
 import { EVENT } from './sim-protocol';
 import type { FromWorker, Scenario, ToWorker, ViewEvent } from './sim-protocol';
 import { ViewEncoder } from './view-codec';
+import { goalProgress } from './goal-progress';
 
 const SLICE = 250;
 /** A lean (catch-up) step reports progress this often; bigger slices mean fewer yields to the event loop. */
@@ -16,6 +17,8 @@ let scenario: Scenario = { kind: 'live' };
 let breakpoints: number[] = [];
 /** Where a breakpoint or line step stopped the world. Kept until a command runs ticks again. */
 let paused: { bot: number; line: number } | null = null;
+/** Net worth of this farm at tick 0, for the inherited goal's score. */
+let startWorth = 0;
 const encoder = new ViewEncoder();
 let chain: Promise<void> = Promise.resolve();
 const post = (m: FromWorker, transfer: Transferable[] = []): void => (self as unknown as Worker).postMessage(m, transfer);
@@ -58,6 +61,7 @@ async function handle(m: ToWorker): Promise<void> {
       ? deserialize(m.saved)
       : createWorld({ id: scenario.farmId ?? 'farm', seed: m.seed }, scenario.setup);
     if (scenario.siloTick !== undefined) world.siloTick = scenario.siloTick;
+    startWorth = world.brief?.goal?.kind === 'inherited' ? netWorth(createWorld({ id: scenario.farmId ?? 'farm', seed: world.seed }, scenario.setup)) : 0;
   }
   if (!world) throw new Error('Farm is not initialized. Reload to try again.');
   if (m.type === 'fullView') encoder.reset();
@@ -122,6 +126,7 @@ async function handle(m: ToWorker): Promise<void> {
     debug: run && !lean ? run.debug() : [],
     paused,
     heat: run && !lean ? [...run.lineHeat()] : [],
+    goal: goalProgress(world, startWorth),
   }, transfer);
 }
 

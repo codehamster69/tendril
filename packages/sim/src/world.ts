@@ -376,6 +376,7 @@ export function applyAction(w: World, e: LogEntry): number {
       const ord = w.orders[idx];
       if (ord && w.stock[ord.crop]! >= ord.qty) {
         addCoins(w, ord.reward);
+        if (w.brief) w.brief.orderCoins = (w.brief.orderCoins ?? 0) + ord.reward; // the orders goal's score, as `replayWithGoal` counts it
         w.stock[ord.crop] = w.stock[ord.crop]! - ord.qty;
         w.orders.splice(idx, 1);
         res = ord.reward;
