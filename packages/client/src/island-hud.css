@@ -15,7 +15,7 @@
 .lens-legend .lens-end { color: var(--hk-dim); font: 500 .75rem var(--hk-body); }
 .lens-legend .lens-bar { width: 5rem; height: .5rem; border-radius: var(--hk-r-pill); }
 
-.order-cards { position: absolute; left: 14px; top: 128px; z-index: 4; width: 13.5rem; display: flex; flex-direction: column; gap: var(--hk-s2); pointer-events: none; perspective: 600px; }
+.order-cards { position: absolute; left: 14px; top: var(--tools-bottom, 128px); z-index: 4; width: 13.5rem; display: flex; flex-direction: column; gap: var(--hk-s2); pointer-events: none; perspective: 600px; }
 .order-card { padding: var(--hk-s2) var(--hk-s3); pointer-events: auto; transform-origin: left center; }
 .order-card .oc-top { display: flex; align-items: center; gap: var(--hk-s2); font: 600 .8rem var(--hk-body); }
 .order-card .oc-dot { width: .7rem; height: .7rem; border-radius: 50%; flex: none; }
