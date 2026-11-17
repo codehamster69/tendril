@@ -5,7 +5,7 @@ import { CARDS, NEEDS, TRACKS, newlyOwned, stateOf, unseenAffordable, visible, w
 import { playStamp } from './catalogue-fx';
 import './catalogue.css';
 
-const pictures = import.meta.glob('../../../assets/thumbs/{crop_*_s3,prop_beehive,prop_compost,prop_crate}.png', { eager: true, query: '?url', import: 'default' }) as Record<string, string>;
+const pictures = import.meta.glob('../../../assets/thumbs/{crop_*_s3,prop_beehive,prop_compost,prop_crate,prop_silo}.png', { eager: true, query: '?url', import: 'default' }) as Record<string, string>;
 const pictureUrl = (name: string): string => Object.entries(pictures).find(([k]) => k.endsWith(`/${name}.png`))?.[1] ?? '';
 const SEEN_KEY = 'tendril.catalogue.seen.v1';
 const loadSeen = (): Set<string> => { try { const v: unknown = JSON.parse(localStorage.getItem(SEEN_KEY) ?? '[]'); return new Set(Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : []); } catch { return new Set(); } };
@@ -24,7 +24,7 @@ function vine(grown: boolean): SVGSVGElement {
 
 /** Full-screen seed catalogue. Buying adds `unlock <name>` to the code (the only way research is bought); the stamp plays when the farm confirms it. */
 export function mountCatalogue({ editor }: { editor: Editor }): void {
-  let snap: Pick<Snapshot, 'coins' | 'unlocks'> = { coins: 0, unlocks: 1 };
+  let snap: Pick<Snapshot, 'coins' | 'unlocks' | 'siloCost'> = { coins: 0, unlocks: 1 };
   let prevUnlocks: number | null = null;
   const pendingStamps = new Set<string>();
   const seen = loadSeen();
@@ -66,10 +66,13 @@ export function mountCatalogue({ editor }: { editor: Editor }): void {
       const row = el('div', { class: 'cat-track' });
       cards.forEach((c, i) => {
         const st = stateOf(c, snap.unlocks, snap.coins);
+        // Silos are live on v5 farms; the snapshot carries siloCost only on those (same test as silosActive).
+        const soon = c.name === 'silo' && snap.siloCost === undefined;
         if (i > 0 && !filtered) row.append(vine(stateOf(cards[i - 1]!, snap.unlocks, snap.coins) === 'owned'));
         const stamp = pendingStamps.has(c.name);
         const btn = el('button', { class: 'cat-packet', type: 'button', 'data-seed': c.name, 'data-state': st, 'aria-label': `${cap(c.name)}, ${c.price === 0 ? 'free' : `${c.price} coins`}, ${st === 'owned' ? 'researched' : st === 'affordable' ? 'you can afford it, add to code' : 'not enough coins yet'}` });
-        if (st === 'owned') btn.setAttribute('aria-disabled', 'true');
+        if (st === 'owned' || soon) btn.setAttribute('aria-disabled', 'true');
+        if (soon) btn.dataset.state = 'soon';
         btn.append(
           el('img', { src: pictureUrl(c.picture), alt: '', width: '64', height: '64' }),
           el('b', { class: 'cat-name', text: cap(c.name) }),
@@ -77,10 +80,10 @@ export function mountCatalogue({ editor }: { editor: Editor }): void {
           el('span', { class: 'cat-blurb', text: c.blurb }),
           el('code', { class: 'cat-code', text: c.adds.join('\n') }),
           el('span', { class: 'cat-needs', text: `Needs: ${NEEDS}` }),
-          el('span', { class: 'cat-status', text: st === 'owned' ? 'Researched' : st === 'affordable' ? 'Add to code' : 'Not enough coins yet' }),
+          el('span', { class: 'cat-status', text: soon ? 'Not on this farm' : st === 'owned' ? 'Researched' : st === 'affordable' ? 'Add to code' : 'Not enough coins yet' }),
         );
         if (st === 'owned') btn.append(el('span', { class: `cat-stamp${stamp ? ' play' : ''}`, text: 'Researched', 'aria-hidden': 'true' }));
-        btn.addEventListener('click', () => { if (st === 'affordable') buy(c); else if (st === 'locked') toast(`${cap(c.name)} costs ${c.price} coins`, `You have ${snap.coins.toLocaleString('en-US')}. Keep farming.`); });
+        btn.addEventListener('click', () => { if (soon) return; if (st === 'affordable') buy(c); else if (st === 'locked') toast(`${cap(c.name)} costs ${c.price} coins`, `You have ${snap.coins.toLocaleString('en-US')}. Keep farming.`); });
         row.append(btn);
       });
       frag.append(el('section', { class: 'cat-section', 'aria-label': track.title }, el('h3', { text: track.title }), row));

@@ -10,6 +10,7 @@ import { FarmIsland, type Bounds } from './farm-scenery';
 import { FarmCamera } from './farm-camera';
 import { FarmLight, type LightPreset } from './farm-light';
 import { FarmWorld } from './farm-world';
+import { SiloDrops, saleSite } from './silo-drops';
 import { FarmDrones, DRONE_HOVER, droneColor, droneViewScale } from './farm-drones';
 import { FarmFx } from './farm-fx';
 import { FarmCarried } from './farm-carried';
@@ -71,6 +72,10 @@ export class FarmView {
   /** Ripe crops that were next to a drone at the last snapshot: if one is gone next time, it was harvested. */
   private nearRipe = new Map<string, { x: number; y: number; crop: number }>();
   private lastCoins = 0;
+  private silos = new SiloDrops();
+
+  /** Sales a silo took in the last 500 ticks, as seen by this view (see silo-drops.ts). */
+  siloDropsAt(x: number, y: number, tick: number): number { return this.silos.count(x, y, tick); }
   private disposed = false;
   private raf = 0;
   private previousTime = 0;
@@ -289,7 +294,8 @@ export class FarmView {
         }
       }
       const gain = s.coins - this.lastCoins;
-      if (gain > 0 && s.bots.some((b) => Math.abs(b.x) <= 1 && Math.abs(b.y) <= 1)) market.popup(this.camera, 0, 0, gain, 1);
+      const site = gain > 0 ? saleSite(s) : null;
+      if (site) { if (site.silo) this.silos.record(site.x, site.y, s.tick); market.popup(this.camera, site.x, site.y, gain, 1); }
     }
     this.lastCoins = s.coins;
     this.nearRipe.clear();
@@ -316,13 +322,13 @@ export class FarmView {
   priceAvailable(): boolean { return !!this.market?.multipliers; }
 
   setOverlay(overlay: FarmOverlay): void {
-    if (this.disposed || !['none', 'moisture', 'nitrogen', 'fatigue', 'growth'].includes(overlay)) return;
+    if (this.disposed || !['none', 'moisture', 'nitrogen', 'fatigue', 'growth', 'drop'].includes(overlay)) return;
     this.setLens(overlay);
   }
 
   /** Soil lens or price lens. `price` needs a market and quietly falls back to natural without one. */
   setLens(lens: Lens): void {
-    if (this.disposed || !['none', 'moisture', 'nitrogen', 'fatigue', 'growth', 'price'].includes(lens)) return;
+    if (this.disposed || !['none', 'moisture', 'nitrogen', 'fatigue', 'growth', 'price', 'drop'].includes(lens)) return;
     if (lens === 'price' && !this.priceAvailable()) lens = 'none';
     this.priceLens = lens === 'price';
     this.overlay = lens === 'price' ? 'none' : lens;

@@ -4,6 +4,7 @@ import type { Snapshot } from './sim-types.ts';
 import type { ViewSnapshot } from './view-codec.ts';
 import { BUILDING_MODELS, CROPS, CROP_COLORS } from './fallback-models.ts';
 import { OverlayLayer, overlayColor, unit, type FarmOverlay } from './farm-overlay.ts';
+import { dropDistances, dropUnit, type DropCell, type DropDistances } from './drop-distance.ts';
 import type { Bounds } from './farm-scenery.ts';
 import { motionQuery } from './settings.ts';
 
@@ -131,6 +132,19 @@ export class FarmWorld {
   private viewSource = -1;
   private viewVersion = -1;
   private version = 0;
+  private dist: DropDistances | null = null;
+  private distAt = -1;
+
+  /** Walking distance to the nearest drop, recomputed only when the tiles change and the drop lens is on. */
+  private dropDistance(): DropDistances {
+    if (!this.dist || this.distAt !== this.version) {
+      const cells: DropCell[] = [];
+      for (const chunk of this.chunks.values()) for (const t of chunk.tiles.values()) cells.push(t);
+      this.dist = dropDistances(cells);
+      this.distAt = this.version;
+    }
+    return this.dist;
+  }
   private _bounds: Bounds | null = null;
   private batches = new Map<string, Batch>();
   private lodState: Lod | null = null;
@@ -402,6 +416,7 @@ transformed.z += cos(uTime * 1.3 + swayPhase) * 0.04 * position.y * uSway;
 
   /** Close and Field zoom at stride 1: real tile and prop models, furrows and tufts (Close), crops. */
   private drawDetail(win: TileWindow, lod: Lod, o: RefreshOptions, time: number): RefreshResult {
+    const dist = o.overlay === 'drop' ? this.dropDistance() : null;
     const vis = this.vis; vis.length = 0;
     this.chunksIn(win);
     let ripeInView = 0;
@@ -465,12 +480,13 @@ transformed.z += cos(uTime * 1.3 + swayPhase) * 0.04 * position.y * uSway;
       }
     }
     if (barn) this.place(batch('prop_barn'), 0, 0, 0, 0, 1);
-    this.debug.overlayColors = this.overlayLayer.update(vis, o.overlay, true);
+    this.debug.overlayColors = this.overlayLayer.update(vis, o.overlay, true, dist);
     return { lod, stride: 1, ripeInView, cells: vis.length };
   }
 
   /** Map zoom or a merged window: one coloured cell per block of `stride` x `stride` tiles. */
   private drawCells(win: TileWindow, lod: Lod, o: RefreshOptions, time: number): RefreshResult {
+    const dist = o.overlay === 'drop' ? this.dropDistance() : null;
     const { stride, cols, rows } = win;
     const total = cols * rows;
     const rep = this.cellRep, rank = this.cellRank.length >= total ? this.cellRank : (this.cellRank = new Uint8Array(pow2(total)));
@@ -511,7 +527,7 @@ transformed.z += cos(uTime * 1.3 + swayPhase) * 0.04 * position.y * uSway;
       else if (t.tilled) c.copy(SOIL).lerp(WET, unit(t.moisture) * 0.7);
       else c.copy(GRASS);
       c.multiplyScalar(0.93 + hash(i, j, 4) * 0.12);
-      if (o.overlay !== 'none') overlayColor(o.overlay, t, c);
+      if (o.overlay !== 'none') overlayColor(o.overlay, t, c, dropUnit(dist, t.x, t.y));
       const hasCrop = t.crop >= 1 && t.crop < CROPS.length;
       if (hasCrop) {
         const s = THREE.MathUtils.clamp(Math.trunc(t.stage), 0, 3), isRipe = s >= 3;

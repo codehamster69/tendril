@@ -2,7 +2,7 @@ import { BUILDINGS, CROPS, OPS } from '@tendril/sim/src/index.ts';
 import type { Snapshot } from '@tendril/sim/src/index.ts';
 
 export type Tile = Snapshot['tiles'][number];
-export interface TileInfo { title: string; rows: [label: string, value: string][]; exprs: string[] }
+export interface TileInfo { title: string; note?: string; rows: [label: string, value: string][]; exprs: string[] }
 
 const cap = (s: string): string => s.charAt(0).toUpperCase() + s.slice(1);
 
@@ -25,7 +25,7 @@ export function botsAt(s: Snapshot, x: number, y: number): { id: number; here: b
 }
 
 /** Everything the tooltip says about one tile, plus the Sprout expressions that read the same values. */
-export function tileInfo(s: Snapshot, t: Tile): TileInfo {
+export function tileInfo(s: Snapshot, t: Tile, silo = { drops: 0 }): TileInfo {
   const barn = t.x === 0 && t.y === 0;
   const rows: [string, string][] = [];
   let title: string;
@@ -34,6 +34,8 @@ export function tileInfo(s: Snapshot, t: Tile): TileInfo {
   else if (t.crop) title = cap(CROPS[t.crop]!.name);
   else title = t.tilled ? 'Tilled soil' : 'Grass';
   if (t.building === 1) rows.push(['Honey', `${t.honey} ready`]);
+  let note: string | undefined;
+  if (t.building === 3 && !barn) { note = 'Silo. Bots can drop and sell here.'; rows.push(['Drops', `${silo.drops} in the last 500 ticks`]); }
   if (t.crop) {
     rows.push(['Growth', `stage ${t.stage} of 3`]);
     rows.push(['Ripe', t.stage >= 3 ? 'now' : `in up to ${ticksToRipe(t.crop, t.stage)} ticks`]);
@@ -42,7 +44,7 @@ export function tileInfo(s: Snapshot, t: Tile): TileInfo {
   for (const b of botsAt(s, t.x, t.y)) rows.push([`Bot ${b.id}`, `${b.here ? 'here' : 'near'} · ${b.doing}`]);
   const at = `scan_at(${t.x}, ${t.y})`;
   const exprs = [`${at}.moisture`, `${at}.nitrogen`, ...(t.crop ? [`${at}.ripe`] : [`${at}.empty`])];
-  return { title, rows, exprs };
+  return { title, note, rows, exprs };
 }
 
 /** Pixel position for a floating card: beside the pointer, kept inside the viewport. */
