@@ -1,5 +1,5 @@
 import { BASE_RULES_VERSION, ITEM_COUNT, MARKET_RULES_VERSION, PLOT_SIZE, RULES_VERSION, SUPPORTED_RULES_VERSIONS, TILE_INTS } from './rules.ts';
-import type { Bot, Order, Plot, Segment, World } from './types.ts';
+import type { BriefState, Bot, Order, Plot, Segment, World } from './types.ts';
 import { plotKey } from './tiles.ts';
 import { ensureWeather } from './weather.ts';
 
@@ -40,6 +40,7 @@ export function serialize(w: World): string {
     ...(w.weatherBias ? { weatherBias: w.weatherBias } : {}),
     ...(w.prices ? { prices: w.prices } : {}),
     ...(w.siloTick !== undefined ? { siloTick: w.siloTick } : {}),
+    ...(w.brief ? { brief: w.brief } : {}),
   });
 }
 
@@ -48,7 +49,7 @@ export function deserialize(s: string): World {
     rulesVersion: number; id: string; seed: number; tick: number; coins: number; spent: number; unlocks: number; wrng: number; orng: number;
     nextOrderAt: number; nextOrderId: number; stock: number[]; weather: Segment[]; orders: Order[];
     bots: { x: number; y: number; busyUntil: number; load: number[] }[];
-    plots: { px: number; py: number; tiles: number[] }[]; lastOp: (number | null)[]; weatherBias?: number; prices?: number[]; siloTick?: number;
+    plots: { px: number; py: number; tiles: number[] }[]; lastOp: (number | null)[]; weatherBias?: number; prices?: number[]; siloTick?: number; brief?: BriefState;
   };
   if (!SUPPORTED_RULES_VERSIONS.includes(d.rulesVersion)) throw new Error(`unsupported rules version ${String(d.rulesVersion)}`);
   // Version 3 never has a table and version 4 always has one (dispatch by data, SIM_SPEC 4.1). Version 5 has silo rules and may have a table.
@@ -70,8 +71,9 @@ export function deserialize(s: string): World {
     id: d.id, seed: d.seed, tick: d.tick, coins: d.coins, spent: d.spent, unlocks: d.unlocks, wrng: d.wrng, orng: d.orng,
     nextOrderAt: d.nextOrderAt, nextOrderId: d.nextOrderId, stock: d.stock, weather: d.weather, orders: d.orders,
     bots, plots, plotIndex, lastOp: d.lastOp,
-    ...(d.weatherBias === -1 || d.weatherBias === 1 ? { weatherBias: d.weatherBias } : {}),
+    ...(d.weatherBias && Math.abs(d.weatherBias) <= 2 ? { weatherBias: d.weatherBias } : {}),
     ...(d.prices ? { prices: d.prices } : {}),
     ...(d.siloTick !== undefined ? { siloTick: d.siloTick } : {}),
+    ...(d.brief ? { brief: d.brief } : {}),
   };
 }
