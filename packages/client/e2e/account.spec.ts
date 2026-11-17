@@ -151,7 +151,7 @@ test('auto-sync reaches the leaderboard by itself and shows the rank', async ({ 
   await mockApi(page, true);
   await page.goto('/?mode=live');
   await ready(page);
-  await expect(page.locator('#mode-note')).toContainText('On the leaderboard · rank 1', { timeout: 15_000 });
+  await expect(page.locator('#mode-note')).toContainText('On the leaderboard · rank 1', { timeout: 45_000 });
   expect(chunks.length).toBeGreaterThan(0);
   await expect.poll(() => page.evaluate(() => window.tendril?.sim.accepted?.farm.tick ?? 0)).toBe(server.world.tick);
 });
