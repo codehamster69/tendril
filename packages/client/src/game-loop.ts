@@ -154,14 +154,18 @@ export class GameLoop {
     return this.loaded ? this.sim.setBreakpoints(this.breakpoints).catch(() => {}) : Promise.resolve();
   }
 
+  /** True when `source` is not what the editor holds right now (a lesson, an example, a restored draft), so the editor must be told. */
+  private external(source: string): boolean { return !this.sourceProvider || this.sourceProvider() !== source; }
+
   private async compile(source: string): Promise<void> {
     const wasRunning = this.running;
+    const external = this.external(source); // Read before any await: the player may keep typing while the worker halts.
     await this.halt();
     this.changing = true;
     this.error = null;
     this.updateStatus();
     try {
-      emit('source', source);
+      if (external) emit('source', source);
       await this.sim.setSource(source);
       this.afterCompile(wasRunning);
       if (!this.compileFailed) {
@@ -232,6 +236,7 @@ export class GameLoop {
 
   private async fresh(source: string, scenario?: Scenario, seed?: number): Promise<void> {
     ++this.intent;
+    const external = this.external(source);
     await this.pause();
     this.changing = true;
     this.error = null;
@@ -240,7 +245,7 @@ export class GameLoop {
     this.updateStatus();
     try {
       this.compiled = this.source = source;
-      emit('source', source);
+      if (external) emit('source', source);
       await this.sim.reset(source, { scenario, seed });
       this.loaded = true;
       this.rendered = null;
