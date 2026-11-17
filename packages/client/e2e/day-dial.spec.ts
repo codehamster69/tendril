@@ -13,12 +13,13 @@ for (const [width, height] of [[1280, 720], [1024, 700], [1920, 1080]] as const)
     await expect.poll(async () => {
       const r = await page.evaluate(() => {
         const box = (sel: string): { left: number; top: number; right: number; bottom: number } | null => { const e = document.querySelector(sel); if (!e) return null; const b = e.getBoundingClientRect(); return { left: b.left, top: b.top, right: b.right, bottom: b.bottom }; };
-        return { dial: box('#day-dial'), hud: box('#game-hud'), tools: box('#stage-tools'), side: box('#side') };
+        return { dial: box('#day-dial'), hud: box('#game-hud'), tools: box('#stage-tools'), side: box('#side'), style: (document.querySelector('#day-dial') as HTMLElement | null)?.style.cssText };
       });
       if (!r.dial || !r.hud || !r.tools) return 'missing';
       if (overlaps(r.dial, r.hud)) return 'over the chips';
       if (r.tools.top < r.dial.bottom) return 'over the tool row';
-      if (r.side && r.side.right - r.side.left > 0 && r.dial.right > r.side.left) return 'under the slate';
+      // The boxes go in the message so a failure on a slow runner says where everything was.
+      if (r.side && r.side.right - r.side.left > 0 && r.dial.right > r.side.left) return `under the slate ${JSON.stringify(r)}`;
       if (r.dial.left < 0) return 'off screen';
       return 'clear';
     }).toBe('clear');
