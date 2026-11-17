@@ -4,7 +4,7 @@ import { createHash } from 'node:crypto';
 import { challengeSetup, createWorld, isMarketTable, replayWithPar, marketFits, SETUP_LEGACY, SUPPORTED_RULES_VERSIONS } from '@tendril/sim/src/index.ts';
 import type { ChallengeKind, LogEntry } from '@tendril/sim/src/index.ts';
 import { compile } from './parser.ts';
-import { createRun } from './interpreter.ts';
+import { createRun } from './engine.ts';
 import { countTokens } from './tokens.ts';
 
 export interface VerifyRequest { source: string; challengeId: string; kind: ChallengeKind; seed: number; ticks: number; rulesVersion: number; /** Absent means 0, the plain farm of challenges created before modifiers. */ setupVersion?: number;

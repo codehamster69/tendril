@@ -1,0 +1,19 @@
+# C5: compiled Sprout engine
+
+Files: new `packages/lang/src/compiled.ts` (code generator + `FastRun` scheduler), `src/engine.ts` (`createRun` picks the engine), `scripts/benchmark.ts` (`pnpm --filter @tendril/lang test:perf [bots] [plots] [ticks] [engine]`), tests `test/equivalence.test.ts`, `test/equivalence.ts`, `test/fuzz.ts`. Edited: `interpreter.ts` (only `export` added to helpers, `createRun` renamed `createReferenceRun`, `RunOptions.engine`), `index.ts` and `verify.ts` import `createRun` from `engine.ts`, `package.json` (`test:perf` runs with `--experimental-transform-types`, the interpreter uses parameter properties).
+
+Decisions
+- The tree-walking interpreter in `interpreter.ts` is untouched and stays the reference. `createRun(..., { engine: 'reference' })` runs it. Default is `compiled`. If the compiler throws or `new Function` is blocked, `createRun` falls back to the reference.
+- Compiler design: each program becomes one generator function per bot (plus one per user function call) from JS source. Events (line, call, loop pass, action) are counted inline; a bot yields to the scheduler only when it acts or at the 5,000th event of its turn, so the 5,000-step limit, `steps`, `exhausted`, `thinking` and the tick an action lands on are identical. Variables stay in `Map`s and frames are pushed and popped, so `debug()` is identical too. Breakpoints, `stepLine` and line heat work in the compiled engine (a `dbg` flag checked at every statement), so no mode switch mid-run. Builtins whose name the program never reassigns are called directly; other calls go through `callValue`.
+- Quirks kept on purpose (the reference does them): `break`/`continue` inside a function end the caller's loop; top-level `return` is an error; compound assignment evaluates the target twice; a turn that errors does not add its steps; a pause by breakpoint drops that turn's steps; `sell` of zero units takes no time.
+- Differences from the reference: `lineHeat()` map is in ascending line order (the reference uses first-hit order); a forged function record such as `{functionName: "x", params: [], body: [1]}` errors with "Expected a record." instead of running the list as program text.
+- Security: generated source contains only fixed text plus JSON-encoded names, strings and integers from the parsed program, never raw program text.
+
+Verification (all on this branch, nothing committed)
+- Equivalence: after every operation the two engines are compared on step result, world hash, action log, errors, output, steps, exhausted, `debug()` and heat. Covered: all 6 bundled examples, the server reference program, every lesson solution and starter, a 12-bot farm, 32 hand-written edge programs, step and allocation budgets, breakpoints and line stepping, and random programs (`FUZZ_COUNT`, default 300; 6,000 run clean). A deliberate one-step perturbation in the compiled scheduler was caught.
+- `pnpm typecheck`, `pnpm lint` and `pnpm test` pass (lang, server, client, sim, rating), including the Arena verify tests with old submissions. The lang suite went from 14 s to 5 s.
+- Throughput (4-vCPU container, stress-farm program, same program and seed, identical step counts): 55 bots / 37 plots: reference 1,650 ticks/s, compiled about 21,000 (about 13x). 155 bots / 32 plots: 44 vs 1,430 ticks/s (about 32x, 93M interpreter steps/s). Not measured: browser, Rohan's Mac, Electron.
+
+Open
+- The 500-bot target (216,000 ticks under 60 s, 3,600 ticks/s) depends on the program: scan-heavy programs reach it here only at about 150 bots, simple ones far above. Next levers: variables in JS locals instead of Maps, `tiles()`/`scan()` allocation (a quarter of the time is GC), and skipping the per-bot scan when every bot is busy. All would need the same equivalence proof.
+- The worker still builds debug, heat and view events on every batch (C6). The default fuzz count is 300 to keep CI fast; run `FUZZ_COUNT=6000` after touching `compiled.ts`.
