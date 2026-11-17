@@ -23,6 +23,7 @@ import { rand } from '@tendril/sim/src/weather.ts';
 import type { Expr, Stmt } from './ast.ts';
 import type { Program } from './parser.ts';
 import { SproutError } from './errors.ts';
+import { explainSellRefusal } from './sell-note.ts';
 import {
   binary, bounded, equal, index as listIndex, list, LoopFlow, MAX_COLLECTION, member, nameOf, nearestDrop, numeric, record, ReturnFlow,
   silos, StopFlow, text, truth,
@@ -177,7 +178,12 @@ def('plant', (R, b, a) => { const c = item('plant', a, 0); if (c > 6) throw new 
 def('build', (R, b, a) => { const k = BUILDINGS.findIndex((x) => x.name === nameOf(need('build', a, 0))); if (k < 1) throw new SproutError('Build a hive, composter or silo.'); return act1(R, b, OP.build, k) === 1; });
 def('unlock', (R, b, a) => act1(R, b, OP.unlock, unlockIndex('unlock', a, 0)) === 1);
 def('buy_plot', (R, b, a) => act2(R, b, OP.buyPlot, int('buy_plot', a, 0), int('buy_plot', a, 1)) === 1);
-def('sell_plot', (R, b, a) => act2(R, b, OP.sellPlot, int('sell_plot', a, 0), int('sell_plot', a, 1)));
+def('sell_plot', (R, b, a) => {
+  const px = int('sell_plot', a, 0), py = int('sell_plot', a, 1);
+  const paid = act2(R, b, OP.sellPlot, px, py);
+  if (paid === 0) explainSellRefusal(R.output, R.sellMemo, R.world, b.bot, px, py);
+  return paid;
+});
 def('buy_bot', (R, b) => { const n = act0(R, b, OP.buyBot); return n ? n - 1 : null; });
 def('sell', (R, b, a) => {
   const c = item('sell', a, 0); if (c > 7) throw new SproutError('Compost cannot be sold.');
@@ -546,6 +552,7 @@ function compileProgram(program: Program, source: string, flags: CompileFlags): 
 export class FastRun implements ScriptRun {
   readonly engine = 'compiled' as const;
   pending: LogEntry[] = []; errors: ScriptError[] = []; output: OutputLine[] = [];
+  sellMemo = new Map<string, number>();
   steps = 0; exhausted = false;
   shared: RecordValue = Object.create(null) as RecordValue;
   heat: Float64Array;
