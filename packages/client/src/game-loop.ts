@@ -1,15 +1,28 @@
 import type { Snapshot } from './sim-types';
 import { targetTick, TICKS_PER_SECOND } from './clock';
-import type { RealSim } from './real-sim';
+import { LEAN_BEHIND_TICKS, type CatchUp, type RealSim } from './real-sim';
 import type { BotDebug, Diagnostic, Scenario, SimError } from './sim-protocol';
 
 const MAX_TICKS_PER_FRAME = 2000;
+/** "41% · about 2 min left", from the catch-up's own numbers. */
+export function catchUpText(c: CatchUp): string {
+  const pct = Math.min(99, Math.max(0, Math.floor((1 - c.behind / c.startBehind) * 100)));
+  return `${pct}%${c.etaSeconds === null ? '' : ` · ${formatEta(c.etaSeconds)}`}`;
+}
+export function formatEta(sec: number): string {
+  if (sec < 10) return 'a few seconds left';
+  if (sec < 90) return `about ${Math.round(sec / 5) * 5} s left`;
+  if (sec < 5400) return `about ${Math.round(sec / 60)} min left`;
+  return `about ${(sec / 3600).toFixed(1)} h left`;
+}
 const emit = (name: string, detail: unknown): void => { window.dispatchEvent(new CustomEvent(`tendril:${name}`, { detail })); };
 
 /** Human-facing messages for the console. `clear` empties it (new farm). */
 export interface Notice { kind: 'info' | 'err' | 'clear'; text: string; tick: number; bot?: number; line?: number }
 export interface LoopStatus {
   running: boolean; mode: string; tick: number; durableTick: number | null; message: string; state: string;
+  /** A long catch-up in progress (lean mode), else null. */
+  catchUp: CatchUp | null;
   save: string; canRun: boolean; canPause: boolean; canStep: boolean; canReset: boolean; paused: { bot: number; line: number } | null;
 }
 
@@ -39,6 +52,7 @@ export class GameLoop {
   private lastStatus = '';
   private pauseKey = '';
   private raf = 0;
+  private lastSnapAt = 0;
 
   constructor(readonly sim: RealSim) {
     this.sim.onProgress = (done, total) => { this.progress = { done, total }; this.updateStatus(); };
@@ -269,7 +283,9 @@ export class GameLoop {
       let n: number;
       if (this.sim.mode === 'live') {
         // Speed cannot mint ticks: the clock is the only source. Behind it, catch up as fast as the worker allows.
-        n = Math.min(MAX_TICKS_PER_FRAME, Math.max(0, targetTick(this.sim.meta, Date.now()) - tick));
+        // Far behind, RealSim picks its own big lean batch; within a couple of seconds of live, normal frames.
+        const behind = Math.max(0, targetTick(this.sim.meta, Date.now()) - tick);
+        n = behind > LEAN_BEHIND_TICKS ? behind : Math.min(MAX_TICKS_PER_FRAME, behind);
       } else {
         this.acc = Math.min(MAX_TICKS_PER_FRAME, this.acc + elapsed * TICKS_PER_SECOND * this.speed);
         n = Math.floor(this.acc);
@@ -283,7 +299,10 @@ export class GameLoop {
 
   private render(): void {
     const s = this.snapshot();
-    if (s && s !== this.rendered) {
+    // Far behind the clock the island redraws a few times a second, not once per batch.
+    const hold = !!s && s !== this.rendered && !this.sim.paused && this.sim.catchUp() !== null && performance.now() - this.lastSnapAt < 250;
+    if (s && s !== this.rendered && !hold) {
+      this.lastSnapAt = performance.now();
       this.rendered = s;
       this.progress = null;
       emit('snapshot', s);
@@ -325,6 +344,7 @@ export class GameLoop {
   private updateStatus(): void {
     const sim = this.sim;
     let state = 'paused';
+    const catchUp = this.running ? sim.catchUp() : null;
     let text = sim.mode === 'live' ? 'Paused · the farm clock keeps counting. Run to catch up.' : 'Paused · edit your program, run, or step.';
     if (this.error || sim.persistenceError) { state = 'error'; text = this.error ?? sim.persistenceError!; }
     else if (this.compileFailed && !this.running) { state = 'error'; text = 'Program has errors. Fix the marked lines, then Run.'; }
@@ -336,13 +356,13 @@ export class GameLoop {
     else if (this.running) {
       const debt = sim.mode === 'live' ? Math.max(0, targetTick(sim.meta, Date.now()) - (this.snapshot()?.tick ?? 0)) : 0;
       state = debt > 10 ? 'catching-up' : 'running';
-      text = debt > 10 ? `Catching up · ${debt.toLocaleString()} ticks behind` : sim.mode === 'live' ? 'Live · 10 ticks per second' : `Running · ${this.speed}× speed`;
+      text = debt > 10 ? `Catching up · ${debt.toLocaleString()} ticks behind${catchUp ? ` · ${catchUpText(catchUp)}` : ''}` : sim.mode === 'live' ? 'Live · 10 ticks per second' : `Running · ${this.speed}× speed`;
       if (this.compileFailed) text += ' · previous program (fix the marked lines)';
       if (this.progress) text += ` · ${this.progress.done}/${this.progress.total}`;
     } else if (sim.busy) { state = 'pausing'; text = 'Saving…'; }
     const free = !this.changing && !this.actionBusy;
     const detail: LoopStatus = {
-      running: this.running, mode: sim.mode, tick: this.snapshot()?.tick ?? 0, durableTick: sim.durableTick, message: text, state,
+      catchUp, running: this.running, mode: sim.mode, tick: this.snapshot()?.tick ?? 0, durableTick: sim.durableTick, message: text, state,
       save: sim.persistenceError ? 'Save failed · keep window open' : sim.busy ? 'Saving on this device…'
         : sim.durableTick !== null ? `Saved locally · tick ${sim.durableTick.toLocaleString()}` : 'Not saved yet',
       canRun: this.loaded && free && !this.ended,

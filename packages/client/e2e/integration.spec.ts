@@ -23,9 +23,10 @@ async function saved(page: Page, prefix = 'sprout.v1.sandbox.'): Promise<{ world
       req.onsuccess = () => resolve(req.result as T);
       req.onerror = () => reject(req.error);
     });
-    const [world, logs, hash, source] = await Promise.all([
-      get<string>('world'), get<LogChunk[]>('pendingLog'), get<string>('hash'), get<string>('source'),
+    const [world, idx, hash, source] = await Promise.all([
+      get<string>('world'), get<number[]>('logIdx'), get<string>('hash'), get<string>('source'),
     ]);
+    const logs = await Promise.all((idx ?? []).map((id) => get<LogChunk>(`log.${id}`)));
     db.close();
     return { world, logs, hash, source };
   }, prefix);

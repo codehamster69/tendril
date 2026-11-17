@@ -63,3 +63,5 @@ function write(entries: Record<string, unknown>, remove: string[]): Promise<void
 /** Ordered, atomic checkpoint/meta/log writes. */
 export function kvSetMany(entries: Record<string, unknown>): Promise<void> { return write(entries, []); }
 export function kvDelete(keys: string[]): Promise<void> { return write({}, keys); }
+/** Set and delete in one atomic transaction (used to append a log chunk and drop acknowledged ones). */
+export function kvWrite(entries: Record<string, unknown>, remove: string[]): Promise<void> { return write(entries, remove); }

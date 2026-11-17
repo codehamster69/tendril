@@ -96,3 +96,9 @@ html[data-motion="reduced"] .game-stage #side, html[data-motion="reduced"] .tran
 #farm-canvas.fr-spot { outline: none; animation: none; }
 @keyframes fr-pulse { 50% { outline-offset: 6px; } }
 html[data-motion="reduced"] .fr-spot { animation: none; }
+
+.catchup-card { position: fixed; z-index: 30; top: 64px; left: 50%; transform: translateX(-50%); display: grid; gap: .35rem; min-width: min(30rem, calc(100vw - 2rem)); padding: .6rem .9rem; }
+.catchup-card[hidden] { display: none; }
+.catchup-card small { opacity: .8; }
+.catchup-card .cu-track { display: block; height: 6px; border-radius: 3px; background: color-mix(in srgb, currentColor 18%, transparent); overflow: hidden; }
+.catchup-card .cu-fill { display: block; height: 100%; width: 0; background: var(--lantern, #f2b84b); transition: width .25s linear; }

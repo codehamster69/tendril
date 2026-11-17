@@ -8,6 +8,8 @@ import type { FromWorker, Scenario, ToWorker, ViewEvent } from './sim-protocol';
 import { ViewEncoder } from './view-codec';
 
 const SLICE = 250;
+/** A lean (catch-up) step reports progress this often; bigger slices mean fewer yields to the event loop. */
+const LEAN_SLICE = 500;
 let world: World | null = null;
 let run: ScriptRun | null = null;
 let scenario: Scenario = { kind: 'live' };
@@ -61,6 +63,7 @@ async function handle(m: ToWorker): Promise<void> {
   if (m.type === 'fullView') encoder.reset();
   const fromTick = world.tick;
   const light = m.type === 'step' && m.light === true;
+  const lean = m.type === 'step' && m.lean === true;
   const fromHash = light ? '' : hashWorld(world);
   if (m.type === 'init' || m.type === 'reset' || m.type === 'setSource') {
     diagnostics = startRun(m.source);
@@ -77,7 +80,7 @@ async function handle(m: ToWorker): Promise<void> {
     if (scenario.tickLimit !== undefined) total = Math.min(total, Math.max(0, scenario.tickLimit - world.tick));
     try {
       for (let done = 0; done < total;) {
-        const r = run.step(Math.min(SLICE, total - done));
+        const r = run.step(Math.min(lean ? LEAN_SLICE : SLICE, total - done));
         done += r.ticks;
         if (r.paused) { paused = r.paused; break; }
         if (r.ticks === 0) break;
@@ -104,18 +107,21 @@ async function handle(m: ToWorker): Promise<void> {
   // per frame leaves here however many ticks ran (16x just means a longer step). Only the final state is sent.
   const errors = run ? run.errors.splice(0) : [];
   const log = run ? run.takeLog() : [];
-  const { update, transfer } = encoder.encode(world, eventsOf(log, errors));
+  // Lean: no floating labels (thousands per batch), no printed output, no per-line debug or heat. Errors still report.
+  const events = lean ? eventsOf([], errors) : eventsOf(log, errors);
+  const { update, transfer } = encoder.encode(world, events);
+  const output = run ? run.output.splice(0) : [];
   post({
     type: 'state', id: m.id, fromTick, fromHash, hash: light ? '' : hashWorld(world),
     view: update,
-    output: run ? run.output.splice(0) : [],
+    output: lean ? [] : output,
     errors,
     diagnostics,
     log,
     saved: light ? '' : serialize(world),
-    debug: run ? run.debug() : [],
+    debug: run && !lean ? run.debug() : [],
     paused,
-    heat: run ? [...run.lineHeat()] : [],
+    heat: run && !lean ? [...run.lineHeat()] : [],
   }, transfer);
 }
 

@@ -1,7 +1,7 @@
 import './hud-kit.css';
 import './stage.css';
 import type { Editor } from './editor';
-import type { GameLoop, LoopStatus } from './game-loop';
+import { catchUpText, type GameLoop, type LoopStatus } from './game-loop';
 import type { Snapshot } from './sim-types';
 import { el } from './palette';
 import { mountMenu } from './menu';
@@ -141,6 +141,21 @@ export function mountStage({ loop, api, current, ranked }: { loop: GameLoop; edi
     coins.textContent = s.coins.toLocaleString();
     stock.textContent = (s.stock ?? []).reduce((a, b) => a + b, 0).toLocaleString();
   });
+
+  // ---- catch-up card: shown only while a long absence is being replayed ----
+  const cuTitle = el('b', { text: 'Catching up' }), cuMeta = el('small', { text: '' });
+  const cuBar = el('i', { class: 'cu-fill' });
+  const catchCard = el('div', { id: 'catchup-card', class: 'catchup-card hk-chip', role: 'status', hidden: '' }, cuTitle, el('span', { class: 'cu-track' }, cuBar), cuMeta);
+  listen<LoopStatus>('status', (s) => {
+    const c = s.catchUp;
+    catchCard.hidden = !c;
+    if (!c) return;
+    const hours = c.startBehind / 36_000;
+    cuTitle.textContent = `Catching up ${hours >= 1 ? `${hours.toFixed(hours < 10 ? 1 : 0)} hours` : `${Math.max(1, Math.round(c.startBehind / 600))} min`} of farm time`;
+    cuBar.style.width = `${Math.min(99, Math.max(0, (1 - c.behind / c.startBehind) * 100)).toFixed(1)}%`;
+    cuMeta.textContent = `${catchUpText(c)} · ${c.ticksPerSecond.toLocaleString()} ticks/s · your farm is safe, saved as it goes`;
+  });
+  document.body.append(catchCard);
 
   // ---- transport bar ----
   const play = el('button', { id: 'tp-play', class: 'hk-button hk-primary tp-play', type: 'button', 'aria-label': 'Run', title: 'Run or pause (Space)', text: '▶', disabled: '' });
