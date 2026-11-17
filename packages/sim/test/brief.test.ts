@@ -252,6 +252,10 @@ describe('replayWithGoal and finalOf', () => {
     expect(r.deposited[1]).toBeGreaterThan(20);
     expect(r.score).toBe(1000);
     expect(r.parTick).not.toBeNull();
+    const live = createWorld(farm(11), { goal });
+    const rr = replayWithGoal(live, d.log, toTick, goal, 500);
+    expect(live.brief?.deposited).toEqual(rr.deposited);
+    expect(createWorld(farm(11), { goal: { kind: 'wealth', budget: 3000 } }).brief?.deposited).toBeUndefined();
     const partial = replayWithGoal(createWorld(farm(11), { goal }), d.log.slice(0, 40), toTick, goal, 1);
     expect(partial.score).toBeGreaterThanOrEqual(0); expect(partial.score).toBeLessThanOrEqual(1000);
     expect(partial.score).toBe(Math.floor(Math.min(20, partial.deposited[1]!) * 1000 / 20));

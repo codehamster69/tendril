@@ -47,6 +47,8 @@ export interface Goal {
 }
 /** What a brief keeps on the world after creation (not hashed; only its effects are). Absent on every other world. */
 export interface BriefState {
+  /** Festival worlds: units deposited per item (length 8, index 1..7), counted as `replayWithGoal` does. */
+  deposited?: number[];
   goal?: Goal; maxBots?: number; maxPlots?: number; lockedUnlocks?: number; orderBoost?: number; poorSoil?: number; drySoil?: number;
 }
 export type LogEntry = [t: number, bot: number, op: number, a?: number, b?: number];

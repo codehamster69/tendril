@@ -70,6 +70,7 @@ function applyBriefSetup(w: World, setup: Setup): void {
   if (setup.orderBoost !== undefined) st.orderBoost = int(setup.orderBoost, 0, 1, 'orderBoost');
   if (setup.poorSoil !== undefined) st.poorSoil = int(setup.poorSoil, 0, 50, 'poorSoil');
   if (setup.drySoil !== undefined) st.drySoil = int(setup.drySoil, 0, 50, 'drySoil');
+  if (st.goal?.quotas) st.deposited = new Array<number>(ITEM_COUNT).fill(0);
   for (const k of Object.keys(st) as (keyof BriefState)[]) if (!st[k]) delete st[k]; // zero means off
   if (Object.keys(st).length) w.brief = st;
   addPlot(w, 0, 0);
@@ -365,6 +366,7 @@ export function applyAction(w: World, e: LogEntry): number {
       if (store) {
         for (let k = 1; k < COMPOST; k++) {
           const n = bot.load[k]!; w.stock[k] = w.stock[k]! + n; res += n; bot.load[k] = 0;
+          if (w.brief?.deposited) w.brief.deposited[k] = w.brief.deposited[k]! + n;
         }
       }
       break;
