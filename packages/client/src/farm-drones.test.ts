@@ -4,10 +4,10 @@ import { beamOp, droneColor, droneViewScale, easeFactor, fillRibbon, pushTrail, 
 import { fireflyOpacity, pointScale, wrapAround } from './farm-fx.ts';
 
 describe('drone helpers', () => {
-  it('cycles six colours', () => {
+  it('cycles eight colours', () => {
     assert.equal(droneColor(0), DRONE_COLORS[0]);
-    assert.equal(droneColor(6), droneColor(0));
-    assert.equal(droneColor(-1), DRONE_COLORS[5]);
+    assert.equal(droneColor(8), droneColor(0));
+    assert.equal(droneColor(-1), DRONE_COLORS[7]);
   });
   it('maps ops to sparks and beams', () => {
     assert.equal(sparkColor(0), null);

@@ -1,8 +1,9 @@
 import './farm-hud.css';
 import type { LightPreset } from './farm-light';
 import { FarmMinimap, lodLabel } from './farm-minimap';
+import { mountDayDial, type DayDial } from './day-dial';
 
-export type Lens = 'none' | 'moisture' | 'nitrogen' | 'fatigue' | 'price';
+export type Lens = 'none' | 'moisture' | 'nitrogen' | 'fatigue' | 'growth' | 'price';
 export type ZoomMode = 'cursor' | 'center';
 
 export interface FarmHudApi {
@@ -16,10 +17,10 @@ export interface FarmHudApi {
 }
 
 const LIGHTS: { id: LightPreset; label: string }[] = [
-  { id: 'dawn', label: 'Dawn' }, { id: 'noon', label: 'Noon' }, { id: 'golden', label: 'Golden' }, { id: 'night', label: 'Night' },
+  { id: 'day', label: 'Day' }, { id: 'dawn', label: 'Dawn' }, { id: 'noon', label: 'Noon' }, { id: 'golden', label: 'Golden' }, { id: 'night', label: 'Night' },
 ];
 const LENSES: { id: Lens; label: string }[] = [
-  { id: 'none', label: 'Natural' }, { id: 'moisture', label: 'Moisture' }, { id: 'nitrogen', label: 'Nitrogen' }, { id: 'fatigue', label: 'Fatigue' }, { id: 'price', label: 'Price' },
+  { id: 'none', label: 'Natural' }, { id: 'moisture', label: 'Moisture' }, { id: 'nitrogen', label: 'Nitrogen' }, { id: 'fatigue', label: 'Fatigue' }, { id: 'growth', label: 'Growth' }, { id: 'price', label: 'Price' },
 ];
 const LIGHT_KEY = 'tendril.light';
 const ZOOM_KEY = 'tendril.zoomMode';
@@ -46,6 +47,7 @@ const isTyping = (t: EventTarget | null): boolean => {
 
 export class FarmHud {
   readonly minimap: FarmMinimap;
+  readonly dial: DayDial;
   readonly root: HTMLElement;
   private followBtn: HTMLButtonElement;
   private lightBox!: HTMLDetailsElement;
@@ -122,10 +124,11 @@ export class FarmHud {
     for (const d of [this.lightBox, this.moreBox]) d.addEventListener('toggle', () => { if (d.open) for (const o of [this.lightBox, this.moreBox]) if (o !== d) o.open = false; });
 
     this.minimap = new FarmMinimap(stage);
+    this.dial = mountDayDial(stage);
     this.minimap.onJump = (x, z) => api.jumpTo(x, z);
 
     const savedLight = load(LIGHT_KEY);
-    const initial = LIGHTS.some((l) => l.id === savedLight) ? (savedLight as LightPreset) : 'golden';
+    const initial = LIGHTS.some((l) => l.id === savedLight) ? (savedLight as LightPreset) : 'day';
     this.markLight(initial);
     api.setLight(initial);
     const savedZoom = load(ZOOM_KEY) === 'center' ? 'center' : 'cursor';
@@ -181,6 +184,7 @@ export class FarmHud {
     document.removeEventListener('pointerdown', this.onOutside, true);
     window.clearTimeout(this.badgeTimer);
     this.minimap.dispose();
+    this.dial.dispose();
     this.root.remove();
   }
 }

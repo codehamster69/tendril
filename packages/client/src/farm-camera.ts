@@ -14,6 +14,8 @@ import type { Bounds } from './farm-scenery';
 export interface CameraPose { tx: number; tz: number; yaw: number; pitch: number; dist: number }
 
 export const MIN_DIST = 3;
+/** How long the frame takes to slide when the slate opens, closes or is resized. */
+export const INSET_MS = 250;
 export const MIN_PITCH = 0.5;   // about 29 degrees
 export const MAX_PITCH = 1.3;   // about 75 degrees
 const DEFAULT_TARGET = { x: 3.5, z: 3.5 };
@@ -57,6 +59,16 @@ export function groundPoint(cam: THREE.Camera, ndcX: number, ndcY: number, out =
   return out.set(o.x + (out.x - o.x) * k, 0, o.z + (out.z - o.z) * k);
 }
 
+/**
+ * Shift the projection so the frame is centred in the canvas left of an `insetPx` panel on the right (the code slate).
+ * Shifting by half the inset leaves the rightmost half-inset empty; the panel covers it.
+ * Ray casts, projections and pointer maps all use the projection, so they stay consistent.
+ */
+export function applyInset(cam: THREE.PerspectiveCamera, insetPx: number, w: number, h: number): void {
+  if (insetPx > 0) cam.setViewOffset(w, h, insetPx / 2, 0, w, h);
+  else if (cam.view?.enabled) cam.clearViewOffset();
+}
+
 /** Exponential easing factor, `1 - exp(-dt * rate)`. Reduced motion snaps. */
 export const easeFactor = (dt: number, rate = 11, reduced = false): number => (reduced ? 1 : 1 - Math.exp(-Math.max(0, dt) * rate));
 
@@ -94,7 +106,14 @@ export class FarmCamera {
   zoomMode: 'cursor' | 'center' = 'cursor';
   autoTilt = true;
   onChange?: () => void;
+  /** Called with onChange after every move that changes the view, so a draw-on-demand renderer can wake up. */
+  requestRender?: () => void;
   readonly target = new THREE.Vector3(DEFAULT_TARGET.x, 0, DEFAULT_TARGET.z);
+  /** Slate width in px (plus its margin) on the right. `insetNow` is shown; it tweens to `insetTo` over INSET_MS. */
+  private insetNow = 0;
+  private insetFrom = 0;
+  private insetTo = 0;
+  private insetT = 1;
 
   private cur: CameraPose = defaultPose();
   private des: CameraPose = defaultPose();
@@ -136,6 +155,7 @@ export class FarmCamera {
     dom.addEventListener('pointermove', this.onMove);
     dom.addEventListener('pointerup', this.onUp);
     dom.addEventListener('pointercancel', this.onUp);
+    dom.addEventListener('dblclick', this.onDbl);
     this.win?.addEventListener('keydown', this.onKeyDown);
     this.win?.addEventListener('keyup', this.onKeyUp);
     this.win?.addEventListener('blur', this.onBlur);
@@ -150,9 +170,12 @@ export class FarmCamera {
   setBounds(b: Bounds | null): void {
     const same = b && this.bounds && b.x0 === this.bounds.x0 && b.x1 === this.bounds.x1 && b.z0 === this.bounds.z0 && b.z1 === this.bounds.z1;
     if (same || (!b && !this.bounds)) return;
-    const first = this.bounds === null;
+    const prev = this.bounds;
+    const first = prev === null;
+    const grew = !!b && !!prev && (b.x0 < prev.x0 || b.x1 > prev.x1 || b.z0 < prev.z0 || b.z1 > prev.z1);
     this.bounds = b ? { ...b } : null;
-    if (this.framed && b) { this.fit(first); return; }   // land grew while the view was auto-framed: re-frame
+    // Land grew (a plot was bought): re-frame, even if the player moved the camera, unless a drone is being followed.
+    if (b && (this.framed || (grew && !this.source))) { this.fit(first); return; }
     this.clampTarget(this.des); this.clampTarget(this.cur);
     this.des.dist = clamp(this.des.dist, MIN_DIST, this.maxDist());
     this.cur.dist = clamp(this.cur.dist, MIN_DIST, this.maxDist());
@@ -161,10 +184,37 @@ export class FarmCamera {
 
   autoFramed(): boolean { return this.framed; }
 
+  /** Slate width in px (its margin included) that covers the right of the canvas; 0 when hidden. The frame moves into the rest. */
+  setInset(px: number, snap = false): void {
+    const to = Math.max(0, px);
+    if (to === this.insetTo) return;
+    this.insetFrom = this.insetNow; this.insetTo = to; this.insetT = 0;
+    if (snap || this.reducedMotion()) { this.insetNow = to; this.insetT = 1; }
+    if (this.framed) this.fit(false);   // re-frame the farm in the new free area
+    else this.place(true);
+  }
+
+  /** Glide the target over a ground point and keep the distance (double-click, the splash, the result screen). */
+  flyTo(target: { x: number; z: number }, o: { dist?: number } = {}): void {
+    this.focus(target.x, target.z, o);
+  }
+
+  /** Opening shot: start high and far, then ease down into the framed farm. Reduced motion lands at once. */
+  introGlide(): void {
+    this.fit(false);
+    if (!this.reducedMotion()) {
+      this.cur.dist = Math.min(this.maxDist(), this.des.dist * 1.8);
+      this.cur.pitch = clamp(this.des.pitch + 0.3, MIN_PITCH, MAX_PITCH);
+      this.cur.yaw = this.des.yaw - 0.4;
+    }
+    else Object.assign(this.cur, this.des);
+    this.place(true);
+  }
+
   fit(snap = false): void {
     this.source = null;
     this.panVel.x = this.panVel.z = 0;
-    const aspect = this.aspect();
+    const aspect = this.freeAspect();
     this.fittedAspect = aspect;
     this.tiltOffset = 0;
     if (!this.bounds) {
@@ -194,6 +244,9 @@ export class FarmCamera {
     this.source = source;
     if (source) { this.framed = false; this.panVel.x = this.panVel.z = 0; }
   }
+
+  /** Turn the view by an angle around the target at once (no easing); the sunset orbit calls it every frame. */
+  spin(radians: number): void { this.des.yaw += radians; this.cur.yaw += radians; }
 
   rotate(steps: number): void {
     this.framed = false;
@@ -236,8 +289,14 @@ export class FarmCamera {
     dt = clamp(dt, 0, 0.1);
     const reduced = this.reducedMotion();
     // viewport changed while the whole farm was framed: keep it framed
-    const aspect = this.aspect();
+    const aspect = this.freeAspect();
     if (this.framed && !this.source && this.bounds && Math.abs(aspect - this.fittedAspect) > 1e-3) this.fit(false);
+    if (this.insetT < 1) {
+      this.insetT = Math.min(1, this.insetT + dt / (INSET_MS / 1000));
+      const s = this.insetT * this.insetT * (3 - 2 * this.insetT);   // smoothstep over INSET_MS
+      this.insetNow = this.insetFrom + (this.insetTo - this.insetFrom) * s;
+      this.place(true);
+    }
     if (this.source) {
       const p = this.source();
       if (p) {
@@ -270,6 +329,7 @@ export class FarmCamera {
     dom.removeEventListener('pointermove', this.onMove);
     dom.removeEventListener('pointerup', this.onUp);
     dom.removeEventListener('pointercancel', this.onUp);
+    dom.removeEventListener('dblclick', this.onDbl);
     this.win?.removeEventListener('keydown', this.onKeyDown);
     this.win?.removeEventListener('keyup', this.onKeyUp);
     this.win?.removeEventListener('blur', this.onBlur);
@@ -287,6 +347,8 @@ export class FarmCamera {
   }
   private scratchCam(): THREE.PerspectiveCamera {
     this.scratch.fov = this.camera.fov; this.scratch.aspect = this.aspect();
+    const { w, h } = this.canvasSize();
+    applyInset(this.scratch, this.insetNow, w, h);
     return this.scratch;
   }
   private extent(): number { return this.bounds ? Math.max(this.bounds.x1 - this.bounds.x0, this.bounds.z1 - this.bounds.z0) : 0; }
@@ -294,7 +356,16 @@ export class FarmCamera {
     const b = this.bounds;
     if (!b) return defaultPose().dist;
     const radius = Math.hypot(b.x1 - b.x0, b.z1 - b.z0) / 2 + 1.2;
-    return fitDistance(radius, this.camera.fov, this.aspect());
+    return fitDistance(radius, this.camera.fov, this.freeAspect());
+  }
+  private canvasSize(): { w: number; h: number } {
+    const r = this.dom.getBoundingClientRect();
+    return { w: r.width || 1, h: r.height || 1 };
+  }
+  /** Width-to-height ratio of the part of the canvas the slate leaves free; the farm is framed there. */
+  private freeAspect(): number {
+    const { w, h } = this.canvasSize();
+    return Math.max(0.2, (w - this.insetTo) / h);
   }
   private maxDist(): number { return this.bounds ? Math.max(30, this.fitDist() * 1.3) : DEFAULT_MAX_DIST; }
   private clampTarget(s: CameraPose): void {
@@ -307,7 +378,20 @@ export class FarmCamera {
     const r = this.dom.getBoundingClientRect();
     return [(x - r.left) / (r.width || 1) * 2 - 1, -((y - r.top) / (r.height || 1) * 2 - 1)];
   }
+  /** True while the shown pose is still easing toward the goal (or a slide, glide or key pan is under way). The farm
+   *  view keeps drawing while this holds, so a slow or skipped frame (dt 0 after a long gap) can never stop the loop
+   *  with the camera short of where it is going. */
+  get moving(): boolean {
+    if (this.disposed) return false;
+    const c = this.cur, d = this.des;
+    return this.insetT < 1 || this.keys.size > 0 || Math.abs(this.panVel.x) + Math.abs(this.panVel.z) > 0.01
+      || Math.abs(d.tx - c.tx) > 1e-3 || Math.abs(d.tz - c.tz) > 1e-3 || Math.abs(d.dist - c.dist) > 1e-3
+      || Math.abs(d.pitch - c.pitch) > 1e-4 || Math.abs(wrapAngle(d.yaw - c.yaw)) > 1e-4;
+  }
+
   private place(force: boolean): void {
+    const { w, h } = this.canvasSize();
+    applyInset(this.camera, this.insetNow, w, h);
     placeCamera(this.camera, this.cur, this.extent());
     this.target.set(this.cur.tx, 0, this.cur.tz);
     const k = this.lastEmit, p = this.camera.position, c = this.cur;
@@ -316,6 +400,7 @@ export class FarmCamera {
     if (!changed) return;
     k[0] = p.x; k[1] = p.y; k[2] = p.z; k[3] = c.tx; k[4] = c.tz; k[5] = c.yaw; k[6] = c.pitch;
     this.onChange?.();
+    this.requestRender?.();
   }
   private takeover(): void { this.source = null; this.framed = false; }
 
@@ -334,6 +419,14 @@ export class FarmCamera {
   }
 
   private onContext = (e: Event): void => e.preventDefault();
+
+  /** Double-click centres the view on the ground under the pointer (the tile is selected by the tap that comes with it). */
+  private onDbl = (e: MouseEvent): void => {
+    if (this.disposed) return;
+    const [nx, ny] = this.ndc(e.clientX, e.clientY);
+    const g = this.groundAt(nx, ny);
+    if (g) this.flyTo({ x: g.x, z: g.z });
+  };
 
   private onWheel = (e: WheelEvent): void => {
     e.preventDefault();

@@ -15,14 +15,7 @@
         <svg class="mark" viewBox="0 0 32 32" aria-hidden="true"><path d="M16 29c0-9 0-15 0-18" /><path d="M16 15c-6 0-10-4-10-10 6 0 10 4 10 10Z" /><path d="M16 12c0-5 3-8 9-8 0 5-3 8-9 8Z" /></svg>
         <h1>Tendril</h1>
       </a>
-      <nav id="mode-tabs" aria-label="Game mode">
-        <a data-mode="live" href="?mode=live">Endless</a>
-        <a data-mode="sandbox" href="?mode=sandbox">Sandbox</a>
-        <a data-mode="campaign" href="?mode=campaign">Campaign</a>
-        <a data-mode="daily" href="?mode=daily">Daily</a>
-        <a data-mode="season" href="?mode=challenge&amp;id=week">Season</a>
-        <button id="btn-join-duel" type="button" class="tab-button">Join duel</button>
-      </nav>
+      <button id="btn-join-duel" type="button" hidden>Join duel</button>
       <dl class="top-readouts">
         <div><dt>Tick</dt><dd id="hud-tick">0</dd></div>
         <div><dt>Coins</dt><dd id="hud-coins">0</dd></div>
@@ -50,11 +43,9 @@
         </div>
         <nav class="deck-tabs" role="tablist" aria-label="Farm instruments">
           <button role="tab" id="tab-farm" aria-controls="deck-farm" aria-selected="true" data-tab="farm">Farm</button>
-          <button role="tab" id="tab-research" aria-controls="deck-research" aria-selected="false" data-tab="research">Research</button>
           <button role="tab" id="tab-goals" aria-controls="deck-goals" aria-selected="false" data-tab="goals">Achievements</button>
         </nav>
         <div class="deck" id="deck-farm" role="tabpanel" aria-labelledby="tab-farm"></div>
-        <div class="deck" id="deck-research" role="tabpanel" aria-labelledby="tab-research" hidden></div>
         <div class="deck" id="deck-goals" role="tabpanel" aria-labelledby="tab-goals" hidden></div>
       </section>
       <section id="side" aria-labelledby="code-heading">

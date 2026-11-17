@@ -4,6 +4,8 @@ import * as THREE from 'three';
 
 const POOL = 500;
 const FIREFLIES = 160;
+const POPS = 48;
+const POP_LIFE = 0.22; // seconds; the whole pop stays under 250 ms
 const FIREFLY_HALF = 24; // fireflies live in a square of this half-width around the focus
 
 /** Wrap `v` into [centre - half, centre + half). Used to keep fireflies near the camera focus on an unbounded farm. */
@@ -20,6 +22,12 @@ export function pointScale(scale: number): number {
 /** Firefly opacity from the light rig's glow (0.2..1.5). */
 export function fireflyOpacity(glow: number): number {
   return Math.min(0.85, 0.12 + 0.45 * glow);
+}
+
+/** Pop animation at age `t` of 0..1: scale grows fast then settles, brightness fades out. */
+export function popCurve(t: number): { scale: number; fade: number } {
+  const u = Math.min(1, Math.max(0, t));
+  return { scale: 0.45 + 0.85 * (1 - (1 - u) * (1 - u)), fade: 1 - u * u };
 }
 
 export class FarmFx {
@@ -39,6 +47,18 @@ export class FarmFx {
   private flyReady = false;
   private tmp = new THREE.Color();
   private reduced = window.matchMedia('(prefers-reduced-motion: reduce)');
+  /** True while any sparkle is still flying (the farm view keeps drawing until they are gone). */
+  active = false;
+
+  private popMesh = new THREE.InstancedMesh(new THREE.RingGeometry(0.2, 0.3, 20).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }), POPS);
+  private popAge = new Float32Array(POPS).fill(-1);
+  private popX = new Float32Array(POPS);
+  private popZ = new Float32Array(POPS);
+  private popRgb = new Float32Array(POPS * 3);
+  private popHead = 0;
+  private popDirty = false;
+  private popObj = new THREE.Object3D();
+  private popTint = new THREE.Color();
 
   private scene: THREE.Scene;
 
@@ -55,13 +75,53 @@ export class FarmFx {
     fg.setAttribute('position', new THREE.BufferAttribute(this.flyPos, 3));
     this.fly = new THREE.Points(fg, new THREE.PointsMaterial({ size: 0.1, color: 0xffd68a, transparent: true, opacity: 0.5, blending: THREE.AdditiveBlending, depthWrite: false }));
     this.fly.frustumCulled = false;
-    scene.add(this.points, this.fly);
+    this.popMesh.count = 0;
+    this.popMesh.frustumCulled = false;
+    this.popMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    scene.add(this.points, this.fly, this.popMesh);
+  }
+
+  /** A short ring pop at a tile when something is planted or harvested. Skipped under reduced motion. */
+  pop(x: number, z: number, hex: number): void {
+    if (this.reduced.matches) return;
+    const i = this.popHead++ % POPS;
+    this.popAge[i] = 0; this.popX[i] = x; this.popZ[i] = z;
+    this.tmp.set(hex);
+    this.popRgb[i * 3] = this.tmp.r; this.popRgb[i * 3 + 1] = this.tmp.g; this.popRgb[i * 3 + 2] = this.tmp.b;
+    this.popDirty = true;
+  }
+
+  private updatePops(dt: number, scale: number): void {
+    let live = false;
+    for (let i = 0; i < POPS; i++) {
+      const age = this.popAge[i]!;
+      if (age < 0) continue;
+      live = true;
+      const next = age + dt;
+      const { scale: s, fade } = popCurve(next / POP_LIFE);
+      if (next >= POP_LIFE) { this.popAge[i] = -1; this.popObj.scale.setScalar(0); this.popTint.setRGB(0, 0, 0); } else {
+        this.popAge[i] = next;
+        this.popObj.scale.setScalar(s * Math.max(1, scale * 0.5));
+        this.popTint.setRGB(this.popRgb[i * 3]! * fade, this.popRgb[i * 3 + 1]! * fade, this.popRgb[i * 3 + 2]! * fade);
+      }
+      this.popObj.position.set(this.popX[i]!, 0.06, this.popZ[i]!);
+      this.popObj.updateMatrix();
+      this.popMesh.setMatrixAt(i, this.popObj.matrix);
+      this.popMesh.setColorAt(i, this.popTint);
+    }
+    if (live || this.popDirty) {
+      this.popDirty = false;
+      this.popMesh.count = live ? POPS : 0;
+      this.popMesh.instanceMatrix.needsUpdate = true;
+      if (this.popMesh.instanceColor) this.popMesh.instanceColor.needsUpdate = true;
+    }
   }
 
   /** A sparkle burst of up to `n` particles (default 8). Skipped under reduced motion. */
   burst(x: number, y: number, z: number, hex: number, n = 8): void {
     if (this.reduced.matches) return;
     this.tmp.set(hex);
+    this.active = true;
     for (let k = 0; k < n; k++) {
       const i = this.head++ % POOL;
       this.pos[i * 3] = x; this.pos[i * 3 + 1] = y; this.pos[i * 3 + 2] = z;
@@ -88,11 +148,13 @@ export class FarmFx {
       this.pos[i * 3 + 1]! += this.vel[i * 3 + 1]! * dt;
       this.pos[i * 3 + 2]! += this.vel[i * 3 + 2]! * dt;
     }
+    this.active = live;
     if (live) {
       (this.points.geometry.getAttribute('position') as THREE.BufferAttribute).needsUpdate = true;
       (this.points.geometry.getAttribute('color') as THREE.BufferAttribute).needsUpdate = true;
     }
     (this.points.material as THREE.PointsMaterial).size = 0.14 * pointScale(scale);
+    this.updatePops(dt, scale);
 
     if (!this.flyReady) {
       for (let i = 0; i < FIREFLIES; i++) {
@@ -120,7 +182,8 @@ export class FarmFx {
   }
 
   dispose(): void {
-    this.scene.remove(this.points, this.fly);
+    this.scene.remove(this.points, this.fly, this.popMesh);
+    this.popMesh.geometry.dispose(); (this.popMesh.material as THREE.Material).dispose(); this.popMesh.dispose();
     for (const o of [this.points, this.fly]) { o.geometry.dispose(); (o.material as THREE.Material).dispose(); }
   }
 }

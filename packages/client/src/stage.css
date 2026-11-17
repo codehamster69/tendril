@@ -11,7 +11,8 @@ body.game-stage { display: block; min-height: 0; height: 100vh; overflow: hidden
 .game-stage.slate-hidden .farm-caption { right: 14px; }
 .game-stage #toast-host { top: 62px; right: calc(var(--slate-w) + 40px); }
 .game-stage.slate-hidden #toast-host { right: 14px; }
-.game-stage #farm-minimap:not(.in-panel), .game-stage .farm-market:not(.in-panel) { display: none; }
+.game-stage .farm-market:not(.in-panel) { display: none; }
+.game-stage:not(.farm-large) #farm-minimap { display: none; }
 .game-stage #farm-minimap.in-panel { position: static; }
 .game-stage .farm-market.in-panel { position: static; width: 100%; }
 
@@ -70,7 +71,6 @@ body.resizing iframe, body.resizing canvas { pointer-events: none; }
 .menu-entry { flex-direction: column; align-items: flex-start; gap: 2px; border-radius: var(--hk-r-md); padding: .6rem .8rem; text-align: left; font-family: var(--hk-body); }
 .menu-entry b { font: 700 .95rem var(--hk-display); } .menu-entry small { color: var(--hk-dim); font: 400 .78rem var(--hk-body); }
 .menu-links .top-actions { display: flex; gap: var(--hk-s4); align-items: center; }
-.menu-card #mode-tabs { align-self: flex-start; flex-wrap: wrap; }
 .panel-body { display: flex; flex-direction: column; gap: var(--hk-s3); overflow: auto; }
 .panel-body .deck { height: auto; max-height: none; flex: none; padding: 0; }
 .panel-body #lesson-card:empty::before { content: "Nothing here for this mode yet. Lessons and daily results appear here."; color: var(--hk-dim); }
@@ -84,3 +84,15 @@ body.resizing iframe, body.resizing canvas { pointer-events: none; }
 }
 @media (prefers-reduced-motion: reduce) { .game-stage #side, .transport { transition: none; } }
 .panel-body #lesson-card, .panel-body #lesson-card.in-panel { max-height: none; overflow: visible; }
+
+/* First-run prompts (firstrun.ts): a floating card plus a lantern ring on the control it points at. */
+.fr-card { position: fixed; z-index: 60; display: grid; gap: var(--hk-s2); }
+.fr-card[hidden] { display: none; }
+.fr-card .fr-title { font: 700 1.05rem var(--hk-display); }
+.fr-card .fr-text { margin: 0; color: var(--hk-dim); font: 400 .9rem/1.4 var(--hk-body); }
+.fr-card .fr-step { color: var(--hk-dim); font: 600 .7rem var(--hk-mono); letter-spacing: .08em; text-transform: uppercase; }
+.fr-card .fr-actions { display: flex; gap: var(--hk-s2); justify-content: flex-end; }
+.fr-spot { outline: 2px solid var(--hk-lantern); outline-offset: 3px; animation: fr-pulse 1.6s ease-in-out infinite; }
+#farm-canvas.fr-spot { outline: none; animation: none; }
+@keyframes fr-pulse { 50% { outline-offset: 6px; } }
+@media (prefers-reduced-motion: reduce) { .fr-spot { animation: none; } }

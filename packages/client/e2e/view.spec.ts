@@ -1,5 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 import { readFileSync } from 'node:fs';
+import { ready, press } from './game.ts';
 import { build } from 'vite';
 import { fileURLToPath } from 'node:url';
 import { readFile } from 'node:fs/promises';
@@ -390,8 +391,8 @@ const expander = readFileSync(new URL('../../lang/examples/expander.sprout', imp
 
 async function runExpander(page: Page): Promise<void> {
   await page.evaluate((source) => window.tendril!.editor.setSource(source), expander);
-  await page.selectOption('#speed', '64');
-  await page.click('#btn-run');
+  await page.locator('#speed').evaluate((el: HTMLSelectElement) => { el.value = '64'; el.dispatchEvent(new Event('change', { bubbles: true })); });
+  await press(page, '#btn-run');
 }
 const plotCount = (page: Page) => page.evaluate(() => window.tendril!.loop.snapshot()?.plots.length ?? 0);
 
@@ -399,6 +400,7 @@ test('camera re-frames every owned plot after land is bought', async ({ page }) 
   test.setTimeout(120_000);
   await page.setViewportSize({ width: 1400, height: 900 });
   await page.goto('/?mode=sandbox');
+  await ready(page);
   await expect(page.locator('#status')).toHaveAttribute('data-state', 'paused');
   await runExpander(page);
   await expect.poll(() => plotCount(page), { timeout: 90_000, intervals: [250] }).toBeGreaterThanOrEqual(2);
@@ -427,10 +429,11 @@ test('camera re-frames every owned plot after land is bought', async ({ page }) 
   await expect(canvas).toHaveAttribute('data-scene-ready', 'true');
 });
 
-test('camera stays put after a manual drag when more land is bought', async ({ page }) => {
+test('camera re-frames after a manual drag when more land is bought (brain U12: a plot purchase re-frames, unless a drone is followed)', async ({ page }) => {
   test.setTimeout(120_000);
   await page.setViewportSize({ width: 1400, height: 900 });
   await page.goto('/?mode=sandbox');
+  await ready(page);
   await expect(page.locator('#status')).toHaveAttribute('data-state', 'paused');
   const canvas = page.locator('#farm-canvas');
   await expect(canvas).toHaveAttribute('data-scene-ready', 'true');
@@ -450,9 +453,9 @@ test('camera stays put after a manual drag when more land is bought', async ({ p
   await runExpander(page);
   await expect.poll(() => plotCount(page), { timeout: 90_000, intervals: [250] }).toBeGreaterThanOrEqual(2);
   await page.waitForTimeout(1500); // longer than the 600 ms ease
-  // Damping may still creep by a hair; an automatic re-frame would move the camera by several tiles.
+  // Bought land re-frames the farm even after a manual drag, so the camera moves by several tiles, then settles.
   const a = JSON.parse(dragged!) as number[], b = JSON.parse((await canvas.getAttribute('data-camera-position'))!) as number[];
-  expect(Math.hypot(...a.map((v, i) => v - b[i]!))).toBeLessThan(0.1);
+  expect(Math.hypot(...a.map((v, i) => v - b[i]!))).toBeGreaterThan(1);
 });
 
 test('keyboard: the farm takes focus and arrow keys walk the tile selection', async ({ page }) => {

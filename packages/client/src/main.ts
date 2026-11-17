@@ -1,32 +1,41 @@
+import { boot } from './boot';
 import './style.css';
 import { createEditor, EXAMPLES } from './editor';
 import { FarmView } from './farm-view';
 import { GameLoop } from './game-loop';
 import { RealSim } from './real-sim';
 import { mountReference } from './reference';
-import { mountInspectors } from './inspectors';
+import { mountIslandHud } from './island-hud';
 import { mountDebugger } from './debugger';
 import { mountConsole } from './console-panel';
 import { mountControls } from './ui';
 import { mountStage } from './stage';
+import { initSettings } from './settings';
+import { challengeCardInfo, mountStartCard } from './start-card';
 import { mountAccount, connectRanked } from './account';
 import { mountNotice } from './notice';
 import { mountUpdates } from './updates';
 import { isFirstRun, mountFirstRun } from './firstrun';
 import { mountProgression, selectedLesson } from './progression';
+import { mountCatalogue } from './catalogue-view';
 import { mountRating } from './rating';
+import { mountResultScreen } from './result-screen';
 import { challengeScenario, loadChallenge, marketOpensIn, mountArena } from './arena';
 import { FarmApi, signedInHint, wireSiteLinks } from './api-client';
 import { mountJoinDuel } from './join-duel';
 import { mountAutoSync } from './autosync';
+import { mountSound } from './sound';
 import { el } from './palette';
 import { mountPerfMeter } from './perf-meter';
+import { mountWorldFeedback } from './world-feedback';
 import { stressConfig, stressParam } from './stress-farm';
 import type { Mode } from './clock';
 import type { Scenario } from './sim-protocol';
 
+initSettings();
 wireSiteLinks();
 mountJoinDuel();
+mountSound();
 const query = new URLSearchParams(location.search);
 const requested = query.get('mode');
 // ?mode=challenge&id=<challenge id> plays any challenge; it shares the daily sim mode.
@@ -41,9 +50,6 @@ const api = new FarmApi();
 const lesson = selectedLesson();
 const challenge = mode === 'daily' ? await loadChallenge(api, query) : null;
 const isSeason = challenge?.kind === 'season';
-for (const tab of document.querySelectorAll<HTMLAnchorElement>('#mode-tabs a')) {
-  if (tab.dataset.mode === (isSeason ? 'season' : mode)) tab.setAttribute('aria-current', 'page');
-}
 const suffix = stress ? `.stress.${stress.name}` : mode === 'campaign' ? `.${lesson.id}` : challenge ? `.${challenge.id}` : '';
 const scenario: Scenario = stress ? stress.scenario : { kind: mode, ...(mode === 'campaign' ? { features: lesson.features, setup: lesson.setup, tickLimit: lesson.tickLimit } : challenge ? challengeScenario(challenge) : {}) };
 const sim = new RealSim(mode, {
@@ -55,24 +61,30 @@ document.getElementById('mode-label')!.textContent = stress ? `Stress farm · ${
 document.getElementById('mode-note')!.textContent = mode === 'live' ? (sim.ranked ? '10 ticks per second · syncs to the server as it runs' : '10 ticks per second · local and unverified until connected') : mode === 'sandbox' ? 'Experiment freely · separate from your live farm' : mode === 'daily' ? `The same seed for everyone · ${challenge?.ticks.toLocaleString('en-US') ?? '3,000'} ticks` : 'Learn one recipe at a time';
 const loop = new GameLoop(sim);
 const firstRun = !stress && await isFirstRun(mode, sim.ranked, query, sim.prefix);
+boot.done('save');
 const editor = createEditor(document.getElementById('editor')!, `tendril.sprout.v1.${mode}${suffix}`, stress ? stress.source : mode === 'campaign' ? lesson.starter : mode === 'daily' ? EXAMPLES.daily!.source : firstRun ? '' : undefined);
 const view = new FarmView(document.getElementById('farm-canvas') as HTMLCanvasElement);
+view.setDay({ runTicks: scenario.tickLimit ?? null, seed: () => sim.meta.seed, weatherBias: scenario.setup?.weatherBias });
 const perf = mountPerfMeter({ renderInfo: () => view.renderInfo(), canvas: document.getElementById('farm-canvas') as HTMLCanvasElement }, query);
 
 mountControls({ loop, editor });
 mountConsole(editor);
 mountDebugger();
 mountReference((code) => editor.setSource(editor.getSource() + '\n' + code + '\n'));
-mountInspectors(view, () => sim.meta.seed);
+mountIslandHud(view, () => sim.meta.seed, () => scenario.tickLimit ?? null);
 if (challenge) view.setMarket(challenge.market ?? null, { opensInDays: marketOpensIn(challenge) });
 mountProgression({ loop, editor, view, api });
-if (firstRun) mountFirstRun({ editor, host: document.getElementById('lesson-card')! });
+if (firstRun) mountFirstRun({ editor });
 if (challenge) mountArena({ loop, api, challenge });
+if (challenge) mountResultScreen({ loop, api, challenge, view });
 mountNotice({ live: mode === 'live', verified: sim.ranked });
 mountUpdates();
 mountRating(api);
 mountAccount(api, sim);
-mountStage({ loop, editor }); // last: it moves panels that the mounts above create
+mountStage({ loop, editor, api, current: isSeason ? 'season' : mode, ranked: sim.ranked }); // last: it moves panels that the mounts above create
+mountStartCard({ loop, skip: !!stress || firstRun, info: challenge ? challengeCardInfo(challenge) : mode === 'campaign' ? { eyebrow: `Lesson · ${lesson.title}`, goal: lesson.goal, par: null, ticks: lesson.tickLimit } : null });
+mountCatalogue({ editor }); // after the stage: it badges the menu button and entry
+mountWorldFeedback({ view, editor });
 if (sim.ranked) mountAutoSync(api, sim, document.getElementById('mode-note'));
 window.addEventListener('tendril:snapshot', (event) => view.update((event as CustomEvent).detail));
 
@@ -98,5 +110,5 @@ window.addEventListener('pagehide', () => { loop.dispose(); view.dispose(); sim.
 window.addEventListener('pageshow', (e) => { if (e.persisted) location.reload(); });
 void loop.setBreakpoints(editor.breakpoints());
 // ?stress=1 | small: a fixed, local-only farm (its own sandbox keyspace, never synced). Rebuilt from the same seed on every load.
-if (stress) void loop.init(scenario, stress.source).then(() => loop.startScenario({ ...stress.scenario, seed: stress.seed, source: stress.source })).then(() => loop.step(stress.warmupTicks)).then(() => loop.run()).catch(() => {});
-else void loop.init(scenario, editor.getSource()).catch(() => {});
+if (stress) void loop.init(scenario, stress.source).then(() => { boot.done('worker'); }).then(() => loop.startScenario({ ...stress.scenario, seed: stress.seed, source: stress.source })).then(() => loop.step(stress.warmupTicks)).then(() => loop.run()).catch(() => {});
+else void loop.init(scenario, editor.getSource()).then(() => boot.done('worker')).catch(() => boot.release());

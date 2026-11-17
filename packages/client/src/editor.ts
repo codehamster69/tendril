@@ -1,3 +1,4 @@
+import { boot } from './boot';
 import { EditorState, RangeSetBuilder, StateEffect, StateField, Prec, type Extension } from '@codemirror/state';
 import {
   EditorView, Decoration, GutterMarker, gutter, lineNumbers, keymap, drawSelection, highlightActiveLine, highlightActiveLineGutter,
@@ -20,6 +21,7 @@ import orchard from '../../lang/examples/orchard.sprout?raw';
 import compost from '../../lang/examples/compost.sprout?raw';
 import orders from '../../lang/examples/orders.sprout?raw';
 import daily from '../../lang/examples/daily.sprout?raw';
+import { BOT_PALETTE, botColour } from './bot-colours';
 
 export const EXAMPLES: Record<string, { title: string; source: string }> = {
   starter: { title: 'Carrot snake · starter', source: starter },
@@ -30,7 +32,7 @@ export const EXAMPLES: Record<string, { title: string; source: string }> = {
   daily: { title: 'Daily challenge strategy', source: daily },
 };
 export const DEFAULT_SCRIPT = starter;
-export const BOT_COLORS = ['#D5B65B', '#D97742', '#8EA98B', '#7FB7D9', '#C792EA', '#F28FAD', '#A6E3A1', '#F9E2AF'];
+export const BOT_COLORS: readonly string[] = BOT_PALETTE;
 
 let allowedFeatures: ReadonlySet<string> | null = null;
 
@@ -135,9 +137,9 @@ const hover = hoverTooltip((view, pos) => {
   return { pos: w.from, end: w.to, above: true, create: () => ({ dom: docNode(e.signature, e.ticks, e.doc, e.example) }) };
 }, { hoverTime: 250 });
 
-/** Colour used when the caller supplies none; a later task gives each bot its own. */
+/** Colour used when the caller supplies none: the bot's own colour, the same one its drone ring wears. */
 export type BotColorFn = (bot: number) => string;
-const defaultBotColor: BotColorFn = (bot) => BOT_COLORS[bot % BOT_COLORS.length]!;
+const defaultBotColor: BotColorFn = botColour;
 
 export interface Editor {
   getSource(): string;
@@ -150,7 +152,12 @@ export interface Editor {
   showBotLines(debug: BotDebug[], paused?: { bot: number; line: number } | null, colorOf?: BotColorFn): void;
   showHeat(heat: [number, number][]): void;
   setFeatures(features: ReadonlySet<string> | null): void;
-  revealLine(line: number): void;
+  /** Move the cursor to a line and scroll it into view. `focus: false` leaves keyboard focus where it was. */
+  revealLine(line: number, opts?: { focus?: boolean }): void;
+  /** Highlight one bot's running line more strongly (null clears it). Re-applies the last marks at once. */
+  setSelectedBot(bot: number | null): void;
+  /** Called with the bot id when a running-line mark in the gutter is clicked. */
+  onBotMarkClick(cb: (bot: number) => void): void;
   onRun(cb: () => void): void;
   onChange(cb: () => void): void;
   onStepLine(cb: () => void): void;
@@ -187,7 +194,7 @@ class BarMarker extends GutterMarker {
   }
 }
 
-type MarkSpec = { line: number; cls: string; color: string; tip: string; paused?: boolean };
+type MarkSpec = { line: number; cls: string; color: string; tip: string; paused?: boolean; bot?: number; selected?: boolean };
 const setBotMarks = StateEffect.define<MarkSpec[]>();
 const setHeatMarks = StateEffect.define<MarkSpec[]>();
 
@@ -205,17 +212,27 @@ const botLineDecorations = EditorView.decorations.compute([botMarks], (state): D
   const marks = [...state.field(botMarks)].filter((m) => m.line <= state.doc.lines).sort((x, y) => x.line - y.line);
   for (const m of marks) {
     const at = state.doc.line(m.line).from;
-    b.add(at, at, Decoration.line({ class: m.paused ? 'cm-bot-line cm-bot-paused' : 'cm-bot-line', attributes: { style: `--mark:${m.color}` } }));
+    b.add(at, at, Decoration.line({ class: `cm-bot-line${m.paused ? ' cm-bot-paused' : ''}${m.selected ? ' cm-bot-selected' : ''}`, attributes: { style: `--mark:${m.color}` } }));
   }
   return b.finish();
 });
 
+const markClick = new WeakMap<EditorView, (bot: number) => void>();
 const markGutter = gutter({
   class: 'cm-mark-gutter',
+  domEventHandlers: {
+    mousedown(view, line) {
+      const n = view.state.doc.lineAt(line.from).number;
+      const m = view.state.field(botMarks).filter((x) => x.line === n && x.bot !== undefined);
+      if (!m.length) return false;
+      markClick.get(view)?.((m.find((x) => x.selected) ?? m[m.length - 1]!).bot!);
+      return true;
+    },
+  },
   lineMarker(view, line) {
     const n = view.state.doc.lineAt(line.from).number;
     const bots = view.state.field(botMarks).filter((m) => m.line === n);
-    if (bots.length) { const m = bots[bots.length - 1]!; return new BarMarker('cm-bot-marker', m.color, m.tip); }
+    if (bots.length) { const m = bots.find((x) => x.selected) ?? bots[bots.length - 1]!; return new BarMarker(m.selected ? 'cm-bot-marker cm-bot-marker-selected' : 'cm-bot-marker', m.color, m.tip); }
     const heat = view.state.field(heatMarks).find((m) => m.line === n);
     return heat ? new BarMarker(heat.cls, heat.color, heat.tip) : null;
   },
@@ -240,7 +257,10 @@ const theme = EditorView.theme({
   '.cm-mark-gutter': { width: '14px' },
   '.cm-bot-marker': { display: 'block', width: '4px', height: '21px', marginLeft: '3px', borderRadius: '2px', background: 'var(--mark)' },
   '.cm-heat': { display: 'block', width: '3px', height: '21px', marginLeft: '9px', borderRadius: '2px', background: 'var(--mark)' },
-  '.cm-bot-line': { background: 'rgba(255,198,90,.07)' },
+  '.cm-bot-line': { background: 'color-mix(in srgb, var(--mark) 9%, transparent)' },
+  '.cm-bot-line.cm-bot-selected': { background: 'color-mix(in srgb, var(--mark) 24%, transparent)', boxShadow: 'inset 3px 0 0 var(--mark)' },
+  '.cm-bot-marker-selected': { width: '6px', marginLeft: '2px' },
+  '.cm-mark-gutter .cm-bot-marker': { cursor: 'pointer' },
   '.cm-bot-line.cm-bot-paused': { background: 'rgba(255,198,90,.22)' },
   '.cm-matchingBracket': { backgroundColor: 'rgba(255,198,90,.2)', outline: '1px solid rgba(255,198,90,.45)' },
   '.cm-selectionMatch': { backgroundColor: 'rgba(127,217,230,.18)' },
@@ -271,6 +291,15 @@ export function createEditor(container: HTMLElement, storageKey: string, fallbac
   let bps = new Set<number>(loadBreakpoints(storageKey + '.bp'));
   const bpListeners: ((lines: number[]) => void)[] = [];
   const changeCbs: (() => void)[] = [];
+  let selectedBot: number | null = null;
+  let lastLines: { debug: BotDebug[]; paused: { bot: number; line: number } | null; colorOf: BotColorFn } = { debug: [], paused: null, colorOf: defaultBotColor };
+  const applyBotMarks = (): void => {
+    const { debug, paused, colorOf } = lastLines;
+    const marks: MarkSpec[] = debug.filter((d) => d.line !== null && d.status !== 'done').map((d) => ({
+      line: clampLine(d.line ?? 1), cls: 'cm-bot-marker', color: colorOf(d.bot), tip: `Bot ${d.bot} · ${d.status}`, paused: paused?.bot === d.bot, bot: d.bot, selected: selectedBot === d.bot,
+    }));
+    view.dispatch({ effects: setBotMarks.of(marks) });
+  };
   let runCb: (() => void) | null = null;
   let stepCb: (() => void) | null = null;
 
@@ -336,6 +365,7 @@ export function createEditor(container: HTMLElement, storageKey: string, fallbac
     }),
   ];
   const view = new EditorView({ parent: container, state: EditorState.create({ doc: load(), extensions }) });
+  boot.done('editor');
   renderBps();
 
   const clampLine = (l: number | undefined): number => Math.min(Math.max(1, l || 1), lineCount());
@@ -374,10 +404,8 @@ export function createEditor(container: HTMLElement, storageKey: string, fallbac
     setBreakpoints(lines) { bps = new Set(lines); renderBps(); },
     onBreakpointsChange(cb) { bpListeners.push(cb); },
     showBotLines(debug, paused, colorOf = defaultBotColor) {
-      const marks: MarkSpec[] = debug.filter((d) => d.line !== null && d.status !== 'done').map((d) => ({
-        line: clampLine(d.line ?? 1), cls: 'cm-bot-marker', color: colorOf(d.bot), tip: `Bot ${d.bot} · ${d.status}`, paused: paused?.bot === d.bot,
-      }));
-      view.dispatch({ effects: setBotMarks.of(marks) });
+      lastLines = { debug, paused: paused ?? null, colorOf };
+      applyBotMarks();
       if (paused) {
         const pos = view.state.doc.line(clampLine(paused.line)).from;
         if (!view.visibleRanges.some((r) => pos >= r.from && pos <= r.to)) view.dispatch({ effects: EditorView.scrollIntoView(pos, { y: 'center' }) });
@@ -391,13 +419,15 @@ export function createEditor(container: HTMLElement, storageKey: string, fallbac
       view.dispatch({ effects: setHeatMarks.of(marks) });
     },
     setFeatures(f) { allowedFeatures = f; },
-    revealLine(line) {
+    revealLine(line, opts) {
       const pos = view.state.doc.line(clampLine(line)).from;
       view.dispatch({ selection: { anchor: pos }, effects: EditorView.scrollIntoView(pos, { y: 'center' }) });
-      view.focus();
+      if (opts?.focus !== false) view.focus();
     },
     onRun(cb) { runCb = cb; },
     onChange(cb) { changeCbs.push(cb); },
     onStepLine(cb) { stepCb = cb; },
+    setSelectedBot(bot) { selectedBot = bot; applyBotMarks(); },
+    onBotMarkClick(cb) { markClick.set(view, cb); },
   };
 }

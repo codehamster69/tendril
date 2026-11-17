@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { ready } from './game.ts';
 
 // The farm camera, Home button, price lens and minimap in the real app (sandbox, paused farm).
 
@@ -9,12 +10,17 @@ const pose = (page: Page) => page.locator('#farm-canvas').evaluate((c) => c.data
 async function settled(page: Page): Promise<void> {
   // Software-rendered frames can be slow, so require three equal readings in a row, not one.
   let last = '', same = 0;
-  await expect.poll(async () => { const now = await pose(page); same = now === last ? same + 1 : 0; last = now; return same; }, { intervals: [350], timeout: 20_000 }).toBeGreaterThanOrEqual(3);
+  // The pose alone misses the frame sliding beside the code slate (that only moves the projection), so also wait for the rig.
+  await expect.poll(async () => {
+    const now = await pose(page); const moving = await page.evaluate(() => window.tendril!.view.cameraMoving);
+    same = now === last && !moving ? same + 1 : 0; last = now; return same;
+  }, { intervals: [350], timeout: 20_000 }).toBeGreaterThanOrEqual(3);
 }
 
 async function open(page: Page): Promise<void> {
   await page.setViewportSize({ width: 1400, height: 900 });
   await page.goto('/?mode=sandbox');
+  await ready(page);
   await expect(page.locator('#farm-canvas')).toHaveAttribute('data-scene-ready', 'true');
   await settled(page);
 }
@@ -25,7 +31,7 @@ test('wheel zoom keeps the ground point under the cursor', async ({ page }) => {
   test.setTimeout(90_000); // software-rendered frames are slow
   await open(page);
   const box = (await page.locator('#farm-canvas').boundingBox())!;
-  const ndc: [number, number] = [0.35, -0.15];
+  const ndc: [number, number] = [-0.35, -0.15]; // left of the code slate, whose grip sits over the right side;
   const px = box.x + (ndc[0] + 1) / 2 * box.width, py = box.y + (1 - ndc[1]) / 2 * box.height;
   const before = (await ground(page, ...ndc))!;
   expect(before).not.toBeNull();
@@ -35,12 +41,12 @@ test('wheel zoom keeps the ground point under the cursor', async ({ page }) => {
   await settled(page);
   const closer = await page.evaluate(() => JSON.parse(document.getElementById('farm-canvas')!.dataset.cameraPosition!) as number[]);
   expect(closer).not.toEqual(d0); // the camera really moved in
-  const after = (await ground(page, ...ndc))!;
-  expect(Math.hypot(after.x - before.x, after.z - before.z)).toBeLessThan(0.05);
+  // Poll: on a loaded software-GL machine a slow frame can pause the easing, so the settle check alone may read early.
+  const drift = async () => { const g = (await ground(page, ...ndc))!; return Math.hypot(g.x - before.x, g.z - before.z); };
+  await expect.poll(drift, { timeout: 15_000 }).toBeLessThan(0.05);
   await page.mouse.wheel(0, 300);
   await settled(page);
-  const out = (await ground(page, ...ndc))!;
-  expect(Math.hypot(out.x - before.x, out.z - before.z)).toBeLessThan(0.05);
+  await expect.poll(drift, { timeout: 15_000 }).toBeLessThan(0.05);
 });
 
 test('Home reframes the farm after the camera was moved', async ({ page }) => {
@@ -83,6 +89,8 @@ test('price lens is disabled without a market and enabled once one exists', asyn
 test('clicking the minimap moves the camera', async ({ page }) => {
   test.setTimeout(90_000); // software-rendered frames are slow
   await open(page);
+  // The minimap is a corner widget only on big farms (island-hud.ts); the sandbox starts small, so mark it large.
+  await page.evaluate(() => document.body.classList.add('farm-large'));
   const map = page.locator('#farm-minimap-canvas');
   await expect(map).toBeVisible();
   await page.waitForTimeout(400); // the minimap draws at 8 Hz; its frame must exist before the click maps to the world

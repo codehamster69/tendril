@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { ready, menu } from './game.ts';
 import { API } from '@tendril/lang/src/index.ts';
 
 for (const mode of ['sandbox', 'live']) {
@@ -6,8 +7,9 @@ for (const mode of ['sandbox', 'live']) {
     const errors: string[] = [];
     page.on('pageerror', (error) => errors.push(error.message));
     await page.goto(`/?mode=${mode}`);
+    await ready(page);
     await expect(page.locator('#farm-inspector')).toBeVisible();
-    await page.locator('#btn-reference').click();
+    await menu(page, 'reference');
     const reference = page.locator('#api-reference');
     await expect(reference).toBeVisible();
     await expect(reference.locator('.api-entry')).toHaveCount(API.length);

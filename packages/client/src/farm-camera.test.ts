@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
-import { FarmCamera, applyLocked, autoPitch, defaultPose, easeFactor, fitDistance, groundPoint, placeCamera, wrapAngle } from './farm-camera.ts';
+import { FarmCamera, INSET_MS, applyInset, applyLocked, autoPitch, defaultPose, easeFactor, fitDistance, groundPoint, placeCamera, wrapAngle } from './farm-camera.ts';
 
 type Handler = (e: unknown) => void;
 function fakeDom() {
@@ -179,5 +179,96 @@ describe('FarmCamera', () => {
     assert.ok(handlers.has('wheel'));
     fc.dispose();
     assert.equal(handlers.size, 0);
+  });
+});
+
+describe('slate inset, framing, flyTo and double-click', () => {
+  const island = { x0: 0, x1: 8, z0: 0, z1: 8 };
+  const W = 1000, H = 600;
+
+  it('applyInset moves the frame centre left by half the inset, and clears it at zero', () => {
+    const cam = new THREE.PerspectiveCamera(38, W / H);
+    placeCamera(cam, defaultPose());
+    const centre = new THREE.Vector3(3.5, 0, 3.5);
+    applyInset(cam, 400, W, H);
+    placeCamera(cam, defaultPose());
+    assert.ok(Math.abs(centre.clone().project(cam).x - -0.4) < 1e-6);
+    applyInset(cam, 0, W, H);
+    placeCamera(cam, defaultPose());
+    assert.ok(Math.abs(centre.clone().project(cam).x) < 1e-6);
+  });
+
+  it('with the slate open, the farm is re-framed in the narrower free area (farther away)', () => {
+    const { fc } = rig();
+    fc.setBounds(island);
+    settle(fc, 2);
+    const open = fc.distance;
+    fc.setInset(800, true);
+    settle(fc, 2);
+    assert.ok(fc.distance > open * 1.5, `expected a farther frame, got ${fc.distance} vs ${open}`);
+  });
+
+  it('the inset tweens over INSET_MS and lands exactly', () => {
+    const { cam, fc } = rig();
+    fc.setInset(400);
+    const frames = Math.round(INSET_MS / 1000 * 60);
+    for (let i = 0; i < frames / 2; i++) fc.update(1 / 60);
+    const mid = cam.view?.enabled ? cam.view.offsetX : 0;
+    assert.ok(mid > 0 && mid < 200, `mid-tween offset ${mid}`);
+    for (let i = 0; i < frames; i++) fc.update(1 / 60);
+    assert.ok(Math.abs((cam.view?.offsetX ?? 0) - 200) < 1e-6);
+  });
+
+  it('a new plot re-frames even after the player moved the camera', () => {
+    const { fc } = rig();
+    fc.setBounds(island);
+    settle(fc, 1);
+    fc.focus(30, 30, { snap: true });
+    assert.equal(fc.autoFramed(), false);
+    fc.setBounds({ x0: 0, x1: 10, z0: 0, z1: 8 });
+    assert.equal(fc.autoFramed(), true);
+  });
+
+  it('flyTo glides the target over the point and keeps the distance', () => {
+    const { fc } = rig();
+    settle(fc, 1);
+    const dist = fc.distance;
+    fc.flyTo({ x: 20, z: 5 });
+    settle(fc, 3);
+    assert.ok(Math.hypot(fc.target.x - 20, fc.target.z - 5) < 0.05);
+    assert.ok(Math.abs(fc.distance - dist) < 1e-3);
+  });
+
+  it('introGlide starts far out and eases down to the framed farm', () => {
+    const { fc } = rig();
+    fc.setBounds(island);
+    settle(fc, 2);
+    const settled = fc.distance;
+    fc.introGlide();
+    const start = fc.distance;
+    assert.ok(start > settled * 1.2);
+    fc.update(1 / 60);
+    assert.ok(fc.distance < start);
+    settle(fc, 3);
+    assert.ok(Math.abs(fc.distance - settled) < 0.05);
+  });
+
+  it('a double-click on the right half centres the view to the right of the old target', () => {
+    const { fc, handlers } = rig();
+    fc.setBounds(null);
+    settle(fc, 1);
+    const x0 = fc.target.x;
+    handlers.get('dblclick')!({ clientX: 750, clientY: 300 });
+    settle(fc, 3);
+    assert.ok(fc.target.x !== x0 || fc.target.z !== 3.5, 'target should move toward the double-click');
+  });
+
+  it('camera moves call requestRender as well as onChange', () => {
+    const { fc } = rig();
+    let renders = 0;
+    fc.requestRender = () => { renders++; };
+    fc.focus(10, 10);
+    settle(fc, 1);
+    assert.ok(renders > 0);
   });
 });
