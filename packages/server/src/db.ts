@@ -48,8 +48,8 @@ function queryable(client: Run): Queryable {
 
 /**
  * Thin wrapper over @libsql/client. Remote URLs (libsql:, https:) use real libSQL write transactions.
- * Local URLs (`:memory:`, `file:`) use one connection, so every operation is serialised through a
- * queue and transactions are explicit BEGIN IMMEDIATE ... COMMIT blocks on that connection.
+ * Local URLs (`:memory:`, `file:`) serialise every operation through a queue, so a transaction never
+ * waits on a connection another open transaction holds.
  * The client is created lazily and nothing connects until the first query.
  */
 export function createDb(options: DbOptions): Db {
@@ -71,7 +71,9 @@ export function createDb(options: DbOptions): Db {
       await (local ? exclusive(run) : run());
     },
     async transaction<T>(fn: (tx: Queryable) => Promise<T>): Promise<T> {
-      if (!local) {
+      // A libSQL transaction owns its connection; a BEGIN sent through execute() no longer survives,
+      // because @libsql/client pools local connections and rolls back any it gets back mid-transaction.
+      const run = async (): Promise<T> => {
         const tx = await get().transaction('write');
         try {
           const value = await fn(queryable(tx));
@@ -81,19 +83,8 @@ export function createDb(options: DbOptions): Db {
           try { await tx.rollback(); } catch { /* connection already gone */ }
           throw error;
         } finally { tx.close(); }
-      }
-      return exclusive(async () => {
-        const conn = get();
-        await conn.execute('BEGIN IMMEDIATE');
-        try {
-          const value = await fn(queryable(conn));
-          await conn.execute('COMMIT');
-          return value;
-        } catch (error) {
-          try { await conn.execute('ROLLBACK'); } catch { /* nothing to roll back */ }
-          throw error;
-        }
-      });
+      };
+      return local ? exclusive(run) : run();
     },
     close() { client?.close(); client = undefined; },
   };

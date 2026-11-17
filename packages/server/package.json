@@ -14,7 +14,7 @@
   "dependencies": {
     "@tendril/rating": "workspace:*",
     "@tendril/sim": "workspace:*",
-    "@libsql/client": "^0.15.0"
+    "@libsql/client": "^0.18.0"
   },
   "devDependencies": {
     "@types/node": "^22.20.5",

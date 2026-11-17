@@ -90,9 +90,10 @@ export class DayDial {
     const h = document.getElementById('game-hud')?.getBoundingClientRect();
     if (h && h.height > 0 && h.right + 8 > d.left && h.top < d.bottom && h.bottom > d.top) {
       // Right edge: the slate if it is open, else whatever sits top right (menu, Show code).
-      // The slate counts whatever its top: the moved dial can end up taller than the default one measured here.
+      // The open slate always bounds the room, whatever its top and even when the chips reach past its left edge
+      // (wide chip text): then there is no room and the dial drops below the chips instead of sitting on the slate.
       const lefts = ['side', 'game-hud-tr', 'slate-toggle'].map((id) => [id, document.getElementById(id)?.getBoundingClientRect()] as const)
-        .filter((e): e is readonly [string, DOMRect] => !!e[1] && e[1].width > 0 && (e[0] === 'side' || e[1].top < d.bottom) && e[1].left > h.right)
+        .filter((e): e is readonly [string, DOMRect] => !!e[1] && e[1].width > 0 && (e[0] === 'side' ? e[1].left < window.innerWidth : e[1].top < d.bottom && e[1].left > h.right))
         .map(([, r]) => r.left);
       const from = h.right + 16, to = Math.min(window.innerWidth, ...lefts) - 16, room = to - from;
       if (room >= 200) { const w = Math.min(300, room); st.width = `${w}px`; st.left = `${Math.round(from + w / 2)}px`; }
