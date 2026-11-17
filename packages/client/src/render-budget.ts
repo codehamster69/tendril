@@ -2,19 +2,8 @@
 // No DOM, no three.js, so it can be tested under node. farm-view.ts owns the wiring.
 
 export type Quality = 'auto' | 'low' | 'high';
-export const QUALITY_KEY = 'tendril.quality';
-/** Dispatched on `window` by the settings screen after it stores a new value. */
-export const QUALITY_EVENT = 'tendril:quality';
-
+// The player's choice lives in Settings (settings.ts, `quality` in tendril.settings.v1); farm-view.ts follows it.
 export const parseQuality = (value: unknown): Quality => (value === 'low' || value === 'high' ? value : 'auto');
-
-/** The stored graphics quality (menu setting, task U5). Missing, blocked or unknown storage means Auto. */
-export function readQuality(storage?: Pick<Storage, 'getItem'> | null): Quality {
-  try {
-    const s = storage === undefined ? (typeof localStorage === 'undefined' ? null : localStorage) : storage;
-    return parseQuality(s?.getItem(QUALITY_KEY));
-  } catch { return 'auto'; }
-}
 
 export const RATIO_FLOOR = 0.75;
 export const RATIO_STEP = 0.25;

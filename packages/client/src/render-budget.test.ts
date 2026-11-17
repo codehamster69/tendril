@@ -1,14 +1,11 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { DynamicScale, RenderGate, ShadowClock, parseQuality, qualityPlan, readQuality, QUALITY_KEY } from './render-budget.ts';
+import { DynamicScale, RenderGate, ShadowClock, parseQuality, qualityPlan } from './render-budget.ts';
 
 describe('quality', () => {
   it('reads the stored value and defaults to auto', () => {
     assert.equal(parseQuality('low'), 'low'); assert.equal(parseQuality('high'), 'high');
     assert.equal(parseQuality('ultra'), 'auto'); assert.equal(parseQuality(null), 'auto');
-    assert.equal(readQuality({ getItem: (k) => (k === QUALITY_KEY ? 'high' : null) }), 'high');
-    assert.equal(readQuality({ getItem: () => { throw new Error('blocked'); } }), 'auto');
-    assert.equal(readQuality(null), 'auto');
   });
   it('plans the pixel ratio, shadows and antialiasing', () => {
     assert.deepEqual(qualityPlan('low', 2), { maxRatio: 1, shadows: false, antialias: false });

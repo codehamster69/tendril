@@ -1,9 +1,11 @@
 import { boot } from './boot';
 import { FarmView } from './farm-view';
+import { initSettings } from './settings';
 import type { Snapshot } from '@tendril/sim/src/index.ts';
 import { DUEL_ID, RoomClock, drawMiniFarm, loadRoom, playerName, rankOrder } from './room';
 import type { RoomRun } from './room';
 
+initSettings();
 const $ = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T;
 boot.profile('lite');
 const params = new URLSearchParams(location.search);

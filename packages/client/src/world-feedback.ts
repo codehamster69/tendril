@@ -7,6 +7,7 @@ import type { Snapshot } from './sim-types';
 import { botColour } from './bot-colours';
 import { ITEM_COLORS, el } from './palette';
 import { BUBBLE_ICON, MAX_FLOATS, bubbleFor, floatCurve, itemGains, pickBubbles, planFloats, type BubbleKind, type FeedbackEvent, type FloatSpec } from './feedback-core';
+import { motionQuery } from './settings';
 
 const FLOAT_MS = 1100;
 const TIP_MS = 6000;
@@ -25,7 +26,7 @@ export function mountWorldFeedback(o: { view: FarmView; editor: Editor }): void 
   const { view, editor } = o;
   const stage = document.getElementById('farm-stage');
   if (!stage) return;
-  const reduced = window.matchMedia('(prefers-reduced-motion: reduce)');
+  const reduced = motionQuery;
   const layer = el('div', { class: 'wf-layer' });
   const tip = el('div', { class: 'wf-tip hk-card', role: 'status', hidden: '' });
   layer.append(tip);

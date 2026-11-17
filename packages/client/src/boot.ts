@@ -1,3 +1,5 @@
+import { motionQuery } from './settings';
+
 /**
  * Boot progress for the splash screen (markup and CSS are inlined in each page by vite-splash.mjs).
  * The bar shows real progress: every step has a weight and finishes when its module calls `boot.done(name)`.
@@ -35,7 +37,7 @@ let ready: () => void = () => {};
 const readyPromise = new Promise<void>((r) => { ready = r; });
 
 const splash = (): HTMLElement | null => document.getElementById('splash');
-const reduced = (): boolean => matchMedia('(prefers-reduced-motion: reduce)').matches;
+const reduced = (): boolean => motionQuery.matches;
 
 function render(): void {
   const s = splash();

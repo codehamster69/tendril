@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { skyStep } from './day-clock';
+import { motionQuery } from './settings.ts';
 
 /** 'day' follows the run: dawn at progress 0, noon, golden hour, dusk at 1 (see day-clock.ts). The others are fixed looks. */
 export type LightPreset = 'day' | 'dawn' | 'noon' | 'golden' | 'night';
@@ -90,7 +91,7 @@ export class FarmLight {
   private farm: { cx: number; cz: number; radius: number } | null = null;
   private skyDirty = true;
   private settled = false;
-  private reduced = typeof window !== 'undefined' && typeof window.matchMedia === 'function' ? window.matchMedia('(prefers-reduced-motion: reduce)') : null;
+  private reduced = motionQuery;
   private tmp = new THREE.Color();
   private disposed = false;
 

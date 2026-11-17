@@ -1,6 +1,7 @@
 // Game sound (U4). Every sound is made in code with Web Audio: short tones and filtered noise bursts.
 // No audio files and no dependency. Nothing is created or played until the first click or key press.
 import type { ViewEvent } from './sim-protocol';
+import { getSettings as getGameSettings, onSettings, updateSettings as updateGameSettings } from './settings.ts';
 
 export type SoundName = 'plant' | 'harvest' | 'sale' | 'error' | 'order' | 'run' | 'sunset' | 'click' | 'medal';
 export interface SoundSettings { volume: number; ambient: boolean; muted: boolean }
@@ -26,8 +27,12 @@ export function parseSettings(raw: string | null | undefined): SoundSettings {
   } catch { return { ...DEFAULTS }; }
 }
 
+// Muted and volume belong to the Settings screen (settings.ts, tendril.settings.v1); this key only keeps `ambient`.
 function loadSettings(): SoundSettings {
-  try { return parseSettings(globalThis.localStorage?.getItem(KEY)); } catch { return { ...DEFAULTS }; }
+  let own: SoundSettings;
+  try { own = parseSettings(globalThis.localStorage?.getItem(KEY)); } catch { own = { ...DEFAULTS }; }
+  const game = getGameSettings();
+  return { ...own, muted: game.muted, volume: game.volume };
 }
 let settings: SoundSettings = loadSettings();
 function saveSettings(): void {
@@ -140,8 +145,14 @@ function scheduleBird(): void {
   }, 3000 + Math.random() * 5000);
 }
 
+/** What the speakers are set to, for the e2e tests: whether audio has started and the master gain it is heading to. */
+function exposeDebug(): void {
+  document.documentElement.dataset.soundGain = audio ? String(settings.muted ? 0 : settings.volume) : '';
+}
+
 function applySettings(): void {
   if (!audio) return;
+  exposeDebug();
   const t = audio.ctx.currentTime;
   audio.master.gain.setTargetAtTime(settings.muted ? 0 : settings.volume, t, 0.03);
   audio.ambient.gain.setTargetAtTime(settings.ambient ? 1 : 0, t, 0.3);
@@ -161,6 +172,7 @@ function ensureAudio(): Audio | null {
     ambient.gain.value = settings.ambient ? 1 : 0;
     ambient.connect(master);
     audio = { ctx, master, ambient };
+    exposeDebug();
     startWind(ctx, ambient);
     scheduleBird();
     void ctx.resume().catch(() => {});
@@ -176,9 +188,9 @@ export function play(name: SoundName): void {
 }
 
 export function getSettings(): SoundSettings { return { ...settings }; }
-export function setVolume(volume: number): void { settings = { ...settings, volume: clamp01(volume) }; saveSettings(); applySettings(); }
+export function setVolume(volume: number): void { settings = { ...settings, volume: clamp01(volume) }; updateGameSettings({ volume: settings.volume }); applySettings(); }
 export function setAmbient(on: boolean): void { settings = { ...settings, ambient: on }; saveSettings(); applySettings(); }
-export function setMuted(muted: boolean): void { settings = { ...settings, muted }; saveSettings(); applySettings(); }
+export function setMuted(muted: boolean): void { settings = { ...settings, muted }; updateGameSettings({ muted }); applySettings(); }
 
 /** Wires the game's events to sound and starts listening for the first input. Returns a disposer. */
 export function mountSound(): () => void {
@@ -205,6 +217,7 @@ export function mountSound(): () => void {
     return () => window.removeEventListener(`tendril:${name}`, h);
   };
   const offs = [
+    onSettings((g) => { settings = { ...settings, muted: g.muted, volume: g.volume }; applySettings(); }),
     listen('events', (e) => { for (const name of pickEventSounds(e.detail as ViewEvent[], budget, performance.now())) play(name); }),
     listen('status', (e) => { const now = !!(e.detail as { running?: boolean }).running; if (now && !running) play('run'); running = now; }),
     listen('scenario-end', () => play('sunset')),

@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { motionQuery } from './settings.ts';
 
 /** Pooled sparkle bursts plus fireflies that stay around the camera focus. Nothing is allocated per frame. */
 
@@ -46,7 +47,7 @@ export class FarmFx {
   private flySeed = new Float32Array(FIREFLIES);
   private flyReady = false;
   private tmp = new THREE.Color();
-  private reduced = window.matchMedia('(prefers-reduced-motion: reduce)');
+  private reduced = motionQuery;
   /** True while any sparkle is still flying (the farm view keeps drawing until they are gone). */
   active = false;
 
