@@ -360,6 +360,10 @@ export class FarmCamera {
     return fitDistance(radius, this.camera.fov, this.freeAspect());
   }
   private canvasSize(): { w: number; h: number } {
+    // Layout size, not getBoundingClientRect: a CSS transform on the canvas (the splash's settle-in scale) would
+    // otherwise bake a scaled size into the view offset and leave the frame slightly off once the transform ends.
+    const el = this.dom as HTMLElement;
+    if (el.clientWidth > 0 && el.clientHeight > 0) return { w: el.clientWidth, h: el.clientHeight };
     const r = this.dom.getBoundingClientRect();
     return { w: r.width || 1, h: r.height || 1 };
   }
