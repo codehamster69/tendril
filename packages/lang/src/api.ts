@@ -5,7 +5,7 @@ export interface ApiEntry {
   signature: string; doc: string; ticks: number | 'n'; example: string; feature: string;
 }
 export const KEYWORDS = 'if elif else while repeat forever times for each in from to step define def return break continue pass stop and or not is true false none set global'.split(' ');
-export const CONSTANTS = 'north east south west carrot wheat clover pumpkin berry apple honey compost hive composter satchel barn all shared'.split(' ');
+export const CONSTANTS = 'north east south west carrot wheat clover pumpkin berry apple honey compost hive composter silo satchel barn all shared'.split(' ');
 /** Actions and statement helpers are written as commands (`move east`), so the reference shows that form first. */
 const command = (name: string, args: string): string => (args === '' ? name : `${name} ${args}`);
 const COMMAND_UTILITIES = ['go_to', 'say', 'print', 'append', 'insert', 'remove'];
@@ -19,18 +19,19 @@ const actions: [string, keyof typeof OP, string, string, string][] = [
   ['wait', 'wait', 'ticks', 'Wait at least one tick. Long waits split into 1,000-tick actions.', 'wait 100'],
   ['sell', 'sell', 'item, units', 'Sell barn stock at today\u2019s price (the base price outside market days); use all for the whole stock of an item.', 'sell carrot, all'],
   ['deliver', 'deliver', 'order', 'At the barn, fulfil a contract using stock; returns its coin reward.', 'deliver orders()[0]'],
-  ['build', 'build', 'kind', 'Build a researched hive or composter on empty grass, paying its coin price.', 'build hive'],
+  ['build', 'build', 'kind', 'Build a researched hive, composter or silo on empty grass, paying its coin price. A silo costs more with each silo you own.', 'build hive'],
   ['clear', 'clear', '', 'Remove a crop, tilled soil or building. No refund or produce is returned.', 'clear'],
   ['compost', 'compost', '', 'At a composter, convert four carried crop units into one compost.', 'compost'],
   ['fertilize', 'fertilize', '', 'Use one carried compost: add 25 nitrogen and remove 20 fatigue.', 'fertilize'],
   ['buy_plot', 'buyPlot', 'px, py', 'Buy an edge-adjacent 8×8 plot; returns true on success.', 'buy_plot 1, 0'],
+  ['sell_plot', 'sellPlot', 'px, py', 'Sell an edge plot that is not the barn, has no bot on it, and keeps the farm connected. Pays half the price of the newest plot; buildings on it are lost. Returns the coins paid, or 0.', 'sell_plot 1, 0'],
   ['buy_bot', 'buyBot', '', 'Buy a new bot at the barn. Returns its zero-based id, or none.', 'buy_bot'],
   ['unlock', 'unlock', 'name', 'Pay the research price for a crop, building or satchel.', 'unlock wheat'],
 ];
 export const API: ApiEntry[] = actions.map(([name, op, args, doc, example]) => ({
-  name, kind: ['buy_plot', 'buy_bot', 'unlock'].includes(name) ? 'farm' : 'action',
+  name, kind: ['buy_plot', 'sell_plot', 'buy_bot', 'unlock'].includes(name) ? 'farm' : 'action',
   signature: command(name, args), doc, example, ticks: name === 'wait' ? 'n' : COST[OP[op]]!,
-  feature: ['build', 'clear', 'compost', 'fertilize'].includes(name) ? 'buildings' : ['sell'].includes(name) ? 'market' : name === 'deliver' ? 'orders' : ['buy_plot', 'unlock'].includes(name) ? 'farm' : name === 'buy_bot' ? 'crew' : 'commands',
+  feature: ['build', 'clear', 'compost', 'fertilize'].includes(name) ? 'buildings' : ['sell'].includes(name) ? 'market' : name === 'deliver' ? 'orders' : ['buy_plot', 'sell_plot', 'unlock'].includes(name) ? 'farm' : name === 'buy_bot' ? 'crew' : 'commands',
 }));
 const queries: [string, string, string, string][] = [
   ['scan', '', 'Inspect the tile below this bot; includes ripe, empty, crop, soil and building.', 'queries'],
@@ -46,8 +47,11 @@ const queries: [string, string, string, string][] = [
   ['bot_cost', '', 'Price of the next bot.', 'crew'], ['bots', '', 'Number of bots on your farm.', 'crew'],
   ['unlocked', 'name', 'Whether the named research is unlocked.', 'farm'], ['unlock_cost', 'name', 'Price of named research.', 'farm'],
   ['price', 'item', 'Selling price of an item. On a market day it is today\u2019s price in hundredths of a coin (200 means 2 coins); otherwise the base price in whole coins.', 'market'],
+  ['silo_cost', '', 'Price of the next silo. 0 until silos are switched on.', 'buildings'],
+  ['silos', '', 'Silo positions on your farm, in plot order then row order.', 'buildings'],
+  ['nearest_drop', '', 'The {x, y} of the barn or the silo nearest this bot by distance. Ties go to the barn.', 'buildings'],
 ];
-for (const [name, args, doc, feature] of queries) API.push({ name, kind: 'query', signature: `${name}(${args})`, doc, ticks: 0, example: name === 'scan_at' ? 'say scan_at(1, 1)' : name === 'forecast' ? 'say forecast(500)' : ['unlocked', 'unlock_cost', 'price'].includes(name) ? `say ${name}(carrot)` : name === 'owns' ? 'say owns(1, 1)' : `say ${name}()`, feature });
+for (const [name, args, doc, feature] of queries) API.push({ name, kind: 'query', signature: `${name}(${args})`, doc, ticks: 0, example: name === 'nearest_drop' ? 'go_to nearest_drop()' : name === 'scan_at' ? 'say scan_at(1, 1)' : name === 'forecast' ? 'say forecast(500)' : ['unlocked', 'unlock_cost', 'price'].includes(name) ? `say ${name}(carrot)` : name === 'owns' ? 'say owns(1, 1)' : `say ${name}()`, feature });
 const utilities: [string, string, string, string][] = [
   ['go_to', 'position / x, y', 'Walk east/west first, then north/south. Every move takes two ticks.', 'go_to barn'],
   ['say', 'values…', 'Print values to the console, tagged with this bot and tick.', 'say "Hello from bot", my_id()'],
