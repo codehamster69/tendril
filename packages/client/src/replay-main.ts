@@ -1,9 +1,11 @@
 import { boot } from './boot';
 import { FarmView } from './farm-view';
+import { initSettings } from './settings';
 import { clipSupport, downloadClip, exportClip, UNSUPPORTED_MESSAGE } from './clip';
 import { paneHeader, Timeline } from './replay-view';
 import type { ReplayData, ReplayEntry } from './replay-view';
 
+initSettings();
 const $ = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T;
 boot.profile('lite');
 const params = new URLSearchParams(location.search);

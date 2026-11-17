@@ -57,6 +57,4 @@
 .hk-chip:focus-visible, .hk-card:focus-visible, .hk-button:focus-visible, .hk-icon-button:focus-visible, .hk-overlay :focus-visible {
   outline: 2px solid var(--hk-lantern); outline-offset: 2px;
 }
-@media (prefers-reduced-motion: reduce) {
-  .hk-button, .hk-icon-button, .hk-chip, .hk-card, .hk-overlay { transition: none !important; animation: none !important; }
-}
+html[data-motion="reduced"] .hk-button, html[data-motion="reduced"] .hk-icon-button, html[data-motion="reduced"] .hk-chip, html[data-motion="reduced"] .hk-card, html[data-motion="reduced"] .hk-overlay { transition: none !important; animation: none !important; }

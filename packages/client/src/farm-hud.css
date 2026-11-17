@@ -46,4 +46,4 @@
   .fh-select { max-width: 84px; }
   .fh-btn, .fh-seg-btn { padding: 7px 8px; }
 }
-@media (prefers-reduced-motion: reduce) { .fh-btn, .fh-seg-btn { transition: none; } .fh-mini-info { animation: none; } }
+html[data-motion="reduced"] .fh-btn, html[data-motion="reduced"] .fh-seg-btn { transition: none; } html[data-motion="reduced"] .fh-mini-info { animation: none; }

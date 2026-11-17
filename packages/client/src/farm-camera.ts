@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import type { Bounds } from './farm-scenery';
+import { motionQuery } from './settings.ts';
 
 /**
  * Farm camera rig (replaces OrbitControls).
@@ -134,7 +135,6 @@ export class FarmCamera {
   private down: { t: number } | null = null;
   private pinch: { d: number; mx: number; my: number } | null = null;
   private lastEmit = new Float64Array(7).fill(NaN);
-  private motion: MediaQueryList | null = null;
   private win: Window | null;
   private savedTouchAction: string;
   private disposed = false;
@@ -342,10 +342,7 @@ export class FarmCamera {
   // ---- internals
 
   private aspect(): number { return this.camera.aspect > 0 ? this.camera.aspect : 1; }
-  private reducedMotion(): boolean {
-    if (this.motion === null && this.win && typeof this.win.matchMedia === 'function') this.motion = this.win.matchMedia('(prefers-reduced-motion: reduce)');
-    return this.motion?.matches ?? false;
-  }
+  private reducedMotion(): boolean { return motionQuery.matches; }
   private scratchCam(): THREE.PerspectiveCamera {
     this.scratch.fov = this.camera.fov; this.scratch.aspect = this.aspect();
     const { w, h } = this.canvasSize();

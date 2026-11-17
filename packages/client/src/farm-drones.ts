@@ -3,6 +3,7 @@ import type { SnapshotBot } from '@tendril/sim';
 import type { AssetModel } from './asset-loader';
 import { FarmFx } from './farm-fx.ts';
 import { BOT_PALETTE, botColourHex } from './bot-colours.ts';
+import { motionQuery } from './settings.ts';
 
 /**
  * Lantern drones for the farm view: cream hull, amber core with additive halo, three spinning leaf blades,
@@ -166,7 +167,7 @@ export class FarmDrones {
   private bladeMat = new THREE.MeshStandardMaterial({ color: 0x6fcf86, roughness: 0.6 });
   private blobMat = new THREE.MeshBasicMaterial({ map: this.blobTex, transparent: true, depthWrite: false, opacity: 0.7 });
   private glbModel: AssetModel | null = null;
-  private reduced = window.matchMedia('(prefers-reduced-motion: reduce)');
+  private reduced = motionQuery;
   private viewScale = 1;
   private disposed = false;
   private tmpRgb = new THREE.Color();

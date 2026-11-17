@@ -31,4 +31,4 @@
 .farm-pop { position: absolute; transform: translate(-50%, -50%); font: 600 12px var(--mono); white-space: nowrap; color: var(--wheat); text-shadow: 0 1px 3px #000; animation: farm-pop-rise 1s ease-out forwards; }
 .farm-pop.low { color: var(--sky); }
 @keyframes farm-pop-rise { to { transform: translate(-50%, -220%); opacity: 0; } }
-@media (prefers-reduced-motion: reduce) { .farm-pop { animation: farm-pop-fade 1s linear forwards; } @keyframes farm-pop-fade { to { opacity: 0; } } }
+html[data-motion="reduced"] .farm-pop { animation: farm-pop-fade 1s linear forwards; } @keyframes farm-pop-fade { to { opacity: 0; } }

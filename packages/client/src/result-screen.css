@@ -33,8 +33,6 @@
 .game-stage.slate-hidden .rs-reopen { left: 50%; }
 @keyframes rs-fade { from { opacity: 0; } }
 @keyframes rs-stamp { from { transform: scale(2.4) rotate(-14deg); opacity: 0; } to { transform: none; opacity: 1; } }
-@media (prefers-reduced-motion: reduce) {
-  .rs-card { transition: none; transform: none; opacity: 1; }
-  .rs-layer::before, .rs-stamp { animation: none !important; }
-}
+html[data-motion="reduced"] .rs-card { transition: none; transform: none; opacity: 1; }
+html[data-motion="reduced"] .rs-layer::before, html[data-motion="reduced"] .rs-stamp { animation: none !important; }
 .rs-rank:empty, .rs-rating:empty, .rs-note:empty { display: none; }
