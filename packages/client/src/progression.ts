@@ -1,5 +1,5 @@
 import { UNLOCKS } from '@tendril/sim/src/index.ts';
-import type { LogEntry, Snapshot } from '@tendril/sim/src/index.ts';
+import type { Snapshot } from '@tendril/sim/src/index.ts';
 import type { Editor } from './editor';
 import type { GameLoop } from './game-loop';
 import type { FarmApi } from './api-client';
@@ -12,7 +12,7 @@ export function today(): string { return new Date().toISOString().slice(0, 10); 
 export function selectedLesson(): Lesson { return LESSONS.find((l) => l.id === new URLSearchParams(location.search).get('lesson')) ?? LESSONS[0]!; }
 const loadSet = (key: string): Set<string> => { try { const value: unknown = JSON.parse(localStorage.getItem(key) ?? '[]'); return new Set(Array.isArray(value) ? value.filter((v): v is string => typeof v === 'string') : []); } catch { return new Set(); } };
 const saveSet = (key: string, value: Set<string>): void => { try { localStorage.setItem(key, JSON.stringify([...value])); } catch { toast('Progress not saved', 'Browser storage is full; keep this window open.'); } };
-interface Achievement { id: string; title: string; detail: string; test: (s: Snapshot, log: LogEntry[]) => boolean }
+interface Achievement { id: string; title: string; detail: string; test: (s: Snapshot, ops: ReadonlySet<number>) => boolean }
 const ACHIEVEMENTS: Achievement[] = [
   { id: 'planted', title: 'A small beginning', detail: 'Plant your first crop.', test: (s) => s.tiles.some((t) => t.crop > 0) },
   { id: 'harvest', title: 'Hands full', detail: 'Carry your first harvest.', test: (s) => s.bots.some((b) => b.load > 0) },
@@ -22,9 +22,9 @@ const ACHIEVEMENTS: Achievement[] = [
   ...[2, 4].map((n): Achievement => ({ id: `plots-${n}`, title: `${n} plots of possibility`, detail: `Own ${n} plots.`, test: (s) => s.plots.length >= n })),
   ...UNLOCKS.slice(1).map((u, i): Achievement => ({ id: `research-${u.name}`, title: `${cap(u.name)} researcher`, detail: `Research ${u.name}.`, test: (s) => !!(s.unlocks & (1 << (i + 1))) })),
   { id: 'honey', title: 'Sweet work', detail: 'Harvest honey.', test: (s) => s.bots.some((b) => b.items[7]! > 0) || s.stock[7]! > 0 },
-  { id: 'contract', title: 'A promise kept', detail: 'Deliver a market contract.', test: (s, log) => s.coins > 0 && log.some((e) => e[2] === 6) },
+  { id: 'contract', title: 'A promise kept', detail: 'Deliver a market contract.', test: (s, ops) => s.coins > 0 && ops.has(6) },
   { id: 'compost', title: 'Waste not', detail: 'Create compost.', test: (s) => s.bots.some((b) => b.items[8]! > 0) },
-  { id: 'fertilize', title: 'Give back to the soil', detail: 'Apply compost to soil.', test: (_s, log) => log.some((e) => e[2] === 14) },
+  { id: 'fertilize', title: 'Give back to the soil', detail: 'Apply compost to soil.', test: (_s, ops) => ops.has(14) },
   { id: 'all-research', title: 'The whole almanac', detail: 'Research every upgrade.', test: (s) => s.unlocks === 511 },
 ];
 export function mountProgression({ loop, editor }: { loop: GameLoop; editor: Editor; view?: FarmView; api?: FarmApi }): void {
@@ -67,7 +67,7 @@ export function mountProgression({ loop, editor }: { loop: GameLoop; editor: Edi
   // Whatever is already true when the farm first appears (starting coins, a pre-researched crop in a challenge) was not earned by play.
   let baseline: Set<string> | null = null;
   window.addEventListener('tendril:snapshot', (event) => {
-    const s = (event as CustomEvent<Snapshot>).detail, log = loop.logChunks().flatMap((c) => c.actions);
+    const s = (event as CustomEvent<Snapshot>).detail, log = loop.opKinds();
     if (!baseline) baseline = new Set(loop.mode !== 'daily' && loop.mode !== 'challenge' ? [] : ACHIEVEMENTS.filter((a) => a.test(s, log)).map((a) => a.id));
     let changed = false;
     for (const a of ACHIEVEMENTS) if (!earned.has(a.id) && !baseline.has(a.id) && a.test(s, log)) { earned.add(a.id); changed = true; toast(a.title, a.detail); window.dispatchEvent(new CustomEvent('tendril:medal', { detail: a.id })); }

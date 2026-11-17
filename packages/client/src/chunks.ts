@@ -13,6 +13,21 @@ export interface Submission {
   checkpoint: string; hash: string; netWorth: number;
 }
 const MAX_ACTIONS = 20_000;
+/** A farm that is not server-owned has nowhere to send its log, so only a recent window is kept (see trimLocalLog). */
+export const LOCAL_LOG_KEEP = 20_000;
+
+/**
+ * Drops the oldest chunks of a local, unverified farm's log once it holds more than `keep` actions; the newest chunk always stays.
+ * Server-owned farms never call this: their log is the proof the server replays. Returns the same array when nothing is dropped.
+ */
+export function trimLocalLog(chunks: LogChunk[], keep = LOCAL_LOG_KEEP): LogChunk[] {
+  let total = 0, first = chunks.length - 1;
+  for (; first > 0; first--) {
+    total += chunks[first]!.actions.length;
+    if (total + chunks[first - 1]!.actions.length > keep) break;
+  }
+  return first <= 0 ? chunks : chunks.slice(first);
+}
 const MAX_BYTES = 2 * 1024 * 1024;
 
 /** Build one advancing prefix, preserving complete same-tick action groups. */

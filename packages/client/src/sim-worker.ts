@@ -60,7 +60,8 @@ async function handle(m: ToWorker): Promise<void> {
   if (!world) throw new Error('Farm is not initialized. Reload to try again.');
   if (m.type === 'fullView') encoder.reset();
   const fromTick = world.tick;
-  const fromHash = hashWorld(world);
+  const light = m.type === 'step' && m.light === true;
+  const fromHash = light ? '' : hashWorld(world);
   if (m.type === 'init' || m.type === 'reset' || m.type === 'setSource') {
     diagnostics = startRun(m.source);
     if (run && !diagnostics.some((d) => d.severity === 'error')) paused = null;
@@ -105,13 +106,13 @@ async function handle(m: ToWorker): Promise<void> {
   const log = run ? run.takeLog() : [];
   const { update, transfer } = encoder.encode(world, eventsOf(log, errors));
   post({
-    type: 'state', id: m.id, fromTick, fromHash, hash: hashWorld(world),
+    type: 'state', id: m.id, fromTick, fromHash, hash: light ? '' : hashWorld(world),
     view: update,
     output: run ? run.output.splice(0) : [],
     errors,
     diagnostics,
     log,
-    saved: serialize(world),
+    saved: light ? '' : serialize(world),
     debug: run ? run.debug() : [],
     paused,
     heat: run ? [...run.lineHeat()] : [],

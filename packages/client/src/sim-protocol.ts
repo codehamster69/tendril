@@ -16,7 +16,8 @@ export interface SimError { bot: number; message: string; line?: number; col?: n
 type Command =
   | { type: 'init'; saved: string | null; seed: number; source: string; scenario: Scenario }
   | { type: 'setSource'; source: string }
-  | { type: 'step'; ticks: number }
+  /** `light`: the main thread will not save this step, so the worker skips the hash and the full-world copy ('' in the reply). */
+  | { type: 'step'; ticks: number; light?: boolean }
   | { type: 'reset'; seed: number; source: string; scenario: Scenario }
   | { type: 'setBreakpoints'; lines: number[] }
   | { type: 'stepLine' }
@@ -31,13 +32,13 @@ export interface StateMessage {
   id: number;
   fromTick: number;
   fromHash: string;
-  hash: string; // FNV diagnostic only, not verification.
+  hash: string; // FNV diagnostic only, not verification. '' after a light step.
   view: ViewUpdate;
   output: OutputLine[];
   errors: ScriptError[];
   diagnostics: Diagnostic[];
   log: LogEntry[];
-  saved: string; // Every completed command is a recoverable checkpoint.
+  saved: string; // Every full command is a recoverable checkpoint; '' after a light step.
   debug: BotDebug[];
   paused: { bot: number; line: number } | null;
   heat: [number, number][];
