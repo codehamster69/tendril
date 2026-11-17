@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import type { Snapshot } from './sim-types';
+import { motionQuery } from './settings.ts';
 
 export type Placement = { x: number; z: number; rotation?: number; scale?: number; depth?: number };
 export type Bounds = { x0: number; x1: number; z0: number; z1: number };
@@ -65,7 +66,7 @@ export class FarmIsland {
   private boundsKey = '';
   private bounds: Bounds | null = null;
   private distance = 20;
-  private reduced = typeof window !== 'undefined' && typeof window.matchMedia === 'function' ? window.matchMedia('(prefers-reduced-motion: reduce)') : null;
+  private reduced = motionQuery;
   private disposed = false;
 
   constructor(private scene: THREE.Scene) {

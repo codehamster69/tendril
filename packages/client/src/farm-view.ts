@@ -17,7 +17,8 @@ import { FarmMarket, type MarketData } from './farm-market';
 import type { FarmHud, Lens, ZoomMode } from './farm-hud';
 import { dayProgress } from './day-clock';
 import type { DayConfig } from './day-dial';
-import { DynamicScale, QUALITY_EVENT, QUALITY_KEY, RenderGate, ShadowClock, qualityPlan, readQuality, type Quality, type QualityPlan } from './render-budget';
+import { DynamicScale, RenderGate, ShadowClock, qualityPlan, type Quality, type QualityPlan } from './render-budget';
+import { getSettings, onSettings } from './settings';
 
 export type { FarmOverlay };
 export type { Lens, ZoomMode, LightPreset };
@@ -91,7 +92,7 @@ export class FarmView {
 
   constructor(private canvas: HTMLCanvasElement, opts: FarmViewOptions = {}) {
     this.lite = !!opts.lite;
-    this.quality = this.lite ? 'auto' : readQuality();
+    this.quality = this.lite ? 'auto' : getSettings().quality;
     this.plan = qualityPlan(this.quality, window.devicePixelRatio);
     this.scale = new DynamicScale(this.plan.maxRatio);
     // Small embedded views keep their drawing buffer: the replay clip copies the canvas outside the render callback.
@@ -125,8 +126,7 @@ export class FarmView {
     canvas.addEventListener('pointerup', this.wake, { passive: true });
     window.addEventListener('keydown', this.keyWake, { passive: true });
     window.addEventListener('keyup', this.keyWake, { passive: true });
-    window.addEventListener(QUALITY_EVENT, this.qualityChanged);
-    window.addEventListener('storage', this.storageChanged);
+    this.offSettings = onSettings(this.settingsChanged);
     document.addEventListener('visibilitychange', this.visibility);
     // The market countdown is DOM text; it ticks on its own clock so it keeps counting while the farm is not drawing.
     if (this.market) this.marketTimer = window.setInterval(() => { if (!this.hidden) this.market?.update(1); }, 1000);
@@ -191,8 +191,9 @@ export class FarmView {
     else this.wake();
   };
 
-  private qualityChanged = (): void => this.applyQuality(readQuality());
-  private storageChanged = (e: StorageEvent): void => { if (e.key === QUALITY_KEY || e.key === null) this.applyQuality(readQuality()); };
+  private offSettings: () => void;
+  /** Settings changed: graphics quality applies now; reduced motion is read every frame, so just draw one. */
+  private settingsChanged = (s: { quality: Quality }): void => { this.applyQuality(s.quality); this.light.markShadowDirty(); this.requestRender(); };
 
   /** Low: no shadows, ratio 1. Auto: ratio up to 1.5 and shadows. High: ratio up to 2 and shadows. Antialiasing applies on the next load. */
   private applyQuality(quality: Quality): void {
@@ -206,8 +207,16 @@ export class FarmView {
     this.resize();
   }
 
+  /** The quality actually in use, for the e2e tests and the perf meter: setting, pixel ratio cap, ratio now, shadows. */
+  private exposeQuality(): void {
+    const d = this.canvas.dataset;
+    d.quality = this.quality; d.maxRatio = String(this.plan.maxRatio); d.pixelRatio = String(this.renderer.getPixelRatio());
+    d.shadows = String(this.light.shadowsOn);
+  }
+
   private applyRatio(): void {
     this.renderer.setPixelRatio(this.scale.ratio);
+    this.exposeQuality();
     this.renderer.setSize(this.canvas.clientWidth || 1, this.canvas.clientHeight || 1, false);
   }
 
@@ -500,6 +509,7 @@ export class FarmView {
     const width = this.canvas.clientWidth || 1, height = this.canvas.clientHeight || 1;
     this.renderer.setPixelRatio(this.scale.ratio);
     this.renderer.setSize(width, height, false);
+    this.exposeQuality(); // also the first time, so the canvas reports quality before anything changes
     this.camera.aspect = width / height;
     this.camera.updateProjectionMatrix();
     this.rig.resized(); // the slate offset is in pixels, so a new size needs it applied again
@@ -547,7 +557,7 @@ export class FarmView {
     else {
       if (this.scale.add(gap) !== null) this.applyRatio();
       // Auto gives up shadows when even the lowest resolution stays too slow for two seconds.
-      if (this.quality === 'auto' && this.plan.shadows && !this.autoShadowsOff && this.scale.floorStrikes >= 2) { this.autoShadowsOff = true; this.light.setShadows(false); }
+      if (this.quality === 'auto' && this.plan.shadows && !this.autoShadowsOff && this.scale.floorStrikes >= 2) { this.autoShadowsOff = true; this.light.setShadows(false); this.exposeQuality(); }
     }
     perfHook.frame?.(ms);
     const changed = this.draw(ms, dt);
@@ -618,8 +628,7 @@ export class FarmView {
     this.canvas.removeEventListener('pointerup', this.wake);
     window.removeEventListener('keydown', this.keyWake);
     window.removeEventListener('keyup', this.keyWake);
-    window.removeEventListener(QUALITY_EVENT, this.qualityChanged);
-    window.removeEventListener('storage', this.storageChanged);
+    this.offSettings();
     document.removeEventListener('visibilitychange', this.visibility);
     window.clearInterval(this.marketTimer);
     this.ro.disconnect();
