@@ -34,7 +34,9 @@ test('wheel zoom keeps the ground point under the cursor', async ({ page }) => {
   const ndc: [number, number] = [-0.35, -0.15]; // left of the code slate, whose grip sits over the right side;
   const px = box.x + (ndc[0] + 1) / 2 * box.width, py = box.y + (1 - ndc[1]) / 2 * box.height;
   const before = (await ground(page, ...ndc))!;
-  const startState = await page.evaluate(() => { const r = (window.tendril!.view as unknown as { rig: Record<string, unknown> }).rig; return JSON.stringify({ cur: r.cur, insetNow: r.insetNow, insetTo: r.insetTo, framed: r.framed, w: innerWidth, h: innerHeight }); });
+  const startState = await page.evaluate(() => { const r = (window.tendril!.view as unknown as { rig: Record<string, unknown> }).rig; const cam = r.camera as { aspect: number; view: unknown; fov: number }; const c = document.getElementById('farm-canvas') as HTMLCanvasElement; const rect = c.getBoundingClientRect();
+    const v = window.tendril!.view; const g0 = v.groundAt(-0.35, -0.15); (r as unknown as { resized(): void }).resized(); const g1 = v.groundAt(-0.35, -0.15);
+    return JSON.stringify({ cur: r.cur, insetNow: r.insetNow, insetTo: r.insetTo, framed: r.framed, w: innerWidth, h: innerHeight, rect: [rect.x, rect.y, rect.width, rect.height], client: [c.clientWidth, c.clientHeight], buf: [c.width, c.height], aspect: cam.aspect, fov: cam.fov, view: cam.view, g0, g1 }); });
   expect(before).not.toBeNull();
   await page.mouse.move(px, py);
   const d0 = (await page.evaluate(() => JSON.parse(document.getElementById('farm-canvas')!.dataset.cameraPosition!) as number[]));
