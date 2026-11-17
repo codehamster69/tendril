@@ -4,6 +4,7 @@ import {
 } from '@tendril/sim/src/index.ts';
 import type { LogEntry, World } from '@tendril/sim/src/index.ts';
 import type { Expr, Stmt } from './ast.ts';
+import { explainSellRefusal } from './sell-note.ts';
 
 type Pos = { x: number; y: number };
 /** Silo positions in plot order, then row order (the same order as tiles()). Empty before rules v5. */
@@ -101,6 +102,7 @@ export function binary(op: string, a: Value, b: Value): Value {
 
 class Run implements ScriptRun {
   pending: LogEntry[] = []; errors: ScriptError[] = []; output: OutputLine[] = [];
+  private sellMemo = new Map<string, number>();
   private bots: BotState[] = []; private shared: RecordValue = Object.create(null) as RecordValue;
   private breakpoints = new Set<number>(); private heat = new Map<number, number>(); private cursor = 0;
   private closed = false; private paused: { bot: number; line: number } | null = null;
@@ -225,6 +227,7 @@ class Run implements ScriptRun {
     const farm = FARM_OPS.includes(op);
     const entry: LogEntry = [this.world.tick, farm ? -1 : b.bot, op]; entry.push(...args);
     const result = applyAction(this.world, entry); this.pending.push(entry);
+    if (op === OP.sellPlot && result === 0) explainSellRefusal(this.output, this.sellMemo, this.world, b.bot, args[0]!, args[1]!);
     if (!farm) yield { k: 'action', line };
     return result;
   }
