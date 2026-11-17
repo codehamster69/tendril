@@ -32,7 +32,8 @@ async function wakeIfBehind(api: FarmApi, farm: FarmResponse): Promise<FarmRespo
     const woken = await api.wake(local);
     if (woken.restedNowMs > 0) {
       const hours = Math.round(woken.restedNowMs / 3_600_000);
-      toast('Your farm rested', `It rested for ${hours} ${hours === 1 ? 'hour' : 'hours'} while you were away. It ran for the first 6 hours.`);
+      // Boot takes longer than a toast lives, so say it once the farm has drawn its first frame.
+      window.addEventListener('tendril:snapshot', () => toast('Your farm rested', `It rested for ${hours} ${hours === 1 ? 'hour' : 'hours'} while you were away. It ran for the first 6 hours.`), { once: true });
     }
     return woken;
   } catch { return farm; }
