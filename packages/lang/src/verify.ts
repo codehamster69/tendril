@@ -20,10 +20,12 @@ export const MAX_VERIFY_SOURCE_BYTES = 32 * 1024;
 export const VERIFY_DEADLINE_MS = 8000;
 /** Elements and characters a checked program may allocate in total. Small programs use thousands; a memory bomb reaches this in well under a second and stops with an error instead of exhausting the function. */
 export const VERIFY_ALLOCATION_BUDGET = 5_000_000;
+/** Interpreter steps a checked program may run in total, all bots and ticks together. Unlike the wall-clock deadline it gives the same answer on every machine. The heaviest bundled program (18 bots, 20,000 ticks) uses about 0.4M, so honest farms have over ten times this much room. */
+export const VERIFY_STEP_BUDGET = 5_000_000;
 /** Ticks run between clock checks. One tick is bounded by the interpreter's 5,000-step budget per bot. */
 const SLICE = 4;
 
-export interface VerifyOptions { deadlineMs?: number; now?: () => number }
+export interface VerifyOptions { deadlineMs?: number; stepBudget?: number; now?: () => number }
 
 export function verifySource(req: VerifyRequest, options: VerifyOptions = {}): VerifyResult {
   const now = options.now ?? Date.now;
@@ -41,9 +43,10 @@ export function verifySource(req: VerifyRequest, options: VerifyOptions = {}): V
   let setup;
   try { setup = challengeSetup(req.kind, req.seed, req.setupVersion ?? SETUP_LEGACY, req.market, req.rulesVersion).setup; } catch { return { ok: false, reason: 'bad', message: 'Invalid challenge' }; }
   const world = createWorld({ id: req.challengeId, seed: req.seed }, setup);
-  const run = createRun(world, req.source, { allocationBudget: VERIFY_ALLOCATION_BUDGET });
+  const run = createRun(world, req.source, { allocationBudget: VERIFY_ALLOCATION_BUDGET, stepBudget: options.stepBudget ?? VERIFY_STEP_BUDGET });
   while (world.tick < req.ticks) {
     run.step(Math.min(SLICE, req.ticks - world.tick));
+    if (run.exhausted) { run.close(); return { ok: false, reason: 'timeout', message: 'The program ran too many steps to check' }; }
     if (world.tick < req.ticks && now() > deadline) { run.close(); return { ok: false, reason: 'timeout', message: 'The program took too long to check' }; }
   }
   const actions = run.pending.filter((a) => a[0] < req.ticks);

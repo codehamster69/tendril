@@ -82,6 +82,20 @@ describe('verifySource', () => {
     expect(v).toMatchObject({ ok: false, reason: 'timeout' });
     expect(Date.now() - started).toBeLessThan(5000);
   });
+  it('stops a program that spends its total step budget, the same way on every machine', () => {
+    const spin = 'repeat forever:\n    x = 0\n    while x < 100000:\n        x = x + 1\n';
+    const frozen = () => 0; // a clock that never advances: only the step budget can end this
+    const v = verifySource(req(spin), { now: frozen, stepBudget: 200_000 });
+    expect(v).toEqual({ ok: false, reason: 'timeout', message: 'The program ran too many steps to check' });
+    expect(verifySource(req(spin), { now: frozen, stepBudget: 200_000 })).toEqual(v);
+  });
+  it('gives honest programs far more steps than they use', () => {
+    const run = createRun(createWorld({ id: 'd', seed: 7 }, challengeSetup('daily', 7, SETUP_VERSION).setup), readFileSync(new URL('../examples/expander.sprout', import.meta.url), 'utf8'));
+    run.step(20_000);
+    expect(run.exhausted).toBe(false);
+    expect(run.steps).toBeLessThan(5_000_000 / 8);
+    expect(verifySource(req(daily), { stepBudget: 1 })).toMatchObject({ ok: false, reason: 'timeout' });
+  });
   it('finishes a budget-burning program inside the real default time limit, or times out cleanly', () => {
     const spin = 'repeat forever:\n    x = 0\n    while x < 100000:\n        x = x + 1\n';
     const started = Date.now();
