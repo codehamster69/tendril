@@ -63,7 +63,43 @@ export class DayDial {
     this.root.setAttribute('aria-label', 'Day dial');
     this.root.append(art, this.tick, this.tip);
     host.append(this.root);
+    // Keep clear of the top-left chips and push the tool row below the dial (stage.css reads --dd-bottom).
+    this.ro = typeof ResizeObserver === 'function' ? new ResizeObserver(this.layout) : null;
+    const hud = document.getElementById('game-hud');
+    if (hud) this.ro?.observe(hud);
+    this.ro?.observe(this.root);
+    window.addEventListener('resize', this.layout);
+    window.addEventListener('tendril:slate-inset', this.layout);
+    this.root.addEventListener('transitionend', this.layout);
+    // The slate slides in and out; measure again once it has arrived.
+    window.addEventListener('transitionend', this.slateMoved, true);
+    requestAnimationFrame(this.layout);
   }
+
+  private ro: ResizeObserver | null;
+  private slateMoved = (e: TransitionEvent): void => { if ((e.target as Element | null)?.id === 'side') this.layout(); };
+  /**
+   * When the chips on the left reach under the dial (narrow stage, slate open), the dial moves into the gap right of
+   * them, smaller; when that gap is too narrow it drops below the chips. Either way the tool row starts below it.
+   */
+  private layout = (): void => {
+    if (!this.root.isConnected) return;
+    const st = this.root.style;
+    st.top = ''; st.left = ''; st.width = '';
+    const d = this.root.getBoundingClientRect();
+    const h = document.getElementById('game-hud')?.getBoundingClientRect();
+    if (h && h.height > 0 && h.right + 8 > d.left && h.top < d.bottom && h.bottom > d.top) {
+      // Right edge: the slate if it is open, else whatever sits top right (menu, Show code).
+      // The slate counts whatever its top: the moved dial can end up taller than the default one measured here.
+      const lefts = ['side', 'game-hud-tr', 'slate-toggle'].map((id) => [id, document.getElementById(id)?.getBoundingClientRect()] as const)
+        .filter((e): e is readonly [string, DOMRect] => !!e[1] && e[1].width > 0 && (e[0] === 'side' || e[1].top < d.bottom) && e[1].left > h.right)
+        .map(([, r]) => r.left);
+      const from = h.right + 16, to = Math.min(window.innerWidth, ...lefts) - 16, room = to - from;
+      if (room >= 200) { const w = Math.min(300, room); st.width = `${w}px`; st.left = `${Math.round(from + w / 2)}px`; }
+      else st.top = `${Math.round(h.bottom + 6)}px`;
+    }
+    document.documentElement.style.setProperty('--dd-bottom', `${Math.round(this.root.getBoundingClientRect().bottom + 8)}px`);
+  };
 
   /** Called with every snapshot. Cheap when nothing visible changed. */
   update(s: Snapshot, info: DayInfo, cfg: DayConfig): void {
@@ -158,7 +194,14 @@ export class DayDial {
     node.addEventListener('keydown', (e) => { if ((e as KeyboardEvent).key === 'Escape') hide(); });
   }
 
-  dispose(): void { this.root.remove(); }
+  dispose(): void {
+    this.ro?.disconnect();
+    window.removeEventListener('resize', this.layout);
+    window.removeEventListener('tendril:slate-inset', this.layout);
+    window.removeEventListener('transitionend', this.slateMoved, true);
+    this.root.remove();
+    document.documentElement.style.removeProperty('--dd-bottom');
+  }
 }
 
 export function mountDayDial(host: HTMLElement): DayDial { return new DayDial(host); }

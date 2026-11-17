@@ -49,7 +49,5 @@ button.hk-chip { cursor: pointer; color: var(--hk-text); }
 .game-stage.farm-large.slate-hidden #farm-minimap { right: 14px; }
 
 @media (max-width: 800px) { .order-cards { top: auto; bottom: 150px; width: 11rem; } .lens-legend { bottom: 100px; } }
-@media (prefers-reduced-motion: reduce) {
-  .order-card.filled, .order-card.gone { animation: none; opacity: 0; }
-  .order-card .oc-fill { transition: none; }
-}
+html[data-motion="reduced"] .order-card.filled, html[data-motion="reduced"] .order-card.gone { animation: none; opacity: 0; }
+html[data-motion="reduced"] .order-card .oc-fill { transition: none; }

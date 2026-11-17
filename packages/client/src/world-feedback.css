@@ -22,6 +22,4 @@
 .wf-tip[hidden] { display: none; }
 .hk-chip.wf-pulse { animation: wf-pulse .22s ease-out; }
 @keyframes wf-pulse { 0% { transform: scale(1); } 40% { transform: scale(1.08); } 100% { transform: scale(1); } }
-@media (prefers-reduced-motion: reduce) {
-  .hk-chip.wf-pulse { animation: none; }
-}
+html[data-motion="reduced"] .hk-chip.wf-pulse { animation: none; }

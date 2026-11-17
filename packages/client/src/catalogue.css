@@ -39,6 +39,6 @@
 @keyframes cat-stamp { from { transform: rotate(-12deg) scale(2.6); opacity: 0; } to { transform: rotate(-12deg) scale(1); opacity: 1; } }
 .cat-empty { color: var(--hk-dim); text-align: center; padding: var(--hk-s5); }
 @media (max-width: 1000px) { .cat-track { flex-wrap: wrap; } .cat-vine { display: none; } .cat-packet { flex: 1 1 10rem; } }
-@media (prefers-reduced-motion: reduce) { .cat-badge, .cat-packet, .cat-packet[data-state="affordable"], .cat-stamp.play { animation: none !important; transition: none !important; } }
+html[data-motion="reduced"] .cat-badge, html[data-motion="reduced"] .cat-packet, html[data-motion="reduced"] .cat-packet[data-state="affordable"], html[data-motion="reduced"] .cat-stamp.play { animation: none !important; transition: none !important; }
 .cat-body { display: flex; flex-direction: column; gap: var(--hk-s4); }
 .cat-packet[data-state="soon"] { opacity: .62; filter: saturate(.4); }

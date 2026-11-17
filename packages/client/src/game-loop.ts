@@ -73,6 +73,8 @@ export class GameLoop {
   debug(): BotDebug[] { return this.sim.debug; }
   logChunks() { return this.sim.logChunks(); }
   get busy(): boolean { return this.actionBusy || this.changing; }
+  /** The program the farm runs now (null before the first program loads). */
+  get runningSource(): string | null { return this.hasProgram ? this.compiled : null; }
 
   private current(): string { return this.sourceProvider ? this.sourceProvider() : this.source; }
   private stale(): boolean { return this.current() !== this.compiled || this.compileFailed || this.scriptErrored; }

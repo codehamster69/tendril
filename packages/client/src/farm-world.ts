@@ -6,6 +6,7 @@ import { BUILDING_MODELS, CROPS, CROP_COLORS } from './fallback-models.ts';
 import { OverlayLayer, overlayColor, unit, type FarmOverlay } from './farm-overlay.ts';
 import { dropDistances, dropUnit, type DropCell, type DropDistances } from './drop-distance.ts';
 import type { Bounds } from './farm-scenery.ts';
+import { motionQuery } from './settings.ts';
 
 /**
  * The view-window renderer. Tiles live in a sparse store of 32x32 chunks (nothing exists for land nobody owns).
@@ -152,7 +153,7 @@ export class FarmWorld {
   /** Counts refreshes that rebuilt the instance batches; the farm view redraws the shadow map when it moves. */
   rebuilds = 0;
   private swayOn: boolean;
-  private motion: boolean;
+  private get motion(): boolean { return !motionQuery.matches; }
   private time = { value: 0 };
   private sway = { value: 1 };
   // Scratch, reused so a refresh allocates nothing per tile.
@@ -173,7 +174,6 @@ export class FarmWorld {
   constructor(scene: THREE.Scene, models: (name: string) => AssetModel) {
     this.scene = scene;
     this.models = models;
-    this.motion = !(typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches);
     this.swayOn = this.motion;
     this.sway.value = this.swayOn ? 1 : 0;
     this.scene.add(this.root);

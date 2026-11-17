@@ -82,7 +82,7 @@ body.resizing iframe, body.resizing canvas { pointer-events: none; }
   :root { --slate-w: 380px; }
   .game-stage #unranked-notice { width: min(520px, calc(100vw - 200px)); }
 }
-@media (prefers-reduced-motion: reduce) { .game-stage #side, .transport { transition: none; } }
+html[data-motion="reduced"] .game-stage #side, html[data-motion="reduced"] .transport { transition: none; }
 .panel-body #lesson-card, .panel-body #lesson-card.in-panel { max-height: none; overflow: visible; }
 
 /* First-run prompts (firstrun.ts): a floating card plus a lantern ring on the control it points at. */
@@ -95,4 +95,4 @@ body.resizing iframe, body.resizing canvas { pointer-events: none; }
 .fr-spot { outline: 2px solid var(--hk-lantern); outline-offset: 3px; animation: fr-pulse 1.6s ease-in-out infinite; }
 #farm-canvas.fr-spot { outline: none; animation: none; }
 @keyframes fr-pulse { 50% { outline-offset: 6px; } }
-@media (prefers-reduced-motion: reduce) { .fr-spot { animation: none; } }
+html[data-motion="reduced"] .fr-spot { animation: none; }

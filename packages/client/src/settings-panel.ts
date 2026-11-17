@@ -45,7 +45,7 @@ export function buildSettingsPanel(account: HTMLElement): HTMLElement {
   return el('div', { id: 'settings-panel', class: 'settings-panel' },
     el('h3', { text: 'Sound' }), row('Sound off', mute), row('Volume', vol),
     el('h3', { text: 'Display' }),
-    row('Graphics quality', segmented<Quality>('Graphics quality', [['auto', 'Auto'], ['low', 'Low'], ['high', 'High']], s.quality, (v) => updateSettings({ quality: v })), 'Auto adapts to your machine.'),
+    row('Graphics quality', segmented<Quality>('Graphics quality', [['auto', 'Auto'], ['low', 'Low'], ['high', 'High']], s.quality, (v) => updateSettings({ quality: v })), 'Low: no shadows, lower resolution. High: sharpest. Auto adapts to your machine.'),
     row('Reduced motion', segmented<MotionPref>('Reduced motion', [['system', 'System'], ['reduced', 'On'], ['full', 'Off']], s.motion, (v) => updateSettings({ motion: v }))),
     row('Editor font size', font, `${FONT_MIN} to ${FONT_MAX} px`),
     el('h3', { text: 'Key bindings' }), keys,

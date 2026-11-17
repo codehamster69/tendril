@@ -16,6 +16,7 @@ import { rateLine } from './rating';
 import { copyText, shareText, signed, topShare } from './share';
 import type { ProgramStatus } from './publish';
 import { el, toast } from './palette';
+import { motionQuery } from './settings';
 
 const fmt = (n: number): string => n.toLocaleString('en-US');
 
@@ -30,7 +31,7 @@ const writeBest = (id: string, v: number): void => { try { const all = JSON.pars
 const ORBIT_MS = 5200;
 const STAMP_MS = 520;
 const COUNT_MS = 1300;
-const reduced = (): boolean => !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+const reduced = (): boolean => motionQuery.matches;
 const ease = (t: number): number => t * t * (3 - 2 * t);
 
 export function mountResultScreen({ loop, api, challenge: c, view }: ResultDeps): void {

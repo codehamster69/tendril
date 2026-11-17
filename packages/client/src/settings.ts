@@ -43,16 +43,39 @@ export function applySettings(s: Settings = getSettings()): void {
   root.dataset.motion = reducedMotion(s) ? 'reduced' : 'full';
 }
 
+export const SETTINGS_EVENT = 'tendril:settings';
+const announce = (s: Settings): void => { window.dispatchEvent(new CustomEvent(SETTINGS_EVENT, { detail: s })); };
+
 export function updateSettings(patch: Partial<Settings>): Settings {
   current = normalizeSettings({ ...getSettings(), ...patch });
   try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(current)); } catch { /* storage blocked: the choice lasts this session */ }
   applySettings(current);
-  window.dispatchEvent(new CustomEvent('tendril:settings', { detail: current }));
+  announce(current);
   return current;
 }
 
-/** Call once at startup: applies the saved settings and keeps "system" motion in step with the OS. */
+/** Calls `fn` with the settings now and after every change (this window, another window, or the OS motion setting). Returns a disposer. */
+export function onSettings(fn: (s: Settings) => void): () => void {
+  const h = (): void => fn(getSettings());
+  window.addEventListener(SETTINGS_EVENT, h);
+  return () => window.removeEventListener(SETTINGS_EVENT, h);
+}
+
+/**
+ * Stands in for `matchMedia('(prefers-reduced-motion: reduce)')` in the animation code: `.matches` follows the
+ * player's choice in Settings, and the OS preference when the choice is "System". Safe to read under node (false).
+ */
+export const motionQuery: { readonly matches: boolean } = { get matches() { try { return reducedMotion(); } catch { return false; } } };
+
+/** Call once at startup: applies the saved settings and keeps "system" motion and other windows in step. */
 export function initSettings(): void {
   applySettings();
-  if (typeof matchMedia === 'function') matchMedia('(prefers-reduced-motion: reduce)').addEventListener?.('change', () => applySettings());
+  if (typeof matchMedia === 'function') matchMedia('(prefers-reduced-motion: reduce)').addEventListener?.('change', () => { applySettings(); announce(getSettings()); });
+  // Another window (a second tab, or the desktop app's other window) changed the settings.
+  window.addEventListener('storage', (e) => {
+    if (e.key !== SETTINGS_KEY && e.key !== null) return;
+    current = null;
+    applySettings();
+    announce(getSettings());
+  });
 }
