@@ -138,3 +138,8 @@ A live Endless farm may run at most 6 hours (216,000 ticks) behind the wall cloc
 - **Decision:** a brief (goal + 0-2 twists, seasons exactly 2) is drawn from the challenge seed by `drawBrief` and carried as optional `Setup` fields (SIM_SPEC section 6). Setup version 2, `BRIEF_EPOCH = '2099-01-01'` (off). `RULES_VERSION` stays 5; absent fields change nothing, every existing golden hash is unchanged. Scores come from `replayWithGoal`; `finalOf` sums the visible and hidden farms.
 - **Why:** the plan (`challenges/plan.md`) needs a different problem every day, and dispatch by stored data keeps old challenges, Endless farms and duels replaying exactly. Drought is `weatherBias 2` (rain segments of length 0), hard frost is `-2`.
 - **Open:** festival quota sizes are first values for K2 to calibrate (`brain/notes/K1.md`).
+
+## D-K7 (2026-11-17) Brief pages, CLI practice and recheck, how-to-play section (K7)
+- **Decision:** daily pages show the brief's notice and twists (from `challengeSetup(..., SETUP_BRIEF)` on the stored seed; older rows show none). The CLI prints the brief, scores brief days by their goal, and takes `--practice` (random farm, not saved) and `--farm <seed>` (recheck a hidden farm, not saved; refused until the server publishes siblings). How-to-play gets "A new problem every day". CHANGELOG entry under Unreleased.
+- **Why:** players see the problem before they play, and practice runs cannot touch the submitted run. Practice reads as "today's brief on a random farm"; the brief stays fixed.
+- **Open:** closed-page sibling seeds and final scores wait for K3/K4 columns and API fields; the season page (client) waits for K6/K3.
