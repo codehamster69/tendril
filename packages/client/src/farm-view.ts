@@ -205,7 +205,6 @@ export class FarmView {
     this.scale.clearStrikes();
     this.light.setShadows(this.plan.shadows);
     this.resize();
-    this.exposeQuality();
   }
 
   /** The quality actually in use, for the e2e tests and the perf meter: setting, pixel ratio cap, ratio now, shadows. */
@@ -510,6 +509,7 @@ export class FarmView {
     const width = this.canvas.clientWidth || 1, height = this.canvas.clientHeight || 1;
     this.renderer.setPixelRatio(this.scale.ratio);
     this.renderer.setSize(width, height, false);
+    this.exposeQuality(); // also the first time, so the canvas reports quality before anything changes
     this.camera.aspect = width / height;
     this.camera.updateProjectionMatrix();
     this.rig.resized(); // the slate offset is in pixels, so a new size needs it applied again
