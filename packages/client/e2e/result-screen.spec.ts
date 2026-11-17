@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { ready } from './game.ts';
 import { dailyNumber, dailySeed, DAILY_PAR, BASE_RULES_VERSION } from '@tendril/sim/src/index.ts';
 
 const date = new Date().toISOString().slice(0, 10);
@@ -29,6 +30,7 @@ test.beforeEach(async ({ context }) => { await context.grantPermissions(['clipbo
 test('a run to sunset ends on the result card; any key skips the orbit; Enter tries again', async ({ page }) => {
   await mock(page, false);
   await page.goto('/?mode=daily');
+  await ready(page);
   await expect(page.locator('#tp-sunset')).toBeEnabled();
   await page.click('#tp-sunset');
   await expect(page.locator('.rs-layer')).toBeVisible({ timeout: 15_000 });
@@ -59,6 +61,7 @@ test('signed in: the run is submitted, ranks and the replay link appear', async 
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await mock(page, true);
   await page.goto('/?mode=daily');
+  await ready(page);
   await expect(page.locator('#tp-sunset')).toBeEnabled();
   await page.click('#tp-sunset');
   const card = page.locator('.rs-card');
@@ -74,6 +77,7 @@ test('a run below par gets the gentle card with a hint and Try again first', asy
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await mock(page, false);
   await page.goto('/?mode=daily');
+  await ready(page);
   await expect(page.locator('#tp-sunset')).toBeEnabled();
   await page.evaluate(() => window.tendril!.editor.setSource('')); // an empty program never reaches par
   await page.click('#tp-sunset');
