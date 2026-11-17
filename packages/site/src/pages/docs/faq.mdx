@@ -11,8 +11,20 @@ the language one idea at a time. If you can read the [starter program](/docs/exa
 
 ### Does my farm keep growing when the game is closed?
 
-Your farm's clock keeps counting while the game is closed or paused, at 10 ticks a second. When you press
-Run again, the game catches the farm up, with your program starting from the top.
+Yes, for up to 6 hours. Your farm's clock runs at 10 ticks a second, even while the game is closed or paused. When you
+open the farm again, the game catches it up to the present and your program starts from the top.
+
+Time away beyond 6 hours (216,000 ticks) is not simulated. When you open a signed-in Endless farm that is further
+behind than that, the farm rests: its clock pauses at the 6-hour mark and carries on from there, so a farm that sat for a
+week ran for the first 6 hours of that week. A message tells you how long it rested. Ticks your own computer already ran
+are never rested away. The limit applies only to unattended time. It never limits how big a farm can grow, and resting
+never gives a farm extra ticks.
+
+### What if catching up takes a while?
+
+A big farm with many bots has a lot of ticks to run after a long absence, so the game shows a "Catching up" card with a
+progress bar and the ticks per second. It saves a checkpoint every 20,000 ticks, so if you close the game or the page
+reloads, the next open resumes from the last save instead of starting over.
 
 ### Can I use another language?
 

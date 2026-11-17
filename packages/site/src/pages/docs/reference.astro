@@ -1,7 +1,7 @@
 ---
 // Generated from @tendril/lang's api.ts, the same list the in-game editor and reference use.
 import { Code } from 'astro:components';
-import { API, KEYWORDS } from '@tendril/lang';
+import { API, API_DOCS, KEYWORDS, KEYWORD_DOCS, runDemo } from '@tendril/lang';
 import type { ApiEntry } from '@tendril/lang';
 import Docs from '../../layouts/Docs.astro';
 import { sprout } from '../../sprout-lang';
@@ -13,6 +13,7 @@ const groups: { id: string; title: string; kind: ApiEntry['kind']; intro: string
   { id: 'utilities', title: 'Utilities', kind: 'utility', intro: 'Helpers for lists, text and numbers, plus printing and walking. All free except go_to, which moves.' },
   { id: 'constants', title: 'Names', kind: 'constant', intro: 'Built-in names you can use anywhere.' },
 ];
+const demo = (name: string) => { const d = API_DOCS[name]; return d ? { doc: d, out: runDemo(d).lines } : null; };
 const ticks = (e: ApiEntry) => (e.ticks === 'n' ? (e.name === 'go_to' ? '2 per tile' : 'n') : e.ticks === 0 ? null : String(e.ticks));
 const headings = groups.map((g) => ({ depth: 2, slug: g.id, text: g.title })).concat([{ depth: 2, slug: 'keywords', text: 'Keywords' }]);
 const scanFields: [string, string][] = [
@@ -28,7 +29,7 @@ const scanFields: [string, string][] = [
   ['honey', 'Jars of honey waiting in a hive.'],
 ];
 ---
-<Docs title="Reference" description="Every command, question and helper in Sprout, with what it costs and an example." headings={headings}>
+<Docs title="Reference" description="Every command, question and helper in Sprout, with what it costs, when it is refused, and a worked example you can run." headings={headings}>
   {groups.map((g) => (
     <section>
       <h2 id={g.id}>{g.title}</h2>
@@ -36,9 +37,10 @@ const scanFields: [string, string][] = [
       {g.kind === 'constant' ? (
         <div class="table-scroll">
           <table>
+            <thead><tr><th>Name</th><th>Meaning</th><th>Example</th></tr></thead>
             <tbody>
               {API.filter((e) => e.kind === 'constant').map((e) => (
-                <tr id={e.name}><td><code>{e.name}</code></td><td>{e.doc}</td></tr>
+                <tr id={e.name}><td><code>{e.name}</code></td><td>{e.doc}</td><td><Code code={API_DOCS[e.name]?.demo ?? e.example} lang={sprout as any} themes={{ light: 'github-light', dark: 'github-dark-dimmed' }} defaultColor={false} /></td></tr>
               ))}
             </tbody>
           </table>
@@ -56,7 +58,13 @@ const scanFields: [string, string][] = [
                 </table>
               </div>
             )}
-            <Code code={e.example} lang={sprout as any} themes={{ light: 'github-light', dark: 'github-dark-dimmed' }} defaultColor={false} />
+            {demo(e.name)?.doc.rules && (
+              <ul class="rules">{demo(e.name)!.doc.rules!.map((r) => <li set:html={r.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/`([^`]+)`/g, '<code>$1</code>')} />)}</ul>
+            )}
+            <Code code={demo(e.name)?.doc.demo ?? e.example} lang={sprout as any} themes={{ light: 'github-light', dark: 'github-dark-dimmed' }} defaultColor={false} />
+            {demo(e.name) && demo(e.name)!.out.length > 0 && (
+              <div class="out"><span>Prints</span><pre>{demo(e.name)!.out.join('\n')}</pre></div>
+            )}
           </div>
         ))
       )}
@@ -65,7 +73,12 @@ const scanFields: [string, string][] = [
   <section>
     <h2 id="keywords">Keywords</h2>
     <p>These words are part of the language and can't be used as names. See <a href="/docs/sprout/">Learn Sprout</a> for how they're used.</p>
-    <p class="keywords">{KEYWORDS.map((k) => <code>{k}</code>)}</p>
+    <div class="table-scroll">
+      <table>
+        <thead><tr><th>Word</th><th>Example</th></tr></thead>
+        <tbody>{KEYWORDS.map((k) => <tr id={`kw-${k}`}><td><code>{k}</code></td><td><Code code={KEYWORD_DOCS[k] ?? ''} lang={sprout as any} themes={{ light: 'github-light', dark: 'github-dark-dimmed' }} defaultColor={false} /></td></tr>)}</tbody>
+      </table>
+    </div>
   </section>
 </Docs>
 <style>
@@ -74,5 +87,9 @@ const scanFields: [string, string][] = [
   .ticks { font: 400 0.85rem var(--body); color: var(--dim); }
   .entry :global(pre) { margin-bottom: 1.25rem; }
   .fields { margin-bottom: 1rem; }
-  .keywords { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+  .rules { margin: 0 0 0.75rem; padding-left: 1.25rem; }
+  .rules li { margin: 0.2rem 0; }
+  .out { margin: -0.75rem 0 1.25rem; padding: 0.5rem 0.9rem; border-left: 3px solid var(--rule, currentColor); background: color-mix(in srgb, currentColor 5%, transparent); border-radius: 0 6px 6px 0; }
+  .out span { font: 600 0.72rem var(--body); text-transform: uppercase; letter-spacing: 0.06em; color: var(--dim); }
+  .out pre { margin: 0.2rem 0 0; background: none; border: 0; padding: 0; white-space: pre-wrap; }
 </style>
