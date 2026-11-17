@@ -68,9 +68,10 @@ export class DayDial {
     const hud = document.getElementById('game-hud');
     if (hud) this.ro?.observe(hud);
     this.ro?.observe(this.root);
+    const tools = document.getElementById('stage-tools');
+    if (tools) this.ro?.observe(tools);
     window.addEventListener('resize', this.layout);
     window.addEventListener('tendril:slate-inset', this.layout);
-    this.root.addEventListener('transitionend', this.layout);
     // The slate slides in and out; measure again once it has arrived.
     window.addEventListener('transitionend', this.slateMoved, true);
     requestAnimationFrame(this.layout);
@@ -85,6 +86,7 @@ export class DayDial {
   private layout = (): void => {
     if (!this.root.isConnected) return;
     const st = this.root.style;
+   
     st.top = ''; st.left = ''; st.width = '';
     const d = this.root.getBoundingClientRect();
     const h = document.getElementById('game-hud')?.getBoundingClientRect();
@@ -99,7 +101,11 @@ export class DayDial {
       if (room >= 200) { const w = Math.min(300, room); st.width = `${w}px`; st.left = `${Math.round(from + w / 2)}px`; }
       else st.top = `${Math.round(h.bottom + 6)}px`;
     }
-    document.documentElement.style.setProperty('--dd-bottom', `${Math.round(this.root.getBoundingClientRect().bottom + 8)}px`);
+    const root = document.documentElement.style;
+    root.setProperty('--dd-bottom', `${Math.round(this.root.getBoundingClientRect().bottom + 8)}px`);
+    // The contract cards sit under the tool row, wherever the dial pushed it and however far it wraps.
+    const t = document.getElementById('stage-tools')?.getBoundingClientRect();
+    if (t && t.height > 0) root.setProperty('--tools-bottom', `${Math.round(t.bottom + 10)}px`);
   };
 
   /** Called with every snapshot. Cheap when nothing visible changed. */
@@ -202,6 +208,7 @@ export class DayDial {
     window.removeEventListener('transitionend', this.slateMoved, true);
     this.root.remove();
     document.documentElement.style.removeProperty('--dd-bottom');
+    document.documentElement.style.removeProperty('--tools-bottom');
   }
 }
 
