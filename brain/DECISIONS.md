@@ -130,3 +130,6 @@ Where `docs/PLAN.md` disagrees with this file, this file wins.
 ## D-029 (2026-11-17) Silos and sellPlot are rules v5, switched on by data from SILO_EPOCH (L1)
 - **Decision:** `World.siloTick` switches silos and `sellPlot` on (SIM_SPEC section 5). Dailies from 2026-11-17 (brought forward from 15 Dec by Rohan, no players yet; the market on v5 dailies still opens 8 Dec) and seasons starting from then are v5; Endless farms derive the tick from their start time and never store it, so their stored version, checkpoints and hashes stay readable by older desktop builds.
 - **Why:** one barn makes big farms walk-bound; sellPlot undoes a bad plot purchase. Details and tuning: `brain/notes/L1-silos.md`.
+
+## D-C3 (2026-11-17) Farm rests after 6 hours away
+A live Endless farm may run at most 6 hours (216,000 ticks) behind the wall clock. `POST /farms/wake {atTick}` adds exactly the excess to `farms.rested_ms` (server-computed, only grows, idempotent; never rests below the caller's own unsynced tick). `started_at` never moves, so silo/market ticks, hashes, replays and rules versions are untouched. Target tick = (now - started_at - rested_ms) / 100 on server (`accept`) and client (`clock.ts`). The client calls wake in `connectRanked` before the farm opens. Applies to backlogs that predate the feature (pending Rohan's choice).

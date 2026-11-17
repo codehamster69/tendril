@@ -6,14 +6,14 @@ import { HttpError } from './validation.ts';
 import type { ChunkInput } from './validation.ts';
 
 interface FarmRow {
-  id: string; user_id: string; seed: number; started_at: number; tick: number;
+  id: string; user_id: string; seed: number; started_at: number; rested_ms: number; tick: number;
   checkpoint: string; checkpoint_hash: string; rules_version: number; coins: number; net_worth: number; verified_at: number | null;
   pending_from: number | null; pending_actions: string | null; pending_at: number | null;
   slow_at: number; sampled_at: number; rank: number | null; growth: number; att_start: number; att_n: number;
 }
 export interface ChunkResult { tick: number; checkpointHash: string; netWorth: number; rank: number | null; nextSyncMs: number }
 export interface FarmResponse {
-  id: string; seed: number; startedAtMs: number; tick: number; checkpoint: string;
+  id: string; seed: number; startedAtMs: number; /** Total time this farm's clock has rested (SIM_SPEC 1.4). The farm's target tick is (now - startedAtMs - restedMs) / 100. */ restedMs: number; tick: number; checkpoint: string;
   checkpointHash: string; rulesVersion: number; coins: number; netWorth: number;
 }
 export interface LeaderEntry {
@@ -47,7 +47,7 @@ export function syncIntervalMs(rank: number | null, scale = 1): number {
 
 function farmResponse(farm: FarmRow): FarmResponse {
   return {
-    id: farm.id, seed: farm.seed, startedAtMs: farm.started_at, tick: farm.tick,
+    id: farm.id, seed: farm.seed, startedAtMs: farm.started_at, restedMs: farm.rested_ms, tick: farm.tick,
     checkpoint: farm.checkpoint, checkpointHash: farm.checkpoint_hash, rulesVersion: farm.rules_version,
     coins: farm.coins, netWorth: farm.net_worth,
   };
@@ -81,7 +81,7 @@ export async function createFarm(db: Db, userId: string, now: () => number): Pro
   const world = createWorld({ id, seed });
   const worth = netWorth(world);
   const row: FarmRow = {
-    id, user_id: userId, seed, started_at: startedAt, tick: world.tick, checkpoint: serialize(world),
+    id, user_id: userId, seed, started_at: startedAt, rested_ms: 0, tick: world.tick, checkpoint: serialize(world),
     checkpoint_hash: hashWorld(world), rules_version: BASE_RULES_VERSION, coins: world.coins, net_worth: worth, verified_at: null,
     pending_from: null, pending_actions: null, pending_at: null, slow_at: 0, sampled_at: startedAt, rank: null, growth: 0, att_start: 0, att_n: 0,
   };
@@ -104,6 +104,31 @@ export async function getFarm(db: Db, userId: string): Promise<FarmResponse> {
   const rows = await db.query<FarmRow>('SELECT * FROM farms WHERE user_id = ?', [userId]);
   if (!rows[0]) throw new HttpError(404, 'Farm not found');
   return farmResponse(rows[0]);
+}
+
+/** A farm may run this far behind the clock; the rest of a longer absence is rested away (wakeFarm). 6 hours = 216,000 ticks. */
+export const REST_CAP_MS = 6 * HOUR_MS;
+
+/**
+ * "Farm rests": offline time beyond REST_CAP_MS is not simulated. The farm's clock pauses at the cap and resumes on return.
+ * `started_at` never moves (silo and market switch ticks derive from it); `rested_ms` only grows, by exactly the excess, computed here
+ * from the verified tick, so a farm can only ever get fewer ticks than the plain wall clock, never more. Idempotent: once the farm is
+ * within the cap, a repeat call adds nothing. `atTick` is the caller's own (possibly unsynced) tick; the server never rests a farm
+ * below it, so a client that played offline keeps every tick it already simulated. A larger claim only means less rest.
+ */
+export async function wakeFarm(db: Db, userId: string, atTick: number, now: () => number): Promise<FarmResponse & { restedNowMs: number }> {
+  const [farm] = await db.query<FarmRow>('SELECT * FROM farms WHERE user_id = ?', [userId]);
+  if (!farm) throw new HttpError(404, 'Farm not found');
+  const t = now();
+  const clockTick = Math.floor((t - farm.started_at - farm.rested_ms) / 100);
+  const base = Math.max(farm.tick, Math.min(atTick, Math.max(clockTick, 0)));
+  const behindMs = (clockTick - base) * 100;
+  const excess = behindMs - REST_CAP_MS;
+  if (excess <= 0) return { ...farmResponse(farm), restedNowMs: 0 };
+  // Compare-and-set on the previous total: two concurrent wakes cannot both add.
+  const changed = await db.execute('UPDATE farms SET rested_ms = ? WHERE id = ? AND rested_ms = ?', [farm.rested_ms + excess, farm.id, farm.rested_ms]);
+  const [fresh] = await db.query<FarmRow>('SELECT * FROM farms WHERE id = ?', [farm.id]);
+  return { ...farmResponse(fresh!), restedNowMs: changed.rowsAffected > 0 ? excess : 0 };
 }
 
 /**
@@ -193,7 +218,7 @@ async function accept(db: Db, farm: FarmRow, input: ChunkInput, t: number, limit
   if (input.rulesVersion !== farm.rules_version) throw new HttpError(409, 'Rules version mismatch');
   if (input.fromTick !== farm.tick || input.checkpointHash !== farm.checkpoint_hash) throw new HttpError(409, 'Stale checkpoint');
   if (input.toTick <= input.fromTick) throw new HttpError(422, 'Invalid tick range');
-  if (input.toTick > Math.floor((t - farm.started_at) / 100)) throw new HttpError(422, 'Tick is ahead of server clock');
+  if (input.toTick > Math.floor((t - farm.started_at - farm.rested_ms) / 100)) throw new HttpError(422, 'Tick is ahead of server clock');
   // Silos switch on at SILO_EPOCH through a tick derived from the start time. It is never stored and not hashed, so checkpoints and
   // hashes stay readable by older desktop builds (SIM_SPEC 5.5).
   const world = withEndlessSilos(deserialize(farm.checkpoint), farm.started_at);

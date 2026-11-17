@@ -5,7 +5,7 @@ import type { Db } from './db.ts';
 import { acceptDuel, duelCounts, duelPage } from './duels.ts';
 import { board, challengeInfo, createDuel, entryReplay, entrySource, entrySummary, hallOfFame, publishedSources, KIND_LIMITS, legacyLeaderboard, legacySubmit, noteLegacySubmit, refreshLegacyGrace, loadChallenge, MAX_SOURCE_BYTES, moveLegacyDaily, stats, submitEntry } from './arena.ts';
 import type { AuthorKind, Medal } from './arena.ts';
-import { createFarm, dailyInfo, getFarm, getReplay, isValidDate, leaderboard, reserveAttempt, utcDate, verifyChunk } from './game.ts';
+import { createFarm, dailyInfo, getFarm, getReplay, isValidDate, leaderboard, reserveAttempt, utcDate, verifyChunk, wakeFarm } from './game.ts';
 import type { Board } from './game.ts';
 import { badgeFor, follow, setPinned, listFollowing, playerPage, ratingBadgeFor, statsCardFor, unfollow } from './players.ts';
 import { handleShare } from './share.ts';
@@ -220,6 +220,13 @@ function createInnerApp(options: AppOptions): (request: Request) => Promise<Resp
         const identity = await requireUser();
         rejectQuery(url);
         return json(await getFarm(db, identity.userId));
+      }
+      if (route === '/farms/wake' && method === 'POST') {
+        const identity = await requireUser();
+        rejectQuery(url);
+        const body = objectWithKeys(await readJson(request), ['atTick'], 422);
+        if (typeof body.atTick !== 'number' || !Number.isSafeInteger(body.atTick) || body.atTick < 0) throw new HttpError(422, 'Invalid tick');
+        return json(await wakeFarm(db, identity.userId, body.atTick, now));
       }
       const chunk = /^\/farms\/([^/]+)\/chunks$/.exec(route);
       if (chunk && method === 'POST') {

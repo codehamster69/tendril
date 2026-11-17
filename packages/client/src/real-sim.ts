@@ -143,7 +143,8 @@ export class RealSim implements SimSource {
       validateFarm(this.accepted.farm);
       if (this.accepted.farm.id !== authoritative.id || this.accepted.farm.seed !== authoritative.seed || this.accepted.farm.startedAtMs !== authoritative.startedAtMs) throw new Error('Saved accepted checkpoint identity mismatch.');
       world ??= authoritative.checkpoint;
-      meta ??= { seed: authoritative.seed, startedAtMs: authoritative.startedAtMs, mode: 'live', farmId: authoritative.id, rulesVersion: authoritative.rulesVersion };
+      if (meta) meta = { ...meta, restedMs: Math.max(meta.restedMs ?? 0, authoritative.restedMs ?? 0) };
+      meta ??= { seed: authoritative.seed, startedAtMs: authoritative.startedAtMs, restedMs: authoritative.restedMs ?? 0, mode: 'live', farmId: authoritative.id, rulesVersion: authoritative.rulesVersion };
     }
     this.pendingLog = log ?? [];
     this.opsSeen = new Set(this.pendingLog.flatMap((c) => c.actions.map((e) => e[2])));

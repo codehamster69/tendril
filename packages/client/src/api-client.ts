@@ -1,7 +1,7 @@
 import type { LogEntry } from '@tendril/sim/src/index.ts';
 
 export interface FarmResponse {
-  id: string; seed: number; startedAtMs: number; tick: number;
+  id: string; seed: number; startedAtMs: number; /** Absent from an old server: 0. */ restedMs?: number; tick: number;
   checkpoint: string; checkpointHash: string; rulesVersion: number;
   coins: number; netWorth: number;
 }
@@ -87,6 +87,8 @@ export class FarmApi {
     return this.request('/dev/login', 'POST', { displayName });
   }
   farm(): Promise<FarmResponse> { return this.request('/farms/me'); }
+  /** Rests the farm's clock if it is more than 6 hours behind. `atTick` is this device's own tick, which the server never rests below. */
+  wake(atTick: number): Promise<FarmResponse & { restedNowMs: number }> { return this.request('/farms/wake', 'POST', { atTick }); }
   createFarm(): Promise<FarmResponse> { return this.request('/farms', 'POST', {}); }
   submit(id: string, chunk: { fromTick: number; toTick: number; actions: LogEntry[]; rulesVersion: number; checkpointHash: string }): Promise<ChunkResponse> {
     return this.request(`/farms/${encodeURIComponent(id)}/chunks`, 'POST', chunk);
