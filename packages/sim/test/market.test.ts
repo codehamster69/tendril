@@ -301,13 +301,12 @@ describe('MARKET_EPOCH and challengeSetup', () => {
     expect(bot).toContain(`MARKET_EPOCH = '${MARKET_EPOCH}'`);
   });
 
-  it('dailies before the epoch are v3, from it on v4', () => {
+  it('dailies before the silo epoch are v3, from it on v5; the market opens by date on v5', () => {
     expect(MARKET_EPOCH).toBe('2026-12-08');
-    expect(dailyRulesVersion('2026-12-07')).toBe(3);
-    expect(dailyRulesVersion('2026-12-08')).toBe(4);
-    expect(dailyRulesVersion('2026-12-09')).toBe(4);
-    expect(dailyRulesVersion('2026-12-14')).toBe(4);
-    expect(dailyRulesVersion('2027-02-01')).toBe(5); // SILO_EPOCH 2026-12-15: market plus silos
+    expect(dailyRulesVersion('2026-11-16')).toBe(3);
+    expect(dailyRulesVersion('2026-12-07')).toBe(5); // SILO_EPOCH 2026-11-17 came first: v5, no table yet
+    expect(dailyRulesVersion('2026-12-08')).toBe(5);
+    expect(dailyRulesVersion('2027-02-01')).toBe(5);
     expect(marketActive('2026-12-01')).toBe(false);
     expect(daysUntilMarket('2026-12-01')).toBe(7);
     expect(daysUntilMarket('2026-12-08')).toBe(0);

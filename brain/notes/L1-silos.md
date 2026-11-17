@@ -1,5 +1,7 @@
 # L1: silo rules and sellPlot (rules v5), 2026-11-17
 
+Update 2026-11-17: Rohan moved SILO_EPOCH to 2026-11-17 (live now). v5 dailies carry the market table only from MARKET_EPOCH; `rulesHaveMarket` became `marketAllowed` + `marketFits`; plain duels are v5.
+
 Brief: /mnt/project-files/redesign/briefs/L1-silo-rules.md plus `sell_plot` (Rohan approved both, same epoch). Spec: docs/SIM_SPEC.md section "Rules version 5".
 
 ## Changed files

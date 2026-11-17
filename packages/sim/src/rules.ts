@@ -4,7 +4,7 @@
  * Version 5 = version 3 or 4 plus silos and `sellPlot` (SIM_SPEC section 5), switched on by `World.siloTick`; a world without it plays exactly as before.
  */
 export const RULES_VERSION = 5;
-/** The market rules (version 4) without silos: dailies from MARKET_EPOCH until SILO_EPOCH. */
+/** The market rules (version 4) without silos. Since silos switched on (SILO_EPOCH) before the market, no new challenge uses it; kept for replays. */
 export const MARKET_RULES_VERSION = 4;
 /** Rules of everything that has no market: endless farms, seasons, duels not copied from a market daily, dailies before MARKET_EPOCH. */
 export const BASE_RULES_VERSION = 3;

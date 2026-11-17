@@ -2,7 +2,7 @@
 // and challenges created before modifiers keep replaying exactly as they did.
 import { readFileSync } from 'node:fs';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { DAILY_PAR, PAR_MIN, BASE_RULES_VERSION, SETUP_LEGACY, SETUP_VERSION, challengeSetup, createWorld, dailySeed, hashWorld, parFromReference, replayWithPar } from '@tendril/sim/src/index.ts';
+import { DAILY_PAR, PAR_MIN, BASE_RULES_VERSION, RULES_VERSION, SETUP_LEGACY, SETUP_VERSION, challengeSetup, createWorld, dailySeed, hashWorld, parFromReference, replayWithPar } from '@tendril/sim/src/index.ts';
 import type { LogEntry } from '@tendril/sim/src/index.ts';
 import { createRun } from '../../lang/src/index.ts';
 import { verifySource } from '../../lang/src/verify.ts';
@@ -53,8 +53,8 @@ describe('a daily that creates itself', () => {
     const c = (await call('/challenges/today')).json;
     const seed = dailySeed(TODAY);
     const cs = challengeSetup('daily', seed);
-    expect(c).toMatchObject({ id: `d-${TODAY}`, seed, ticks: cs.ticks, setupVersion: SETUP_VERSION, rulesVersion: BASE_RULES_VERSION });
-    const ref = verifySource({ source: REFERENCE_SOURCE, challengeId: c.id, kind: 'daily', seed, ticks: c.ticks, rulesVersion: BASE_RULES_VERSION, setupVersion: SETUP_VERSION });
+    expect(c).toMatchObject({ id: `d-${TODAY}`, seed, ticks: cs.ticks, setupVersion: SETUP_VERSION, rulesVersion: RULES_VERSION });
+    const ref = verifySource({ source: REFERENCE_SOURCE, challengeId: c.id, kind: 'daily', seed, ticks: c.ticks, rulesVersion: RULES_VERSION, setupVersion: SETUP_VERSION });
     expect(ref.ok && c.par).toBe(ref.ok ? parFromReference(ref.netWorth!) : -1);
     expect(verifyCalls).toBe(1);
     // The same row is served from the database afterwards: no second reference run, par never moves.
@@ -66,7 +66,7 @@ describe('a daily that creates itself', () => {
     const c = (await call('/challenges/today')).json;
     const actions = logOf(REFERENCE_SOURCE, c.seed, c.setupVersion, c.ticks);
     const user = (await call('/dev/login', { displayName: 'Ref' })).json;
-    const r = await call(`/challenges/${c.id}/entries`, { rulesVersion: BASE_RULES_VERSION, actions }, user.token);
+    const r = await call(`/challenges/${c.id}/entries`, { rulesVersion: RULES_VERSION, actions }, user.token);
     expect(r.status).toBe(200);
     expect(r.json.parTick).not.toBeNull();
     expect(r.json.netWorth).toBeGreaterThanOrEqual(c.par);

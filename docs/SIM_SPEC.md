@@ -413,10 +413,14 @@ owned (an edge plot); no bot stands on any of its tiles; and every other owned p
 Orders already issued keep their `qty`; new orders use the new plot count. Buying the plot again gives fresh soil
 (`addPlot` at the current tick). Every buy and sell loop loses coins and net worth (tested).
 
-### 5.5 Rollout: `SILO_EPOCH = '2026-12-15'` (00:00 UTC)
-- Dailies dated from it: rules v5 (`dailyRulesVersion`), with the market table as in v4. Seasons whose week starts on or after it:
-  v5 without a table (`seasonRulesVersion`). Duels copy the version and table of the daily they come from; other duels stay v3.
-  `rulesHaveMarket(v, kind)` = `v == 4 || (v == 5 && kind != 'season')`.
+### 5.5 Rollout: `SILO_EPOCH = '2026-11-17'` (00:00 UTC)
+Brought forward from 15 Dec by Rohan on 2026-11-17 (no players yet), so it now comes before MARKET_EPOCH.
+- Dailies dated from it: rules v5 (`dailyRulesVersion`). A v5 daily has the market table from MARKET_EPOCH on and none before.
+  Seasons whose week starts on or after it: v5 without a table (`seasonRulesVersion`). Duels copy the version and table of
+  the daily they come from; other duels created from the epoch on are v5 without a table. No new challenge is v4 any more.
+- The table on v5 is dispatched by data: `marketAllowed(v, kind)` = `v == 4 || (v == 5 && kind != 'season')`;
+  `marketFits(v, kind, has)` = v4 needs a table, v3 and seasons have none, other v5 challenges may have one. The server
+  requires one on a daily that is v4, or v5 dated from MARKET_EPOCH.
 - Challenges build their world with `challengeSetup(kind, seed, setupVersion, market, rulesVersion)`, which sets `siloTick = 0`
   for v5. Server replay, the verify function, the CLI and the client all pass the stored version.
 - Endless farms keep their stored `rules_version` (3) and checkpoint format. Their switch is derived from the start time:

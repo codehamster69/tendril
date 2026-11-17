@@ -18,7 +18,7 @@ export type {
 } from './types.ts';
 export {
   MARKET, MARKET_EPOCH, baseMarket, describeMarket, blendedTarget, dailyRulesVersion, daysUntilMarket, isMarketTable, marketActive, marketPrices, nextMarket,
-  nextMultipliers, observedShares, rawTarget, replayStats, rulesHaveMarket,
+  nextMultipliers, observedShares, rawTarget, replayStats, marketAllowed, marketFits,
   SILO_EPOCH, SILO_EPOCH_MS, siloActive, seasonRulesVersion, endlessSiloTick, withEndlessSilos,
 } from './arena.ts';
 export type { MarketRow, MarketRowView, MarketTable, MarketView } from './arena.ts';
