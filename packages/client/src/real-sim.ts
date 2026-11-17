@@ -32,6 +32,9 @@ export interface CatchUp { behind: number; startBehind: number; ticksPerSecond: 
 
 const isLean = (m: Command): boolean => m.type === 'step' && m.lean === true;
 
+/** A local save that disagrees with itself. A server-owned farm sets it aside and rebuilds from the server (RealSim.restore); a local farm reports it. */
+class UnusableLocalSave extends Error {}
+
 export class RealSim implements SimSource {
   onProgress?: (done: number, total: number) => void;
   meta: Meta;
@@ -125,7 +128,38 @@ export class RealSim implements SimSource {
 
   init(source: string): Promise<void> { return this.enqueue(() => this.restore(source, false)); }
 
+  /**
+   * Restores the farm from its save. A server-owned farm whose local save no longer agrees with itself (logs that do not
+   * reach the saved world, a missing chunk, a stale checkpoint after an update) is not an error the player can fix: the
+   * server holds the last accepted checkpoint, and a live farm is the same program run forward from it. So the bad local
+   * state is set aside (kept under `quarantine`, never deleted) and the farm is rebuilt from the server's checkpoint.
+   */
   private async restore(source: string, recovering: boolean): Promise<void> {
+    try { await this.restoreOnce(source, recovering); } catch (e) {
+      if (!(e instanceof UnusableLocalSave) || !this.options.authoritative) throw e;
+      await this.setAsideLocalSave(e.message);
+      this.accepted = null;
+      await this.restoreOnce(source, false);
+      window.dispatchEvent(new CustomEvent('tendril:recovered', { detail: e.message }));
+    }
+  }
+
+  private async setAsideLocalSave(reason: string): Promise<void> {
+    const names = ['world', 'meta', 'pendingLog', 'hash', 'accepted', 'logIdx'].map((k) => this.prefix + k);
+    const saved = await kvGetMany<Record<string, unknown>>(names);
+    const index = (saved[names[5]] as number[] | undefined) ?? [];
+    const logKeys = index.map((id) => `${this.prefix}log.${id}`);
+    const chunks = await kvGetMany<Record<string, unknown>>(logKeys).catch(() => ({} as Record<string, unknown>));
+    const entry = { reason, at: Date.now(), world: saved[names[0]], meta: saved[names[1]], legacyLog: saved[names[2]], hash: saved[names[3]], accepted: saved[names[4]], log: logKeys.map((k) => chunks[k] ?? null) };
+    await kvWrite({ [this.prefix + 'quarantine']: entry }, []); // One slot: the newest set-aside save. Written before anything is removed.
+    await kvWrite({}, [...names, ...logKeys]); // The program (`source`) stays.
+    this.storedIds = new Set();
+    this.nextLogId = 1;
+    this.pendingLog = [];
+    this.held = null;
+  }
+
+  private async restoreOnce(source: string, recovering: boolean): Promise<void> {
     const keys = ['world', 'meta', 'pendingLog', 'source', 'hash', 'accepted', 'logIdx'].map((key) => this.prefix + key);
     const saved = await kvGetMany<Record<string, unknown>>(keys);
     let world = saved[keys[0]] as string | undefined;
@@ -139,9 +173,9 @@ export class RealSim implements SimSource {
       validateFarm(authoritative);
       if (world && meta && (meta.farmId !== authoritative.id || meta.seed !== authoritative.seed || meta.startedAtMs !== authoritative.startedAtMs || meta.rulesVersion !== authoritative.rulesVersion)) throw new Error('Saved server farm identity, seed, clock or rules mismatch. Pending logs retained; no replacement or retry.');
       this.accepted = world ? saved[keys[5]] as Accepted : { farm: authoritative, receivedAtMs: null };
-      if (!this.accepted) throw new Error('Saved server farm is missing its accepted checkpoint. Logs retained.');
+      if (!this.accepted) throw new UnusableLocalSave('Saved server farm is missing its accepted checkpoint.');
       validateFarm(this.accepted.farm);
-      if (this.accepted.farm.id !== authoritative.id || this.accepted.farm.seed !== authoritative.seed || this.accepted.farm.startedAtMs !== authoritative.startedAtMs) throw new Error('Saved accepted checkpoint identity mismatch.');
+      if (this.accepted.farm.id !== authoritative.id || this.accepted.farm.seed !== authoritative.seed || this.accepted.farm.startedAtMs !== authoritative.startedAtMs) throw new UnusableLocalSave('Saved accepted checkpoint identity mismatch.');
       world ??= authoritative.checkpoint;
       if (meta) meta = { ...meta, restedMs: Math.max(meta.restedMs ?? 0, authoritative.restedMs ?? 0) };
       meta ??= { seed: authoritative.seed, startedAtMs: authoritative.startedAtMs, restedMs: authoritative.restedMs ?? 0, mode: 'live', farmId: authoritative.id, rulesVersion: authoritative.rulesVersion };
@@ -151,16 +185,16 @@ export class RealSim implements SimSource {
     this.trimLocal();
     if (world) {
       const restored = deserialize(world);
-      if (restored.seed !== meta!.seed || (authoritative && restored.id !== authoritative.id)) throw new Error('Saved world does not match farm metadata.');
-      if (saved[keys[4]] && hashWorld(restored) !== saved[keys[4]]) throw new Error('Saved checkpoint hash mismatch.');
+      if (restored.seed !== meta!.seed || (authoritative && restored.id !== authoritative.id)) throw new UnusableLocalSave('Saved world does not match farm metadata.');
+      if (saved[keys[4]] && hashWorld(restored) !== saved[keys[4]]) throw new UnusableLocalSave('Saved checkpoint hash mismatch.');
       if (this.accepted) {
         const replay = withEndlessSilos(deserialize(this.accepted.farm.checkpoint), this.accepted.farm.startedAtMs);
         for (const chunk of this.pendingLog) {
-          if (chunk.fromTick !== replay.tick || chunk.fromHash !== hashWorld(replay)) throw new Error('Saved pending log chain is inconsistent. Logs retained.');
+          if (chunk.fromTick !== replay.tick || chunk.fromHash !== hashWorld(replay)) throw new UnusableLocalSave('Saved pending log chain is inconsistent.');
           replayChunk(replay, chunk.actions, chunk.toTick);
-          if (chunk.hash !== hashWorld(replay)) throw new Error('Saved pending log hash mismatch. Logs retained.');
+          if (chunk.hash !== hashWorld(replay)) throw new UnusableLocalSave('Saved pending log hash mismatch.');
         }
-        if (hashWorld(replay) !== hashWorld(restored)) throw new Error('Saved pending logs do not reach the durable checkpoint.');
+        if (hashWorld(replay) !== hashWorld(restored)) throw new UnusableLocalSave('Saved pending logs do not reach the durable checkpoint.');
       }
     }
     this.snap = null;
@@ -178,7 +212,7 @@ export class RealSim implements SimSource {
     const keys = index.map((id) => `${this.prefix}log.${id}`);
     const got = await kvGetMany<Record<string, LogChunk>>(keys);
     const chunks = keys.map((k) => got[k]);
-    if (chunks.some((c) => !c)) throw new Error('Saved pending log is missing a chunk. Logs retained; no replacement or retry.');
+    if (chunks.some((c) => !c)) throw new UnusableLocalSave('Saved pending log is missing a chunk.');
     index.forEach((id, i) => { this.logIds.set(chunks[i]!, id); this.storedIds.add(id); this.nextLogId = Math.max(this.nextLogId, id + 1); });
     return chunks as LogChunk[];
   }
