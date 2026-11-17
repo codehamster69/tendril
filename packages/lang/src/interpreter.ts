@@ -1,9 +1,29 @@
 import {
-  applyAction, BUILDINGS, capacity, CROPS, forecast, isUnlocked, ITEMS, OP, openOrders, plotCost, botCost,
-  scanAt, tickWorld, UNLOCKS, weatherAt,
+  applyAction, BUILDINGS, capacity, CROPS, FARM_OPS, forecast, isUnlocked, ITEMS, OP, openOrders, plotCost, botCost,
+  scanAt, silosActive, siloCost, SILO, tickWorld, UNLOCKS, weatherAt,
 } from '@tendril/sim/src/index.ts';
 import type { LogEntry, World } from '@tendril/sim/src/index.ts';
 import type { Expr, Stmt } from './ast.ts';
+
+type Pos = { x: number; y: number };
+/** Silo positions in plot order, then row order (the same order as tiles()). Empty before rules v5. */
+function silos(w: World): Pos[] {
+  const out: Pos[] = [];
+  for (const p of w.plots) for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) {
+    const tx = p.px * 8 + x, ty = p.py * 8 + y;
+    if (scanAt(w, tx, ty)?.building === SILO) out.push({ x: tx, y: ty });
+  }
+  return out;
+}
+/** The barn or silo nearest the bot by Manhattan distance. Ties go to the barn, then to the earlier silo. */
+function nearestDrop(w: World, bot: Pos): Pos {
+  let best: Pos = { x: 0, y: 0 }, bestD = Math.abs(bot.x) + Math.abs(bot.y);
+  for (const s of silos(w)) {
+    const d = Math.abs(bot.x - s.x) + Math.abs(bot.y - s.y);
+    if (d < bestD) { best = s; bestD = d; }
+  }
+  return best;
+}
 import { compile, type CompileOptions, type Program } from './parser.ts';
 import { CompileError, SproutError } from './errors.ts';
 import { rand } from '@tendril/sim/src/weather.ts';
@@ -26,6 +46,10 @@ export interface ScriptRun {
   readonly world: World; pending: LogEntry[]; errors: ScriptError[]; output: OutputLine[];
   step(ticks: number): StepResult; stepLine(): StepResult; setBreakpoints(lines: Iterable<number>): void;
   debug(): BotDebug[]; lineHeat(): Map<number, number>; takeLog(): LogEntry[]; close(): void;
+  /** Interpreter steps run so far, summed over every bot and tick. Deterministic: depends only on the program and the world. */
+  readonly steps: number;
+  /** True once the run stopped because it spent its `stepBudget`. */
+  readonly exhausted: boolean;
 }
 class ReturnFlow { constructor(readonly value: Value) {} }
 class LoopFlow { constructor(readonly kind: 'break' | 'continue') {} }
@@ -81,7 +105,8 @@ class Run implements ScriptRun {
   private closed = false; private paused: { bot: number; line: number } | null = null;
   /** Elements and characters this run has allocated so far; see `allocationBudget`. */
   private allocated = 0;
-  constructor(readonly world: World, private program: Program, private allocationBudget = Infinity) { this.ensureBots(); }
+  constructor(readonly world: World, private program: Program, private allocationBudget = Infinity, private stepBudget = Infinity) { this.ensureBots(); }
+  steps = 0; exhausted = false;
   /** The source check bounds memory by bounding total allocation: a program that keeps allocating big lists would otherwise exhaust the verify function. */
   private charge<T extends Value>(value: T, size: number): T {
     this.allocated += size + 1;
@@ -103,7 +128,7 @@ class Run implements ScriptRun {
     if (b.globals.has(name)) return b.globals.get(name)!;
     if (name === 'shared') return this.shared;
     if (name === 'barn') return { x: 0, y: 0 };
-    if ('north east south west carrot wheat clover pumpkin berry apple honey hive composter satchel all'.split(' ').includes(name)) return name;
+    if ('north east south west carrot wheat clover pumpkin berry apple honey hive composter silo satchel all'.split(' ').includes(name)) return name;
     return { builtin: name };
   }
   private setName(b: BotState, name: string, value: Value): void {
@@ -196,7 +221,7 @@ class Run implements ScriptRun {
   }
   private *execute(b: BotState): Generator<Event, void, void> { try { yield* this.block(b, this.program.body); } catch (e) { if (!(e instanceof StopFlow)) throw e; } }
   private *action(b: BotState, op: number, args: number[], line: number): Generator<Event, number, void> {
-    const farm = op === OP.buyPlot || op === OP.buyBot || op === OP.unlock;
+    const farm = FARM_OPS.includes(op);
     const entry: LogEntry = [this.world.tick, farm ? -1 : b.bot, op]; entry.push(...args);
     const result = applyAction(this.world, entry); this.pending.push(entry);
     if (!farm) yield { k: 'action', line };
@@ -216,9 +241,10 @@ class Run implements ScriptRun {
     switch (name) {
       case 'move': { const d = ['north', 'east', 'south', 'west'].indexOf(nameOf(arg(0))); if (d < 0) throw new SproutError('Move north, east, south or west.'); return (yield* this.action(b, OP.move, [d], line)) === 1; }
       case 'plant': { const c = item(0); if (c > 6) throw new SproutError('Plant a crop, not honey or compost.'); return (yield* this.action(b, OP.plant, [c], line)) === 1; }
-      case 'build': { const k = BUILDINGS.findIndex((x) => x.name === nameOf(arg(0))); if (k < 1) throw new SproutError('Build a hive or composter.'); return (yield* this.action(b, OP.build, [k], line)) === 1; }
+      case 'build': { const k = BUILDINGS.findIndex((x) => x.name === nameOf(arg(0))); if (k < 1) throw new SproutError('Build a hive, composter or silo.'); return (yield* this.action(b, OP.build, [k], line)) === 1; }
       case 'unlock': return (yield* this.action(b, OP.unlock, [unlock(0)], line)) === 1;
       case 'buy_plot': return (yield* this.action(b, OP.buyPlot, [integer(0), integer(1)], line)) === 1;
+      case 'sell_plot': return yield* this.action(b, OP.sellPlot, [integer(0), integer(1)], line);
       case 'buy_bot': { const n = yield* this.action(b, OP.buyBot, [], line); return n ? n - 1 : null; }
       case 'sell': { const c = item(0); if (c > 7) throw new SproutError('Compost cannot be sold.'); const n = nameOf(arg(1)) === 'all' ? w.stock[c]! : integer(1); if (n < 1) return 0; return yield* this.action(b, OP.sell, [c, n], line); }
       case 'deliver': { const order = arg(0); const id = typeof order === 'number' ? order : numeric(record(order).id!); return yield* this.action(b, OP.deliver, [id], line); }
@@ -236,6 +262,9 @@ class Run implements ScriptRun {
       case 'forecast': { const horizon = integer(0); if (horizon < 0 || horizon > 100_000) throw new SproutError('Forecast between 0 and 100,000 ticks.'); return forecast(w, horizon).map((s) => ({ ...s })); }
       case 'weather': return weatherAt(w, w.tick); case 'orders': return openOrders(w).map((o) => ({ ...o, crop: CROPS[o.crop]!.name }));
       case 'plot_cost': return plotCost(w); case 'bot_cost': return botCost(w); case 'unlocked': return isUnlocked(w, unlock(0)); case 'unlock_cost': return UNLOCKS[unlock(0)]!.price; case 'price': { const i = item(0); if (i > 7) throw new SproutError('Compost has no price.'); return w.prices ? w.prices[i]! : ITEMS[i]!.price; }
+      case 'silo_cost': return silosActive(w) ? siloCost(w) : 0;
+      case 'silos': return silos(w);
+      case 'nearest_drop': return nearestDrop(w, bot);
       case 'say': case 'print': { if (this.output.length < 2000) this.output.push({ bot: b.bot, tick: w.tick, text: a.map((v) => text(v)).join(' ').slice(0, 2000) }); return null; }
       case 'len': { const v = arg(0); return typeof v === 'string' || Array.isArray(v) ? v.length : Object.keys(record(v)).length; }
       case 'str': return text(arg(0)); case 'int': { const v = arg(0); const n = typeof v === 'string' && /^-?\d+$/.test(v) ? Number(v) : typeof v === 'number' ? v : NaN; return Number.isSafeInteger(n) ? n : null; }
@@ -274,6 +303,8 @@ class Run implements ScriptRun {
             if (event.k === 'action') { b.status = 'busy'; break; }
           }
           if (worked > 5000 && b.status === 'ready') b.status = 'thinking';
+          this.steps += Math.min(worked, 5000);
+          if (this.steps > this.stepBudget) { this.exhausted = true; this.close(); return { ticks: this.world.tick - start, paused: null }; }
         } catch (e) {
           b.status = 'error'; this.errors.push({ bot: b.bot, line: b.line ?? 1, col: 1, tick: this.world.tick, message: e instanceof LoopFlow ? `${e.kind} needs a surrounding loop.` : e instanceof ReturnFlow ? 'return needs a surrounding function.' : e instanceof Error ? e.message : 'Program stopped.' });
         }
@@ -295,8 +326,10 @@ class Run implements ScriptRun {
 export interface RunOptions extends CompileOptions {
   /** Total elements and characters the program may allocate over the whole run. Absent: unlimited (the player's own machine). The source check sets it. */
   allocationBudget?: number;
+  /** Total interpreter steps the program may run over the whole run, all bots together. Absent: unlimited. The source check sets it; the run stops with `exhausted` set when it is spent. */
+  stepBudget?: number;
 }
 export function createRun(world: World, source: string, opts?: RunOptions): ScriptRun {
   const result = compile(source, opts); if (!result.program) throw new CompileError(result.diagnostics);
-  return new Run(world, result.program, opts?.allocationBudget);
+  return new Run(world, result.program, opts?.allocationBudget, opts?.stepBudget);
 }
