@@ -26,6 +26,10 @@ export interface ScriptRun {
   readonly world: World; pending: LogEntry[]; errors: ScriptError[]; output: OutputLine[];
   step(ticks: number): StepResult; stepLine(): StepResult; setBreakpoints(lines: Iterable<number>): void;
   debug(): BotDebug[]; lineHeat(): Map<number, number>; takeLog(): LogEntry[]; close(): void;
+  /** Interpreter steps run so far, summed over every bot and tick. Deterministic: depends only on the program and the world. */
+  readonly steps: number;
+  /** True once the run stopped because it spent its `stepBudget`. */
+  readonly exhausted: boolean;
 }
 class ReturnFlow { constructor(readonly value: Value) {} }
 class LoopFlow { constructor(readonly kind: 'break' | 'continue') {} }
@@ -81,7 +85,8 @@ class Run implements ScriptRun {
   private closed = false; private paused: { bot: number; line: number } | null = null;
   /** Elements and characters this run has allocated so far; see `allocationBudget`. */
   private allocated = 0;
-  constructor(readonly world: World, private program: Program, private allocationBudget = Infinity) { this.ensureBots(); }
+  constructor(readonly world: World, private program: Program, private allocationBudget = Infinity, private stepBudget = Infinity) { this.ensureBots(); }
+  steps = 0; exhausted = false;
   /** The source check bounds memory by bounding total allocation: a program that keeps allocating big lists would otherwise exhaust the verify function. */
   private charge<T extends Value>(value: T, size: number): T {
     this.allocated += size + 1;
@@ -274,6 +279,8 @@ class Run implements ScriptRun {
             if (event.k === 'action') { b.status = 'busy'; break; }
           }
           if (worked > 5000 && b.status === 'ready') b.status = 'thinking';
+          this.steps += Math.min(worked, 5000);
+          if (this.steps > this.stepBudget) { this.exhausted = true; this.close(); return { ticks: this.world.tick - start, paused: null }; }
         } catch (e) {
           b.status = 'error'; this.errors.push({ bot: b.bot, line: b.line ?? 1, col: 1, tick: this.world.tick, message: e instanceof LoopFlow ? `${e.kind} needs a surrounding loop.` : e instanceof ReturnFlow ? 'return needs a surrounding function.' : e instanceof Error ? e.message : 'Program stopped.' });
         }
@@ -295,8 +302,10 @@ class Run implements ScriptRun {
 export interface RunOptions extends CompileOptions {
   /** Total elements and characters the program may allocate over the whole run. Absent: unlimited (the player's own machine). The source check sets it. */
   allocationBudget?: number;
+  /** Total interpreter steps the program may run over the whole run, all bots together. Absent: unlimited. The source check sets it; the run stops with `exhausted` set when it is spent. */
+  stepBudget?: number;
 }
 export function createRun(world: World, source: string, opts?: RunOptions): ScriptRun {
   const result = compile(source, opts); if (!result.program) throw new CompileError(result.diagnostics);
-  return new Run(world, result.program, opts?.allocationBudget);
+  return new Run(world, result.program, opts?.allocationBudget, opts?.stepBudget);
 }
