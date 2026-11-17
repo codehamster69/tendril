@@ -110,13 +110,13 @@ afterEach(() => { db.close(); });
 
 describe('migrations', () => {
   it('are idempotent, recorded in schema_version, and applied lazily on the first request', async () => {
-    expect(await db.query('SELECT version FROM schema_version')).toEqual([{ version: 1 }, { version: 2 }, { version: 3 }, { version: 4 }, { version: 5 }, { version: 6 }, { version: 7 }, { version: 8 }, { version: 9 }]);
+    expect(await db.query('SELECT version FROM schema_version')).toEqual([{ version: 1 }, { version: 2 }, { version: 3 }, { version: 4 }, { version: 5 }, { version: 6 }, { version: 7 }, { version: 8 }, { version: 9 }, { version: 10 }]);
     expect(await migrate(db)).toEqual([]);
     const fresh = createDb({ url: ':memory:' });
     try {
       const lazy = createApp({ db: fresh, env, fetch: github.fetch, setupVersion: 0, now: () => time });
       expect((await lazy(new Request('http://localhost:8787/api/stats'))).status).toBe(200);
-      expect(await fresh.query('SELECT version FROM schema_version')).toEqual([{ version: 1 }, { version: 2 }, { version: 3 }, { version: 4 }, { version: 5 }, { version: 6 }, { version: 7 }, { version: 8 }, { version: 9 }]);
+      expect(await fresh.query('SELECT version FROM schema_version')).toEqual([{ version: 1 }, { version: 2 }, { version: 3 }, { version: 4 }, { version: 5 }, { version: 6 }, { version: 7 }, { version: 8 }, { version: 9 }, { version: 10 }]);
     } finally { fresh.close(); }
   });
   it('persist in a file database across reopen', async () => {
@@ -434,14 +434,13 @@ describe('rules v5 on Endless farms (SIM_SPEC 5.5)', () => {
       expect((await wake(0, other.token)).status).toBe(404);
     });
   });
-  it('silos switch on at SILO_EPOCH from the start time; the stored checkpoint stays readable by older builds', async () => {
-    time = SILO_EPOCH_MS - 50 * 100; // this farm reaches the epoch at tick 50
+  it('silos are on from tick 0 on Endless farms; the stored checkpoint stays readable by older builds', async () => {
+    time = SILO_EPOCH_MS - 50 * 100;
     const owner = await login('Silo farmer');
     const mine = await (await request('/farms', { token: owner.token, body: {} })).json() as FarmResponse;
     const d = new Driver({ id: mine.id, seed: mine.seed });
     withEndlessSilos(d.w, mine.startedAtMs);
-    expect(d.w.siloTick).toBe(50);
-    expect(d.do(-1, OP.unlock, SILO_BIT)).toBe(0); // tick 0: before the epoch
+    expect(d.w.siloTick).toBe(0);
     while (d.w.coins < 1700) round(d);
     expect(d.do(-1, OP.unlock, SILO_BIT)).toBe(1);
     d.do(0, OP.move, 1); d.do(0, OP.move, 1);
@@ -463,7 +462,7 @@ describe('rules v5 on Endless farms (SIM_SPEC 5.5)', () => {
     expect(cur.rulesVersion).toBe(BASE_RULES_VERSION);
     expect(scanAt(deserialize(cur.checkpoint), 2, 0)!.building).toBe(SILO);
     expect(cur.netWorth).toBe(netWorth(d.w));
-    expect(((await (await request(`/farms/${mine.id}/replay`)).json()) as { siloTick: number }).siloTick).toBe(50);
+    expect(((await (await request(`/farms/${mine.id}/replay`)).json()) as { siloTick: number }).siloTick).toBe(0);
   });
 
   it('accepts the new ops in a chunk; before the epoch they do nothing but cost their ticks', async () => {

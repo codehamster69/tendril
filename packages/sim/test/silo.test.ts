@@ -30,17 +30,14 @@ describe('rules v5: switched on by data and date', () => {
     expect(snapshot(d.w).siloCost).toBeUndefined();
   });
 
-  it('an Endless farm gets silos at the first tick at or after SILO_EPOCH', () => {
+  it('an Endless farm has silos from tick 0, however long it has rested', () => {
     expect(SILO_EPOCH).toBe('2026-11-17');
     expect(SILO_EPOCH_MS).toBe(Date.parse('2026-11-17T00:00:00Z'));
-    expect(endlessSiloTick(SILO_EPOCH_MS - 1000)).toBe(10);
-    expect(endlessSiloTick(SILO_EPOCH_MS - 1050)).toBe(11);
-    expect(endlessSiloTick(SILO_EPOCH_MS + 5)).toBe(0);
+    for (const start of [0, SILO_EPOCH_MS - 1000, SILO_EPOCH_MS + 5, SILO_EPOCH_MS - 30 * 86_400_000]) expect(endlessSiloTick(start)).toBe(0);
+    expect(() => endlessSiloTick(-1)).toThrow();
     const d = new Driver(farm(4), { coins: 10_000 });
-    withEndlessSilos(d.w, SILO_EPOCH_MS - 30 * 100);
-    expect(d.w.siloTick).toBe(30);
-    expect(d.do(-1, OP.unlock, SILO_BIT)).toBe(0); // tick 0: too early
-    d.advance(30);
+    withEndlessSilos(d.w, SILO_EPOCH_MS - 5 * 86_400_000);
+    expect(d.w.siloTick).toBe(0);
     expect(d.do(-1, OP.unlock, SILO_BIT)).toBe(1);
   });
 

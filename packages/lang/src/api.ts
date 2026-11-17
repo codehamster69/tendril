@@ -49,9 +49,15 @@ const queries: [string, string, string, string][] = [
   ['price', 'item', 'Selling price of an item. On a market day it is today\u2019s price in hundredths of a coin (200 means 2 coins); otherwise the base price in whole coins.', 'market'],
   ['silo_cost', '', 'Price of the next silo. 0 until silos are switched on.', 'buildings'],
   ['silos', '', 'Silo positions on your farm, in plot order then row order.', 'buildings'],
+  ['goal', '', 'The day\u2019s goal: wealth, festival, specialist, orders or inherited. wealth when there is no brief.', 'queries'],
+  ['quota', 'item', 'Festival goal: units of the item still to deposit. 0 when there is no quota.', 'queries'],
+  ['budget', '', 'The challenge\u2019s tick budget, or 0 when there is none (Endless).', 'queries'],
+  ['twists', '', 'The brief\u2019s twists as a list of names, empty when there are none.', 'queries'],
+  ['bot_cap', '', 'The most bots this brief allows, or none.', 'queries'],
+  ['plot_cap', '', 'The most plots this brief allows, or none.', 'queries'],
   ['nearest_drop', '', 'The {x, y} of the barn or the silo nearest this bot by distance. Ties go to the barn.', 'buildings'],
 ];
-for (const [name, args, doc, feature] of queries) API.push({ name, kind: 'query', signature: `${name}(${args})`, doc, ticks: 0, example: name === 'nearest_drop' ? 'go_to nearest_drop()' : name === 'scan_at' ? 'say scan_at(1, 1)' : name === 'forecast' ? 'say forecast(500)' : ['unlocked', 'unlock_cost', 'price'].includes(name) ? `say ${name}(carrot)` : name === 'owns' ? 'say owns(1, 1)' : `say ${name}()`, feature });
+for (const [name, args, doc, feature] of queries) API.push({ name, kind: 'query', signature: `${name}(${args})`, doc, ticks: 0, example: name === 'nearest_drop' ? 'go_to nearest_drop()' : name === 'scan_at' ? 'say scan_at(1, 1)' : name === 'forecast' ? 'say forecast(500)' : ['unlocked', 'unlock_cost', 'price', 'quota'].includes(name) ? `say ${name}(carrot)` : name === 'owns' ? 'say owns(1, 1)' : `say ${name}()`, feature });
 const utilities: [string, string, string, string][] = [
   ['go_to', 'position / x, y', 'Walk east/west first, then north/south. Every move takes two ticks.', 'go_to barn'],
   ['say', 'values…', 'Print values to the console, tagged with this bot and tick.', 'say "Hello from bot", my_id()'],

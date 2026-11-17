@@ -50,11 +50,27 @@ describe('sell_plot command', () => {
   it('sells an edge plot under rules v5 and refuses the barn plot', () => {
     const r = run('buy_plot 1, 0\nsell_plot 1, 0\nsell_plot 0, 0\nsay len(plots())', v5);
     expect(r.errors).toEqual([]);
-    expect(texts(r)).toEqual(['1']);
+    expect(texts(r)).toEqual(['sell_plot 0, 0 paid nothing. The barn plot cannot be sold.', '1']);
   });
   it('does nothing before rules v5', () => {
     const r = run('buy_plot 1, 0\nsell_plot 1, 0\nsay len(plots())', researched);
     expect(r.errors).toEqual([]);
     expect(texts(r)).toEqual(['2']);
+  });
+});
+
+describe('sell_plot refusal notes', () => {
+  const line = 'buy_plot 1, 0\nbuy_plot 2, 0\nbuy_plot 3, 0\n';
+  const both = (src: string) => { const w = () => createWorld({ id: 'test', seed: 42 }, v5); const a = createRun(w(), src), b = createRun(w(), src, { engine: 'interpreted' } as never); a.step(400); b.step(400); return [texts(a), texts(b)]; };
+  it('explains a plot that would disconnect the farm, in both engines', () => {
+    for (const t of both(line + 'sell_plot 1, 0')) expect(t.join(' ')).toContain('connects other plots to the barn');
+  });
+  it('explains an unowned plot and a bot standing on the plot', () => {
+    expect(texts(run(line + 'sell_plot 0, 5', v5)).join(' ')).toContain('not one of your plots');
+    expect(texts(run(line + 'go_to 3 * 8, 0\nsell_plot 3, 0', v5)).join(' ')).toContain('bot on it');
+  });
+  it('stays quiet on success and repeats one reason only once', () => {
+    expect(texts(run(line + 'sell_plot 3, 0', v5))).toEqual([]);
+    expect(texts(run(line + 'sell_plot 1, 0\nsell_plot 1, 0', v5))).toHaveLength(1);
   });
 });
