@@ -47,7 +47,7 @@ by bots only (never deposited, never sold, worth 0). Prices: crops from the tabl
 | 6 | apple | 200 | 30 | 25 | 15 | -10 | 6 | 24 | 5 | yes | yes |
 
 ## Buildings
-`building` tile field: `0 none, 1 hive, 2 composter`. Coin prices: hive 120, composter 80 (fixed, added to `spent`).
+`building` tile field: `0 none, 1 hive, 2 composter, 3 silo` (silo: rules v5 only, section 5). Coin prices: hive 120, composter 80 (fixed, added to `spent`); silo `siloCost` (section 5.2).
 - **Hive honey:** `honeyAt(T) = min(6, floor((T - built) / 400))`.
 - **Pollination:** when a mature crop is harvested, `h` = number of the 4 orthogonal neighbour tiles that are
   owned and have `building == 1`. Final units `u = base + (base * 25 * h / 100 | 0)` where
@@ -55,7 +55,8 @@ by bots only (never deposited, never sold, worth 0). Prices: crops from the tabl
 
 ## Research (unlocks)
 `unlocks` is a bitmask on the world; a new farm has `unlocks = 1` (carrot). Bit id, name, coin price:
-`0 carrot 0, 1 wheat 40, 2 clover 60, 3 pumpkin 250, 4 berry 400, 5 apple 900, 6 hive 300, 7 composter 200, 8 satchel 500`.
+`0 carrot 0, 1 wheat 40, 2 clover 60, 3 pumpkin 250, 4 berry 400, 5 apple 900, 6 hive 300, 7 composter 200, 8 satchel 500, 9 silo 1200`.
+Bit 9 (silo) can be bought only while silo rules are active (section 5); before that `unlock 9` results 0.
 Crop `c` (1..6) needs bit `c - 1`. Hive needs bit 6, composter bit 7. Satchel raises bot capacity.
 Capacity (total carried units of all items, per bot) = `satchel ? 30 : 20`. Unlock prices add to `spent`.
 
@@ -115,23 +116,24 @@ in-world, which is still a legal move. Farm-level actions use `bot = -1`, cost 0
 | plant | 2 | a = crop 1..6 | 2 | 0 unless crop unlocked, tilled, no crop, no building, not barn; else set rate, `moisture = max(0, moisture - drink)`, crop = a, plantedAt = tick, result 1 |
 | water | 3 | | 2 | `moisture = min(100, moisture + 30)`, result 1 |
 | harvest | 4 | | 3 | Hive tile: normalise `built = max(built, T - 2400)`, units = `honeyAt(T)`, take `min(units, free)` honey, `built += taken * 400`, result = taken. Crop tile: 0 if no crop. Annual: units = stage < 3 ? 0 : pollinated `u`; bot takes `min(units, free)`; `nitrogen = clamp(n + nDelta, 0, 100)`, `fatigue = clamp(f + fatigue_c, 0, 100)`; crop, plantedAt, rate, tilled = 0. Perennial: if stage < 3 result 0 and nothing changes; else take as annual, apply nDelta/fatigue, then crop and tilled stay, `plantedAt = T`, rate recomputed (no drink). Result = units taken. Other tiles: 0 |
-| deposit | 5 | | 1 | 0 unless on the barn; items 1..7 move to barn stock (compost stays carried); result = units moved |
+| deposit | 5 | | 1 | 0 unless on the barn or a silo (v5); items 1..7 move to barn stock (compost stays carried); result = units moved |
 | deliver | 6 | a = order id | 2 | 0 unless on the barn, order open, stock[crop] >= qty; then stock -= qty, coins += reward, order removed; result = reward |
 | wait | 7 | a = n 1..1000 | n | result 1 |
-| sell | 8 | a = item 1..7, b = units >= 1 | 1 | 0 unless on the barn and stock[a] >= b; then stock -= b, coins += b * price; result = coins gained |
+| sell | 8 | a = item 1..7, b = units >= 1 | 1 | 0 unless on the barn or a silo (v5) and stock[a] >= b; then stock -= b, coins += b * price; result = coins gained |
 | buyPlot | 9 | a = px, b = py; bot = -1 | 0 | 0 if owned, not edge-adjacent to an owned plot, or coins < `plotCost`; else pay and append the plot; result 1 |
 | buyBot | 10 | bot = -1 | 0 | 0 if coins < `botCost`; else pay, append a bot at `(0, 0)` with `busyUntil = tick`; result = new bot index + 1 |
-| build | 11 | a = kind 1..2 | 4 | 0 unless kind unlocked, coins >= price, not barn, not tilled, no crop, no building; else pay (`spent += price`), building = a, built = tick, result 1 |
-| clear | 12 | | 3 | 0 on the barn or if the tile has no crop, no building and is not tilled; else crop, plantedAt, rate, tilled, building, built = 0, result 1 (no refund, no yield) |
+| build | 11 | a = kind 1..3 | 4 | Silo (3): 0 unless silo rules are active (section 5), and its price is `siloCost`. 0 unless kind unlocked, coins >= price, not barn, not tilled, no crop, no building; else pay (`spent += price`), building = a, built = tick, result 1 |
+| clear | 12 | | 3 | 0 on the barn or if the tile has no crop, no building and is not tilled; else crop, plantedAt, rate, tilled, building, built = 0, result 1 (no refund, no yield; a silo pays half back, section 5.3) |
 | compost | 13 | | 2 | 0 unless the tile is a composter; `p` = sum of load[1..6]; `made = floor(p / 4)`; remove `4 * made` units taking from item 1 upward; `load[8] += made`; result = made |
 | fertilize | 14 | | 2 | 0 on the barn, on a building, or if load[8] < 1; else load[8] -= 1, `nitrogen = min(100, n + 25)`, `fatigue = max(0, f - 20)`, result 1 |
-| unlock | 15 | a = bit 0..8; bot = -1 | 0 | 0 if already unlocked or coins < price; else pay (`spent += price`), set bit, result 1 |
+| unlock | 15 | a = bit 0..9; bot = -1 | 0 | bit 9: 0 unless silo rules are active; 0 if already unlocked or coins < price; else pay (`spent += price`), set bit, result 1 |
+| sellPlot | 16 | a = px, b = py; bot = -1 | 0 | Rules v5, section 5.4. 0 unless silo rules are active and the plot may be sold; else result = coins paid back |
 
 `plotCost = 150 * n * n` where `n` = plots owned now. `botCost = 80 * m * m` where `m` = bots owned now.
 `spent` accumulates every coin paid for plots, bots, buildings and research.
 
 Illegal (throw `IllegalAction`; the whole chunk is rejected): `t` not an integer or not equal to the world
-tick; bot index out of range (or not -1 for ops 9, 10, 15; or -1 for other ops); bot busy; unknown op; any
+tick; bot index out of range (or not -1 for ops 9, 10, 15, 16; or -1 for other ops); bot busy; unknown op; any
 required arg missing, non-integer or out of range.
 
 ## Tick
@@ -371,3 +373,67 @@ v3 goldens untouched; base-price rounding cases; the blended target (fewer than 
 without prices; CAS race returns one table; epoch tests for the day before (v3, no table), the epoch day (v4, base
 table), the day after with 10+ players (derived) and with fewer than 10 (neutral); v3 row replays after migration;
 0.1.x fails cleanly on a v4 day; `challengeSetup` identical on server, client and verify; `price(item)` in Sprout.
+
+## Rules version 5 (L1, 2026-11-17): silos and sellPlot
+
+Why: one barn at (0,0), moves cost 2 ticks, bots carry 20 (30). On big farms bots spend most ticks walking to the barn.
+A silo is a second barn the player places. `sellPlot` is the undo for a plot bought in the wrong place.
+
+### 5.1 The switch: `World.siloTick` (dispatch by data, like the v4 table)
+- `World.siloTick?: number`. Absent: none of section 5 exists and the world plays exactly as v3/v4. Present: silo rules are
+  **active** at tick `T` iff `T >= siloTick` (`silosActive(w)`).
+- While not active, silo research (`unlock 9`), `build 3` and `sellPlot` are legal and result 0 with no other effect (the bot
+  still spends the op's ticks). This holds for worlds without `siloTick` too, so a new client can send them on any day.
+- `siloTick` is **not** mixed into `hashWorld` (everything a silo or a sale changes is: tiles, plots, coins, spent). This is what
+  lets Endless farms carry it without changing any hash an older client computes.
+- `serialize` writes `rulesVersion: 5` and `siloTick` when present (the table too when present); `deserialize` accepts
+  version 5 only with a valid `siloTick`, with or without a table. Versions 3 and 4 are unchanged.
+
+### 5.2 Silos
+- Building kind 3, placed with `build 3` on any owned tile that is not the barn, not tilled, has no crop and no building.
+  Needs research bit 9 (`silo`, 1200 coins, after the satchel).
+- `siloCount` = tiles with `building == 3`, counted over all plots. `siloCost = siloPrice(siloCount)` with
+  `siloPrice(n) = SILO_BASE * (n + 1)^2`, `SILO_BASE = 500` (tuned from the brief's 300, section 5.7). Paid and added to `spent`.
+- On a silo tile `deposit` and `sell` work exactly as on the barn, into and out of the one global `stock`.
+  `deliver` stays barn-only: orders are the barn's contracts, and keeping one hand-in point keeps order logic and the order UI unchanged.
+- Hives count neighbours by `building == 1` only; a silo is not a hive. Tilling, planting and fertilizing a silo tile fail as on any building.
+
+### 5.3 Clearing a silo
+`clear` on a silo: first `paid = siloPrice(siloCount - 1)` (the newest silo's price), `spent -= paid`,
+`coins += floor(paid / 2)`; then the usual clear. Net worth drops by `paid - floor(paid / 2)`.
+
+### 5.4 sellPlot `[t, -1, 16, px, py]`
+Fails (0) unless all of: silo rules active; `(px, py)` owned and not `(0, 0)`; at least one of its 4 neighbour plots is not
+owned (an edge plot); no bot stands on any of its tiles; and every other owned plot still reaches `(0, 0)` through owned plots
+(4-neighbour, breadth first). Then, in order:
+1. For each tile of the plot in tile order with `building == 3`: `siloCount -= 1`, `spent -= siloPrice(siloCount)` (no coins).
+   Other buildings, crops and soil on the plot are lost with no refund.
+2. `paid = plotPrice(plotsOwned - 1)` (the newest plot's price); `spent -= paid`; `coins += floor(paid / 2)`; result = `floor(paid / 2)`.
+3. The plot is removed from `plots`; later plots move down one index in their order (`plotIndex` follows).
+Orders already issued keep their `qty`; new orders use the new plot count. Buying the plot again gives fresh soil
+(`addPlot` at the current tick). Every buy and sell loop loses coins and net worth (tested).
+
+### 5.5 Rollout: `SILO_EPOCH = '2026-12-15'` (00:00 UTC)
+- Dailies dated from it: rules v5 (`dailyRulesVersion`), with the market table as in v4. Seasons whose week starts on or after it:
+  v5 without a table (`seasonRulesVersion`). Duels copy the version and table of the daily they come from; other duels stay v3.
+  `rulesHaveMarket(v, kind)` = `v == 4 || (v == 5 && kind != 'season')`.
+- Challenges build their world with `challengeSetup(kind, seed, setupVersion, market, rulesVersion)`, which sets `siloTick = 0`
+  for v5. Server replay, the verify function, the CLI and the client all pass the stored version.
+- Endless farms keep their stored `rules_version` (3) and checkpoint format. Their switch is derived from the start time:
+  `endlessSiloTick(startedAtMs) = max(0, ceil((SILO_EPOCH_MS - startedAtMs) / 100))`, the first tick at or after the epoch.
+  Server and client call `withEndlessSilos(world, startedAtMs)` on every Endless world they load and delete `siloTick` before
+  storing a checkpoint, so stored checkpoints stay version 3 and older desktop builds keep loading and syncing them. An older
+  build cannot produce the new ops, and without them both rule sets give the same result. `GET /farms/:id/replay` returns `siloTick`.
+- Local sandbox farms use the same start-time rule.
+
+### 5.6 Snapshot and view
+Tiles already carry `building`. Snapshots of v5 worlds add `siloCost` and `plotRefund` (what `sellPlot` pays now); older
+worlds' snapshots are unchanged. The compact view carries them in its scalars, and resends every plot when a plot is
+removed, since a plot index then names different land.
+
+### 5.7 Tuning (`node --experimental-strip-types packages/sim/scripts/silo-tuning.ts`)
+Same simple program on every farm (bots walk their share of the tiles, harvest wheat, replant, unload at the nearest store),
+square farms with the barn in a corner, bots = plots / 2. Coins per 1000 ticks over ticks 3000..13000. With `SILO_BASE = 500` and research 1200:
+the first silo on a 9-plot farm pays back silo plus research in about 1800 ticks; on 4 plots about 3900; a silo on every plot never pays back
+in any sensible time (73k ticks on 9 plots, 690k on 36). The full table is in `brain/notes/L1-silos.md`.
+

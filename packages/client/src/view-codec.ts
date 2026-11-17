@@ -17,7 +17,7 @@ export class ViewEncoder {
   private plots: Int32Array[] = [];
   private bots: Int32Array = new Int32Array(0);
   private botCount = 0;
-  private plotCount = -1;
+  private plotCoords: number[] = [];
   private scalarKey = '';
   private seq = 0;
   private forceFull = true;
@@ -28,7 +28,15 @@ export class ViewEncoder {
   encode(w: World, events: ViewEvent[]): { update: ViewUpdate; transfer: ArrayBuffer[] } {
     const full = this.forceFull;
     this.forceFull = false;
-    if (full) { this.plots = []; this.bots = new Int32Array(0); this.botCount = 0; this.plotCount = -1; this.scalarKey = ''; }
+    if (full) { this.plots = []; this.bots = new Int32Array(0); this.botCount = 0; this.plotCoords = []; this.scalarKey = ''; }
+    // A sold plot (rules v5) shifts later plots down one index: then resend every plot, since an index no longer names the same land.
+    let plotsChanged = full || w.plots.length !== this.plotCoords.length / 2;
+    let kept = true;
+    for (let i = 0; i < w.plots.length && i * 2 < this.plotCoords.length; i++) {
+      if (w.plots[i]!.px !== this.plotCoords[i * 2] || w.plots[i]!.py !== this.plotCoords[i * 2 + 1]) { kept = false; break; }
+    }
+    if (!kept || w.plots.length < this.plotCoords.length / 2) { this.plots = []; plotsChanged = true; }
+    if (plotsChanged) this.plotCoords = w.plots.flatMap((p) => [p.px, p.py]);
     const planned: { index: number; data: Int32Array }[] = [];
     for (let i = 0; i < w.plots.length; i++) {
       const data = new Int32Array(PLOT_INTS);
@@ -64,14 +72,12 @@ export class ViewEncoder {
     const key = JSON.stringify(scalars);
     const scalarsChanged = key !== this.scalarKey;
     this.scalarKey = key;
-    const plotsChanged = w.plots.length !== this.plotCount;
-    this.plotCount = w.plots.length;
 
     const base = full ? 0 : this.seq;
     this.seq++;
     const update: ViewUpdate = {
       version: VIEW_VERSION, full, seq: this.seq, base, tick: w.tick, plotIndex, tiles, botIndex, bots, botCount: w.bots.length,
-      ...(plotsChanged ? { plots: w.plots.flatMap((p) => [p.px, p.py]) } : {}),
+      ...(plotsChanged ? { plots: this.plotCoords.slice() } : {}),
       ...(scalarsChanged ? { scalars } : {}),
       events: events.length > MAX_VIEW_EVENTS ? events.slice(-MAX_VIEW_EVENTS) : events,
     };
@@ -169,6 +175,7 @@ export class ViewStore {
     return {
       tick: this.tick, coins: s.coins, netWorth: s.netWorth, weather: s.weather, unlocks: s.unlocks, capacity: s.capacity,
       plots: this.plotList, bots: this.botList, stock: s.stock, orders: s.orders, plotCost: s.plotCost, botCost: s.botCost,
+      ...(s.siloCost !== undefined ? { siloCost: s.siloCost, plotRefund: s.plotRefund } : {}),
       tiles: this.tileList,
       delta,
     };

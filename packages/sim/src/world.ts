@@ -1,13 +1,13 @@
 // Deterministic farm rules (rules version 3). Integers only.
 import {
   BASE_CAPACITY, BUILDINGS, COMPOST, COST, CROP_COUNT, CROPS, FARM_OPS, HIVE, COMPOSTER, HONEY, HONEY_INTERVAL,
-  HONEY_MAX, ITEMS, ITEM_COUNT, OP, OPS, SATCHEL_BIT, SATCHEL_CAPACITY, UNLOCKS, botPrice, plotPrice,
+  HONEY_MAX, ITEMS, ITEM_COUNT, OP, OPS, PLOT_SIZE, TILE_INTS, SATCHEL_BIT, SATCHEL_CAPACITY, SILO, SILO_BIT, UNLOCKS, botPrice, plotPrice, siloPrice,
 } from './rules.ts';
 import { IllegalAction } from './types.ts';
 import type { Farm, LogEntry, Order, ScanResult, Setup, World } from './types.ts';
 import {
   BUILDING, BUILT, CROP, FATIGUE, MOIST, NITRO, PLANTED, RATE, TILLED, addPlot, findPlot, honeyAt, plotKey,
-  settleInts, stageOf, tileOffset,
+  removePlot, settleInts, stageOf, tileOffset,
 } from './tiles.ts';
 import { rand } from './weather.ts';
 
@@ -46,6 +46,10 @@ export function createWorld(farm: Farm, setup?: Setup): World {
       if (setup.weatherBias !== 0) w.weatherBias = setup.weatherBias;
     }
     if (setup.prices !== undefined) w.prices = checkedPrices(setup.prices);
+    if (setup.siloTick !== undefined) {
+      if (!Number.isSafeInteger(setup.siloTick) || setup.siloTick < 0) throw new Error('bad setup siloTick');
+      w.siloTick = setup.siloTick;
+    }
   }
   addPlot(w, 0, 0);
   return w;
@@ -69,6 +73,41 @@ function checkedPrices(p: unknown): number[] {
 }
 
 export function plotCost(w: World): number { return plotPrice(w.plots.length); }
+/** Rules v5: silo rules apply at the world's current tick. */
+export function silosActive(w: World): boolean { return w.siloTick !== undefined && w.tick >= w.siloTick; }
+/** Silos standing on the farm (rules v5). Counted from the tiles, so it is never stored twice. */
+export function siloCount(w: World): number {
+  let n = 0;
+  if (w.siloTick === undefined) return 0;
+  for (const p of w.plots) for (let o = BUILDING; o < p.tiles.length; o += TILE_INTS) if (p.tiles[o] === SILO) n++;
+  return n;
+}
+/** Price of the next silo: siloPrice(silos owned). */
+export function siloCost(w: World): number { return siloPrice(siloCount(w)); }
+/** Coins `sellPlot` pays now: half the price paid for the most recent plot (0 with only the barn plot). */
+export function plotRefund(w: World): number { return w.plots.length > 1 ? Math.floor(plotPrice(w.plots.length - 1) / 2) : 0; }
+/** True when the plot at (px, py) may be sold now: rules v5 active, owned, not the barn plot, on the edge, no bot on it, and the rest stays connected. */
+export function canSellPlot(w: World, px: number, py: number): boolean {
+  if (!silosActive(w) || (px === 0 && py === 0)) return false;
+  const i = w.plotIndex.get(plotKey(px, py));
+  if (i === undefined) return false;
+  let edge = false;
+  for (let d = 0; d < 4; d++) if (!w.plotIndex.has(plotKey(px + DX[d]!, py + DY[d]!))) edge = true;
+  if (!edge) return false;
+  for (const b of w.bots) if (Math.floor(b.x / PLOT_SIZE) === px && Math.floor(b.y / PLOT_SIZE) === py) return false;
+  // Every other plot must still reach the barn plot through owned plots.
+  const seen = new Set<string>([plotKey(0, 0)]);
+  const queue: number[] = [0, 0];
+  for (let q = 0; q < queue.length; q += 2) {
+    for (let d = 0; d < 4; d++) {
+      const nx = queue[q]! + DX[d]!, ny = queue[q + 1]! + DY[d]!;
+      const k = plotKey(nx, ny);
+      if ((nx === px && ny === py) || seen.has(k) || !w.plotIndex.has(k)) continue;
+      seen.add(k); queue.push(nx, ny);
+    }
+  }
+  return seen.size === w.plots.length - 1;
+}
 export function botCost(w: World): number { return botPrice(w.bots.length); }
 export function isUnlocked(w: World, bit: number): boolean {
   return Number.isInteger(bit) && bit >= 0 && bit < UNLOCKS.length && (w.unlocks & (1 << bit)) !== 0;
@@ -136,6 +175,7 @@ function validate(w: World, e: LogEntry): number {
     case OP.sell: inRange(a, 1, ITEM_COUNT - 1, 'item'); inRange(b, 1, MAX, 'units'); break;
     case OP.buyPlot: inRange(a, -COORD, COORD, 'px'); inRange(b, -COORD, COORD, 'py'); break;
     case OP.build: inRange(a, 1, BUILDINGS.length - 1, 'building'); break;
+    case OP.sellPlot: inRange(a, -COORD, COORD, 'px'); inRange(b, -COORD, COORD, 'py'); break;
     case OP.unlock: inRange(a, 0, UNLOCKS.length - 1, 'research'); break;
   }
   return op as number;
@@ -191,13 +231,31 @@ export function applyAction(w: World, e: LogEntry): number {
   }
   if (op === OP.unlock) {
     const price = UNLOCKS[a]!.price;
+    if (a === SILO_BIT && !silosActive(w)) return 0;
     if (!isUnlocked(w, a) && w.coins >= price) { pay(w, price); w.unlocks |= 1 << a; res = 1; }
+    return res;
+  }
+  if (op === OP.sellPlot) {
+    if (!canSellPlot(w, a, b)) return 0;
+    const plot = w.plots[w.plotIndex.get(plotKey(a, b))!]!;
+    // Silos on the plot are lost: their price leaves `spent` (no coins back), newest price first, as when cleared.
+    let silos = siloCount(w);
+    for (let o = BUILDING; o < plot.tiles.length; o += TILE_INTS) {
+      if (plot.tiles[o] === SILO) { silos--; w.spent -= siloPrice(silos); }
+    }
+    const paid = plotPrice(w.plots.length - 1);
+    res = Math.floor(paid / 2);
+    w.spent -= paid;
+    addCoins(w, res);
+    removePlot(w, a, b);
     return res;
   }
   const bot = w.bots[botI]!;
   const barn = bot.x === 0 && bot.y === 0;
   const plot = findPlot(w, bot.x, bot.y)!;
   const t = plot.tiles, o = tileOffset(plot, bot.x, bot.y);
+  /** Deposit and sell work here: the barn, or a silo (rules v5). */
+  const store = barn || t[o + BUILDING] === SILO;
   switch (op) {
     case OP.move: {
       const nx = bot.x + DX[a]!, ny = bot.y + DY[a]!;
@@ -255,7 +313,7 @@ export function applyAction(w: World, e: LogEntry): number {
       break;
     }
     case OP.deposit:
-      if (barn) {
+      if (store) {
         for (let k = 1; k < COMPOST; k++) {
           const n = bot.load[k]!; w.stock[k] = w.stock[k]! + n; res += n; bot.load[k] = 0;
         }
@@ -275,7 +333,7 @@ export function applyAction(w: World, e: LogEntry): number {
     }
     case OP.wait: res = 1; break;
     case OP.sell:
-      if (barn && w.stock[a]! >= b) {
+      if (store && w.stock[a]! >= b) {
         const gain = Math.floor(b * price(w, a) / 100);
         addCoins(w, gain);
         w.stock[a] = w.stock[a]! - b; res = gain;
@@ -284,15 +342,23 @@ export function applyAction(w: World, e: LogEntry): number {
     case OP.build: {
       settleInts(w, t, o, T);
       const kind = BUILDINGS[a]!;
-      if (isUnlocked(w, kind.unlock) && w.coins >= kind.price && !barn && !t[o + TILLED] && !t[o + CROP]
+      if (a === SILO && !silosActive(w)) break;
+      const cost = a === SILO ? siloCost(w) : kind.price;
+      if (isUnlocked(w, kind.unlock) && w.coins >= cost && !barn && !t[o + TILLED] && !t[o + CROP]
         && !t[o + BUILDING]) {
-        pay(w, kind.price);
+        pay(w, cost);
         t[o + BUILDING] = a; t[o + BUILT] = T; res = 1;
       }
       break;
     }
     case OP.clear:
       settleInts(w, t, o, T);
+      if (t[o + BUILDING] === SILO) {
+        // Half the newest silo's price back; the full price leaves `spent`, so net worth drops by the other half.
+        const paid = siloPrice(siloCount(w) - 1);
+        w.spent -= paid;
+        addCoins(w, Math.floor(paid / 2));
+      }
       if (!barn && (t[o + CROP] || t[o + BUILDING] || t[o + TILLED])) {
         t[o + CROP] = 0; t[o + PLANTED] = 0; t[o + RATE] = 0; t[o + TILLED] = 0; t[o + BUILDING] = 0; t[o + BUILT] = 0;
         res = 1;

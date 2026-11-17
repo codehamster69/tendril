@@ -19,7 +19,7 @@ test('search matches names and functions', () => {
   assert.ok(matches(by('composter'), 'fertilize'));
   assert.ok(matches(by('satchel'), 'capacity'));
   assert.ok(!matches(by('wheat'), 'build'));
-  assert.deepEqual(visible(CARDS, { query: 'build', affordableOnly: false }, 1, 0).map((c) => c.name), ['hive', 'composter']);
+  assert.deepEqual(visible(CARDS, { query: 'build', affordableOnly: false }, 1, 0).map((c) => c.name), ['hive', 'composter', 'silo']);
 });
 test('affordable filter', () => {
   assert.deepEqual(visible(CARDS, { query: '', affordableOnly: true }, 1, 100).map((c) => c.name), ['wheat', 'clover']);

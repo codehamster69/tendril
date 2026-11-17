@@ -1,4 +1,4 @@
-import { BASE_RULES_VERSION, ITEM_COUNT, PLOT_SIZE, RULES_VERSION, SUPPORTED_RULES_VERSIONS, TILE_INTS } from './rules.ts';
+import { BASE_RULES_VERSION, ITEM_COUNT, MARKET_RULES_VERSION, PLOT_SIZE, RULES_VERSION, SUPPORTED_RULES_VERSIONS, TILE_INTS } from './rules.ts';
 import type { Bot, Order, Plot, Segment, World } from './types.ts';
 import { plotKey } from './tiles.ts';
 import { ensureWeather } from './weather.ts';
@@ -26,18 +26,20 @@ export function hashWorld(w: World): string {
     for (let c = 1; c <= ITEM_COUNT; c++) mix(b.load[c]!);
   }
   for (const p of w.plots) { mix(p.px); mix(p.py); for (let i = 0; i < p.tiles.length; i++) mix(p.tiles[i]!); }
+  // w.siloTick is deliberately not mixed (SIM_SPEC 5.6): silos and sold plots already show in tiles, plots, coins and spent.
   return (h >>> 0).toString(16).padStart(8, '0');
 }
 
 export function serialize(w: World): string {
   return JSON.stringify({
-    rulesVersion: w.prices ? RULES_VERSION : BASE_RULES_VERSION, id: w.id, seed: w.seed, tick: w.tick, coins: w.coins, spent: w.spent, unlocks: w.unlocks, wrng: w.wrng, orng: w.orng,
+    rulesVersion: w.siloTick !== undefined ? RULES_VERSION : w.prices ? MARKET_RULES_VERSION : BASE_RULES_VERSION, id: w.id, seed: w.seed, tick: w.tick, coins: w.coins, spent: w.spent, unlocks: w.unlocks, wrng: w.wrng, orng: w.orng,
     nextOrderAt: w.nextOrderAt, nextOrderId: w.nextOrderId, stock: w.stock, weather: w.weather, orders: w.orders,
     bots: w.bots.map((b) => ({ x: b.x, y: b.y, busyUntil: b.busyUntil, load: Array.from(b.load) })),
     plots: w.plots.map((p) => ({ px: p.px, py: p.py, tiles: Array.from(p.tiles) })),
     lastOp: w.lastOp,
     ...(w.weatherBias ? { weatherBias: w.weatherBias } : {}),
     ...(w.prices ? { prices: w.prices } : {}),
+    ...(w.siloTick !== undefined ? { siloTick: w.siloTick } : {}),
   });
 }
 
@@ -46,11 +48,13 @@ export function deserialize(s: string): World {
     rulesVersion: number; id: string; seed: number; tick: number; coins: number; spent: number; unlocks: number; wrng: number; orng: number;
     nextOrderAt: number; nextOrderId: number; stock: number[]; weather: Segment[]; orders: Order[];
     bots: { x: number; y: number; busyUntil: number; load: number[] }[];
-    plots: { px: number; py: number; tiles: number[] }[]; lastOp: (number | null)[]; weatherBias?: number; prices?: number[];
+    plots: { px: number; py: number; tiles: number[] }[]; lastOp: (number | null)[]; weatherBias?: number; prices?: number[]; siloTick?: number;
   };
   if (!SUPPORTED_RULES_VERSIONS.includes(d.rulesVersion)) throw new Error(`unsupported rules version ${String(d.rulesVersion)}`);
-  // Version 3 never has a table and version 4 always has one (dispatch by data, SIM_SPEC 4.1).
-  if ((d.rulesVersion === RULES_VERSION) !== (d.prices !== undefined)) throw new Error('rules version does not match the price table');
+  // Version 3 never has a table and version 4 always has one (dispatch by data, SIM_SPEC 4.1). Version 5 has silo rules and may have a table.
+  if (d.rulesVersion !== RULES_VERSION && (d.rulesVersion === MARKET_RULES_VERSION) !== (d.prices !== undefined)) throw new Error('rules version does not match the price table');
+  if ((d.rulesVersion === RULES_VERSION) !== (d.siloTick !== undefined)) throw new Error('rules version does not match the silo tick');
+  if (d.siloTick !== undefined && (!Number.isSafeInteger(d.siloTick) || d.siloTick < 0)) throw new Error('bad silo tick');
   if (d.prices !== undefined && (d.prices.length !== ITEM_COUNT || !d.prices.every((v, i) => i === 0 ? v === 0 : Number.isSafeInteger(v) && v >= 1 && v <= 100_000))) throw new Error('bad prices');
   const bots: Bot[] = d.bots.map((b) => {
     if (b.load.length !== ITEM_COUNT + 1) throw new Error('bad bot');
@@ -68,5 +72,6 @@ export function deserialize(s: string): World {
     bots, plots, plotIndex, lastOp: d.lastOp,
     ...(d.weatherBias === -1 || d.weatherBias === 1 ? { weatherBias: d.weatherBias } : {}),
     ...(d.prices ? { prices: d.prices } : {}),
+    ...(d.siloTick !== undefined ? { siloTick: d.siloTick } : {}),
   };
 }

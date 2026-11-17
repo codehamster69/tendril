@@ -1,7 +1,7 @@
 import { HIVE, ITEM_COUNT, PLOT_SIZE, TILE_INTS } from './rules.ts';
 import type { Snapshot, World } from './types.ts';
 import { BUILDING, CROP, FATIGUE, MOIST, NITRO, TILLED, honeyAt, settleInts, stageOf } from './tiles.ts';
-import { botCost, capacity, netWorth, openOrders, plotCost } from './world.ts';
+import { botCost, capacity, netWorth, openOrders, plotCost, plotRefund, siloCost } from './world.ts';
 import { weatherAt } from './weather.ts';
 
 export function snapshot(w: World): Snapshot {
@@ -33,8 +33,13 @@ export function snapshot(w: World): Snapshot {
         op: b.busyUntil > w.tick ? (w.lastOp[i] ?? null) : null,
       };
     }),
-    stock: w.stock.slice(), orders: openOrders(w), plotCost: plotCost(w), botCost: botCost(w),
+    stock: w.stock.slice(), orders: openOrders(w), plotCost: plotCost(w), botCost: botCost(w), ...siloFields(w),
   };
+}
+
+/** Rules v5 extras; nothing for an older world, so its snapshot is unchanged. */
+function siloFields(w: World): Pick<Snapshot, 'siloCost' | 'plotRefund'> {
+  return w.siloTick === undefined ? {} : { siloCost: siloCost(w), plotRefund: plotRefund(w) };
 }
 
 // ---- Compact view (client screen only). The server and tests keep using snapshot() above. ----
@@ -69,12 +74,12 @@ export function viewBot(w: World, i: number, out: Int32Array, o: number): void {
   for (let k = 0; k <= ITEM_COUNT; k++) out[o + 5 + k] = b.load[k]!;
 }
 
-export type ViewScalars = Pick<Snapshot, 'coins' | 'netWorth' | 'weather' | 'unlocks' | 'capacity' | 'stock' | 'orders' | 'plotCost' | 'botCost'>;
+export type ViewScalars = Pick<Snapshot, 'coins' | 'netWorth' | 'weather' | 'unlocks' | 'capacity' | 'stock' | 'orders' | 'plotCost' | 'botCost' | 'siloCost' | 'plotRefund'>;
 
 /** Everything in a snapshot except tick, plots, tiles and bots. Small, compared by value to detect changes. */
 export function viewScalars(w: World): ViewScalars {
   return {
     coins: w.coins, netWorth: netWorth(w), weather: weatherAt(w, w.tick), unlocks: w.unlocks, capacity: capacity(w),
-    stock: w.stock.slice(), orders: openOrders(w), plotCost: plotCost(w), botCost: botCost(w),
+    stock: w.stock.slice(), orders: openOrders(w), plotCost: plotCost(w), botCost: botCost(w), ...siloFields(w),
   };
 }

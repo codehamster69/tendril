@@ -3,7 +3,8 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { createWorld, dailySeed, DAILY_TICKS, deserialize, hashWorld, netWorth, replayChunk, BASE_RULES_VERSION, serialize } from '@tendril/sim/src/index.ts';
+import { createWorld, dailySeed, DAILY_TICKS, deserialize, hashWorld, netWorth, replayChunk, BASE_RULES_VERSION, serialize, OP, SILO, SILO_BIT, SILO_EPOCH_MS, scanAt, tickWorld, withEndlessSilos } from '@tendril/sim/src/index.ts';
+import { Driver, round } from '../../sim/test/helpers.ts';
 import type { LogEntry } from '@tendril/sim/src/index.ts';
 import { createApp, createDb, migrate } from '../src/index.ts';
 import type { Db, FarmResponse, FetchFn, LeaderEntry, Profile } from '../src/index.ts';
@@ -365,6 +366,56 @@ describe('GitHub OAuth', () => {
   });
 });
 
+describe('rules v5 on Endless farms (SIM_SPEC 5.5)', () => {
+  it('silos switch on at SILO_EPOCH from the start time; the stored checkpoint stays readable by older builds', async () => {
+    time = SILO_EPOCH_MS - 50 * 100; // this farm reaches the epoch at tick 50
+    const owner = await login('Silo farmer');
+    const mine = await (await request('/farms', { token: owner.token, body: {} })).json() as FarmResponse;
+    const d = new Driver({ id: mine.id, seed: mine.seed });
+    withEndlessSilos(d.w, mine.startedAtMs);
+    expect(d.w.siloTick).toBe(50);
+    expect(d.do(-1, OP.unlock, SILO_BIT)).toBe(0); // tick 0: before the epoch
+    while (d.w.coins < 1700) round(d);
+    expect(d.do(-1, OP.unlock, SILO_BIT)).toBe(1);
+    d.do(0, OP.move, 1); d.do(0, OP.move, 1);
+    expect(d.do(0, OP.build, SILO)).toBe(1);
+    const end = d.w.tick + 10;
+    for (let t = d.w.tick; t < end; t++) tickWorld(d.w);
+    time = mine.startedAtMs + end * 100 + 1000;
+    let cur = mine;
+    for (let from = 0; from < end; from = Math.min(end, from + 20_000)) {
+      const to = Math.min(end, from + 20_000);
+      const res = await submit(chunkBody(d.log.filter((e) => e[0] >= from && e[0] < to), to, cur), owner.token, mine.id);
+      expect(res.status).toBe(200);
+      expect((await res.json() as Accepted).checkpointHash).toBe(hashWorld(d.w.tick === to ? d.w : replayed(mine, d.log, to)));
+      cur = await myFarm(owner.token);
+    }
+    const stored = JSON.parse(cur.checkpoint) as { rulesVersion: number; siloTick?: number };
+    expect(stored.rulesVersion).toBe(BASE_RULES_VERSION);
+    expect(stored.siloTick).toBeUndefined();
+    expect(cur.rulesVersion).toBe(BASE_RULES_VERSION);
+    expect(scanAt(deserialize(cur.checkpoint), 2, 0)!.building).toBe(SILO);
+    expect(cur.netWorth).toBe(netWorth(d.w));
+    expect(((await (await request(`/farms/${mine.id}/replay`)).json()) as { siloTick: number }).siloTick).toBe(50);
+  });
+
+  it('accepts the new ops in a chunk; before the epoch they do nothing but cost their ticks', async () => {
+    const log: LogEntry[] = [[0, -1, OP.unlock, SILO_BIT], [0, -1, OP.sellPlot, 1, 0], [0, 0, OP.build, SILO]];
+    const res = await submit(chunkBody(log, 10));
+    expect(res.status).toBe(200);
+    const local = createWorld({ id: farm.id, seed: farm.seed });
+    replayChunk(local, log, 10);
+    expect((await res.json() as Accepted).checkpointHash).toBe(hashWorld(local));
+    expect(local.unlocks).toBe(1);
+  });
+});
+
+function replayed(f: FarmResponse, log: LogEntry[], to: number) {
+  const w = withEndlessSilos(createWorld({ id: f.id, seed: f.seed }), f.startedAtMs);
+  replayChunk(w, log.filter((e) => e[0] < to), to);
+  return w;
+}
+
 describe('transactional verification', () => {
   it('replays farming, computes actual worth, ranks, and publishes reproducible chunks', async () => {
     expect((await request(`/farms/${farm.id}/replay`)).status).toBe(404);
@@ -383,7 +434,7 @@ describe('transactional verification', () => {
     expect(next.status).toBe(200);
     // Both chunks are still buffered in the farm row, and replay serves them as one chunk.
     const replay = await (await request(`/farms/${farm.id}/replay`)).json() as ReplayPage;
-    expect(replay).toEqual({ seed: farm.seed, rulesVersion: BASE_RULES_VERSION, chunks: [{ fromTick: 0, toTick: 200, actions: harvest }], nextFromTick: null });
+    expect(replay).toEqual({ seed: farm.seed, rulesVersion: BASE_RULES_VERSION, siloTick: expect.any(Number), chunks: [{ fromTick: 0, toTick: 200, actions: harvest }], nextFromTick: null });
     const replayed = createWorld({ id: farm.id, seed: replay.seed });
     for (const chunk of replay.chunks) replayChunk(replayed, chunk.actions, chunk.toTick);
     expect(hashWorld(replayed)).toBe((await next.json() as Accepted).checkpointHash);
@@ -528,7 +579,7 @@ describe('bounded public replay', () => {
     expect(between.chunks.map((c) => c.fromTick)).toEqual([200]);
     expect(between.nextFromTick).toBe(400);
     for (const fromTick of [500, Number.MAX_SAFE_INTEGER]) {
-      expect(await (await request(`/farms/${farm.id}/replay?fromTick=${fromTick}&limit=2`)).json()).toEqual({ seed: farm.seed, rulesVersion: BASE_RULES_VERSION, chunks: [], nextFromTick: null });
+      expect(await (await request(`/farms/${farm.id}/replay?fromTick=${fromTick}&limit=2`)).json()).toEqual({ seed: farm.seed, rulesVersion: BASE_RULES_VERSION, siloTick: expect.any(Number), chunks: [], nextFromTick: null });
     }
   });
   it.each([
