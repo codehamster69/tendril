@@ -4,7 +4,7 @@ import type { AssetModel, AssetPart } from './asset-loader';
 /** Crop ids 1..6 (rules v3) and item ids 1..8. Index equals the simulation id. */
 export const CROPS = ['', 'carrot', 'wheat', 'clover', 'pumpkin', 'berry', 'apple'];
 export const ITEM_NAMES = [...CROPS, 'honey', 'compost'];
-export const BUILDING_MODELS = ['', 'prop_beehive', 'prop_compost'];
+export const BUILDING_MODELS = ['', 'prop_beehive', 'prop_compost', 'prop_silo'];
 export const CROP_COLORS = [0, 0xf08a24, 0xe6c34a, 0x8fbf6a, 0xd2601a, 0x8a3a8f, 0xc83a32];
 const ITEM_COLORS = [0, ...CROP_COLORS.slice(1), 0xe8a92a, 0x6b4a2b];
 
@@ -86,6 +86,13 @@ export function fallbackModel(name: string): AssetModel {
     parts = [part(new THREE.BoxGeometry(0.42, 0.04, 0.42).translate(0, 0.02, 0), 0x8a5a3a)];
     [[0.2, 0.19], [0.17, 0.14], [0.12, 0.08]].forEach(([rb, rt], k) => parts.push(part(cone(rt, rb, 0.15, 8).translate(0, 0.04 + k * 0.15, 0), k % 2 ? 0xd49a2a : 0xe0b040)));
     parts.push(part(new THREE.BoxGeometry(0.07, 0.035, 0.02).translate(0, 0.1, 0.19), 0x3a2a14));
+  } else if (name === 'prop_silo') {
+    // Round wooden silo with a conical roof: about one tile wide, taller than the hive.
+    parts = [part(new THREE.CylinderGeometry(0.34, 0.34, 0.78, 14).translate(0, 0.39, 0), 0xb07a4a),
+      part(new THREE.CylinderGeometry(0.36, 0.36, 0.05, 14).translate(0, 0.025, 0), 0x58666b),
+      part(new THREE.CylinderGeometry(0.2, 0.2, 0.012, 12).translate(0, 0.78, 0.0), 0x3a2a14),
+      part(cone(0.02, 0.38, 0.3, 14).translate(0, 0.78, 0), 0x7a5a38),
+      part(new THREE.BoxGeometry(0.1, 0.22, 0.012).translate(0, 0.16, 0.345), 0x6a3a2e)];
   } else if (name === 'prop_compost') {
     parts = [part(new THREE.IcosahedronGeometry(0.26, 0).scale(1.05, 0.6, 1.05).translate(0, 0.18, 0), 0x4a3a22)];
     for (const [x, z] of [[-0.3, -0.3], [0.3, -0.3], [-0.3, 0.3], [0.3, 0.3]]) parts.push(part(new THREE.BoxGeometry(0.05, 0.4, 0.05).translate(x, 0.2, z), 0x5e3d27));

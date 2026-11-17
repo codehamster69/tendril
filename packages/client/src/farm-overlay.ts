@@ -1,22 +1,26 @@
 import * as THREE from 'three';
 import type { Snapshot } from './sim-types.ts';
 import { matte } from './fallback-models.ts';
+import { dropUnit, type DropDistances } from './drop-distance.ts';
 
-export type FarmOverlay = 'none' | 'moisture' | 'nitrogen' | 'fatigue' | 'growth';
+export type FarmOverlay = 'none' | 'moisture' | 'nitrogen' | 'fatigue' | 'growth' | 'drop';
 const OVERLAYS = {
   moisture: [new THREE.Color('#e0bb79'), new THREE.Color('#287caf')],
   nitrogen: [new THREE.Color('#e0c898'), new THREE.Color('#468653')],
   fatigue: [new THREE.Color('#8fc3a4'), new THREE.Color('#bf6650')],
   growth: [new THREE.Color('#9aa98c'), new THREE.Color('#f2b84b')],
+  // Near a drop: tendril teal. Far from every barn and silo: clay.
+  drop: [new THREE.Color('#4fd1b0'), new THREE.Color('#c86a3a')],
 };
 export const unit = (value: number): number => THREE.MathUtils.clamp(value / 100, 0, 1);
 /** Most instances any one mesh holds (a hard cap, whatever the farm size). */
 export const MAX_OVERLAY = 20000;
 
-/** The lens colour of one tile (used per cell when tiles are merged at Map zoom). */
-export function overlayColor(overlay: Exclude<FarmOverlay, 'none'>, tile: Snapshot['tiles'][number], out: THREE.Color): THREE.Color {
+/** The lens colour of one tile (used per cell when tiles are merged at Map zoom). `far` is the drop lens's 0..1 distance. */
+export function overlayColor(overlay: Exclude<FarmOverlay, 'none'>, tile: Snapshot['tiles'][number], out: THREE.Color, far = 0): THREE.Color {
   const [low, high] = OVERLAYS[overlay];
-  return out.copy(low).lerp(high, overlay === 'growth' ? (tile.crop ? tile.stage / 3 : 0) : unit(tile[overlay]));
+  const k = overlay === 'drop' ? far : overlay === 'growth' ? (tile.crop ? tile.stage / 3 : 0) : unit(tile[overlay]);
+  return out.copy(low).lerp(high, k);
 }
 
 /** The soil-lens colour layer and the faint tile guides, both one instanced mesh each. */
@@ -49,7 +53,7 @@ export class OverlayLayer {
    * Draws `tiles` (the visible ones, at most MAX_OVERLAY of them). `guides` false hides the faint tile outlines
    * (Map zoom). Returns the first sixteen assigned colours, for diagnostics.
    */
-  update(all: Snapshot['tiles'], overlay: FarmOverlay, guideLines = true): { x: number; y: number; color: string }[] {
+  update(all: Snapshot['tiles'], overlay: FarmOverlay, guideLines = true, dist: DropDistances | null = null): { x: number; y: number; color: string }[] {
     const tiles = all.length > MAX_OVERLAY ? all.slice(0, MAX_OVERLAY) : all;
     if (tiles.length > this.capacity) {
       this.drop();
@@ -74,7 +78,7 @@ export class OverlayLayer {
     if (overlay !== 'none') {
       tiles.forEach((tile, index) => {
         mesh.setMatrixAt(index, this.flat(tile.x, 0.01, tile.y));
-        overlayColor(overlay, tile, this.color);
+        overlayColor(overlay, tile, this.color, dropUnit(dist, tile.x, tile.y));
         mesh.setColorAt(index, this.color);
         if (index < 16) colors.push({ x: tile.x, y: tile.y, color: this.color.getHexString() });
       });

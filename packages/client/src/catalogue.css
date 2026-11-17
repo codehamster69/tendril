@@ -41,3 +41,4 @@
 @media (max-width: 1000px) { .cat-track { flex-wrap: wrap; } .cat-vine { display: none; } .cat-packet { flex: 1 1 10rem; } }
 @media (prefers-reduced-motion: reduce) { .cat-badge, .cat-packet, .cat-packet[data-state="affordable"], .cat-stamp.play { animation: none !important; transition: none !important; } }
 .cat-body { display: flex; flex-direction: column; gap: var(--hk-s4); }
+.cat-packet[data-state="soon"] { opacity: .62; filter: saturate(.4); }

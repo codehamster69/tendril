@@ -21,7 +21,7 @@ const META: Record<string, { track: Track; blurb: string; adds: string[]; pictur
   hive: { track: 'buildings', blurb: 'Boosts yield next door and makes honey.', adds: ['build hive', 'harvest  # honey'], picture: 'prop_beehive' },
   composter: { track: 'buildings', blurb: 'Turns spare crops into fertilizer.', adds: ['build composter', 'compost', 'fertilize'], picture: 'prop_compost' },
   satchel: { track: 'tools', blurb: 'Every bot carries 30 instead of 20.', adds: ['say capacity()  # 30'], picture: 'prop_crate' },
-  silo: { track: 'buildings', blurb: 'A second barn: bots deposit and sell there. From 15 December.', adds: ['build silo', 'deposit', 'sell'], picture: 'prop_silo' },
+  silo: { track: 'buildings', blurb: 'A second barn: bots deposit and sell there.', adds: ['build silo', 'deposit', 'sell'], picture: 'prop_silo' },
 };
 export const CARDS: readonly SeedCard[] = UNLOCKS.map((u, bit) => {
   const m = META[u.name];

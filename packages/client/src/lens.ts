@@ -7,6 +7,7 @@ const LENSES = [
   { key: '2', id: 'moisture', name: 'Water', lo: 'dry', hi: 'wet', grad: '#e0bb79, #287caf' },
   { key: '3', id: 'growth', name: 'Growth', lo: 'bare', hi: 'ripe', grad: '#9aa98c, #f2b84b' },
   { key: '4', id: 'price', name: 'Value', lo: 'cheap', hi: 'dear', grad: '#3b6fa8, #cfe0c8, #ff8a2e' },
+  { key: '5', id: 'drop', name: 'Drop', lo: 'near a drop', hi: 'far', grad: '#4fd1b0, #c86a3a' },
 ] as const;
 
 const typing = (t: EventTarget | null): boolean => {
