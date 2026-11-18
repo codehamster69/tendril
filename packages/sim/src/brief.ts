@@ -4,8 +4,8 @@ import type { Goal, GoalKind, Setup } from './types.ts';
 import { rand } from './weather.ts';
 import { utcDay } from './date.ts';
 
-/** Dailies dated on or after this, and seasons starting on or after it, use briefs. Shipped off (2099) until Rohan sets it. */
-export const BRIEF_EPOCH = '2099-01-01';
+/** Dailies dated on or after this, and seasons starting on or after it, use briefs. Live from 2026-11-18 (Rohan set the launch date). */
+export const BRIEF_EPOCH = '2026-11-18';
 /** Setup version stored on brief challenges (`setup_v = 2`). */
 export const SETUP_BRIEF = 2;
 /** Hidden sibling farms per challenge kind. */

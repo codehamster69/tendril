@@ -22,7 +22,7 @@ const migrations = readdirSync(migDir).filter((f) => /^\d+_.+\.sql$/.test(f)).so
 const db = createDb({ url: ':memory:' });
 
 beforeAll(async () => {
-  const app = createApp({ db, migrations, env: { TENDRIL_DEV_AUTH: '1', PUBLIC_ORIGIN: 'http://localhost' }, verifySource: async (r) => verifySource(r) });
+  const app = createApp({ db, migrations, env: { TENDRIL_DEV_AUTH: '1', PUBLIC_ORIGIN: 'http://localhost' }, setupVersion: 1, verifySource: async (r) => verifySource(r) });
   server = createServer((req, res) => {
     const chunks: Buffer[] = [];
     req.on('data', (c: Buffer) => chunks.push(c));

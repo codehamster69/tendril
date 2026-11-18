@@ -24,7 +24,7 @@ let verifyCalls = 0;
 beforeEach(() => {
   verify = async (r) => { verifyCalls++; return verifySource(r); }; verifyCalls = 0;
   db = createDb({ url: ':memory:' });
-  app = createApp({ db, env: { TENDRIL_DEV_AUTH: '1' }, now: () => NOW, verifySource: (r) => (verify ? verify(r) : Promise.reject(new Error('down'))) });
+  app = createApp({ db, env: { TENDRIL_DEV_AUTH: '1' }, setupVersion: SETUP_VERSION, now: () => NOW, verifySource: (r) => (verify ? verify(r) : Promise.reject(new Error('down'))) });
 });
 afterEach(() => db.close());
 
@@ -124,7 +124,7 @@ describe('client and server agree on the starting world', () => {
     const seen = new Set<string>();
     for (let i = 0; i < 1000; i++) {
       const now = Date.UTC(2026, 11, 1) + (i * 3 + next(3)) * 86_400_000 + next(86_400_000); // 1,000 distinct dates over ~8 years
-      const row = await loadChallenge(db, 'today', now);
+      const row = await loadChallenge(db, 'today', now, undefined, SETUP_VERSION);
       seen.add(row.id);
       const info = await challengeInfo(db, row);
       const server = createWorld({ id: row.id, seed: row.seed }, challengeSetup(row.kind, row.seed, row.setup_v, marketOf(row)).setup);

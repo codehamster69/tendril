@@ -2,7 +2,7 @@
 // fewer than 10 players, the table CAS, the 0.1.x refusal, par and source checks under the table, duels.
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
-  MARKET_EPOCH, RULES_VERSION, baseMarket, challengeSetup, createWorld, dailySeed, marketPrices, nextMarket, parFromReference,
+  MARKET_EPOCH, RULES_VERSION, SETUP_VERSION, baseMarket, challengeSetup, createWorld, dailySeed, marketPrices, nextMarket, parFromReference,
   replayStats, replayWithPar,
 } from '@tendril/sim/src/index.ts';
 import type { LogEntry } from '@tendril/sim/src/index.ts';
@@ -29,7 +29,7 @@ let seen: VerifyRequest[] = [];
 beforeEach(() => {
   seen = []; time = at(EPOCH);
   db = createDb({ url: ':memory:' });
-  app = createApp({ db, env: { TENDRIL_DEV_AUTH: '1' }, now: () => time, verifySource: async (r) => { seen.push(r); return verifySource(r); } });
+  app = createApp({ db, env: { TENDRIL_DEV_AUTH: '1' }, setupVersion: SETUP_VERSION, now: () => time, verifySource: async (r) => { seen.push(r); return verifySource(r); } });
 });
 afterEach(() => db.close());
 

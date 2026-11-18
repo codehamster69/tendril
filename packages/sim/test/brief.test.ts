@@ -10,12 +10,12 @@ const seeds = (n: number): number[] => Array.from({ length: n }, (_, i) => (Math
 const fnv = (s: string): number => { let h = 0x811c9dc5; for (const b of new TextEncoder().encode(s)) { h ^= b; h = Math.imul(h, 0x01000193); } return (h >>> 0) || 1; };
 
 describe('brief generator', () => {
-  it('is off until BRIEF_EPOCH and chosen by date', () => {
-    expect(BRIEF_EPOCH).toBe('2099-01-01');
-    expect(briefActive('2026-12-01')).toBe(false);
-    expect(briefActive('2099-01-01')).toBe(true);
-    expect(setupVersionFor('2026-12-01')).toBe(SETUP_VERSION);
-    expect(setupVersionFor('2099-02-01')).toBe(SETUP_BRIEF);
+  it('is on from BRIEF_EPOCH and chosen by date', () => {
+    expect(BRIEF_EPOCH).toBe('2026-11-18');
+    expect(briefActive('2026-11-17')).toBe(false);
+    expect(briefActive('2026-11-18')).toBe(true);
+    expect(setupVersionFor('2026-11-17')).toBe(SETUP_VERSION);
+    expect(setupVersionFor('2026-12-01')).toBe(SETUP_BRIEF);
     expect(HIDDEN_FARMS).toEqual({ daily: 2, season: 4, duel: 0 });
   });
 

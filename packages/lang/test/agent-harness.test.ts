@@ -28,7 +28,7 @@ beforeAll(async () => {
   // No API key and a dead API address: the dry run must not need either.
   env = { ...process.env, TENDRIL_API: 'http://127.0.0.1:1', TENDRIL_CONFIG_DIR: join(dir, 'cfg') };
   delete env.ANTHROPIC_API_KEY; delete env.TENDRIL_TOKEN;
-  const app = createApp({ db, migrations, env: { TENDRIL_DEV_AUTH: '1', PUBLIC_ORIGIN: 'http://localhost' }, verifySource: async (r) => verifySource(r) });
+  const app = createApp({ db, migrations, env: { TENDRIL_DEV_AUTH: '1', PUBLIC_ORIGIN: 'http://localhost' }, setupVersion: 1, verifySource: async (r) => verifySource(r) });
   server = createServer((req, res) => {
     const chunks: Buffer[] = [];
     req.on('data', (c: Buffer) => chunks.push(c));
