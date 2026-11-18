@@ -178,6 +178,8 @@ export function mountStage({ loop, api, current, ranked }: { loop: GameLoop; edi
     running = s.running; canRun = s.canRun; canPause = s.canPause;
     play.textContent = running ? '❚❚' : '▶';
     play.setAttribute('aria-label', running ? 'Pause' : 'Run');
+    // A live farm's clock keeps running while paused, and Run catches up: say so, so Pause never reads as a freeze.
+    if (live) play.title = running ? 'Pause · the farm clock keeps counting. Run to catch up.' : 'Run or pause (Space)';
     play.disabled = running ? !canPause : !canRun;
     step.disabled = !s.canStep;
     sunset.disabled = !s.canStep || !hasEnd();
