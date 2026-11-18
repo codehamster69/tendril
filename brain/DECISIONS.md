@@ -147,6 +147,9 @@ Six free queries (`goal quota budget twists bot_cap plot_cap`) read optional wor
 - **Why:** the plan (`challenges/plan.md`) needs a different problem every day, and dispatch by stored data keeps old challenges, Endless farms and duels replaying exactly. Drought is `weatherBias 2` (rain segments of length 0), hard frost is `-2`.
 - **Open:** festival quota sizes are first values for K2 to calibrate (`brain/notes/K1.md`).
 
+## D-K6 (2026-11-17): brief client
+Live goal progress comes from the sim worker (`tendril:goal`), with `World.brief.orderCoins` added to the sim for the orders score. A practice farm is the real brief on another world seed (`?practice=<seed>`), never submitted. On a brief day the offline fallback is a random practice brief, since today's seed is secret. Duel panel hidden on brief results until K3 confirms duel copies. Details: `brain/notes/K6.md`.
+
 ## D-K2 (2026-11-17) Reference programs, par floors and the reroll rule (K2)
 - **Decision:** one plain reference Sprout program per goal (`packages/lang/examples/brief-<goal>.sprout`; the server holds copies in `REFERENCE_SOURCES`). A brief whose reference scores under a per-goal floor on the visible farm is redrawn from `rerollSeed(seed, n)`, at most 8 times, then the best draw is kept (SIM_SPEC 6.6). `QUOTA_UNIT` and the twist strengths are unchanged.
 - **Why:** par is 90% of the reference, so a day the reference cannot play (a festival that needs 650 coins of research from a 30-coin start) would have a meaningless par. About 1 festival draw in 6 is rerolled, other goals under 2%. Rerolling shifts the goal mix slightly away from festival. Numbers and the checks run: `brain/notes/K2.md`.

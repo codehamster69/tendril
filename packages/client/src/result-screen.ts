@@ -10,7 +10,9 @@ import type { ChallengeInfo, EntryResult, FarmApi } from './api-client';
 import type { GameLoop } from './game-loop';
 import type { FarmView, LightPreset } from './farm-view';
 import { startSignIn } from './account';
-import { localResult, submitRun } from './arena';
+import { anotherFarm, localResult, submitRun } from './arena';
+import { finalView, scoreParts } from './goal-view';
+import type { GoalProgress } from './goal-progress';
 import { createDuelPanel } from './duel';
 import { rateLine } from './rating';
 import { copyText, shareText, signed, topShare } from './share';
@@ -45,9 +47,18 @@ export function mountResultScreen({ loop, api, challenge: c, view }: ResultDeps)
   window.addEventListener('tendril:snapshot', (e) => {
     const s = (e as CustomEvent<Snapshot>).detail;
     if (s.tick < seenTick) clearTrail();
-    if (s.coins > seenCoins) trail.lastGrow = s.tick;
+    if (s.coins > seenCoins && !briefRun) trail.lastGrow = s.tick;
     seenTick = s.tick; seenCoins = s.coins;
     if (s.tick < c.ticks && layer) closeScreen(true); // a new run began elsewhere (menu, reset)
+  });
+  // Briefs: the goal's own score drives the hint (coins alone say nothing for a festival).
+  const briefRun = c.setupVersion === 2;
+  let seenGoal = 0;
+  window.addEventListener('tendril:goal', (e) => {
+    const g = (e as CustomEvent<GoalProgress>).detail;
+    if (g.score < seenGoal) seenGoal = 0;
+    if (g.score > seenGoal && briefRun) trail.lastGrow = seenTick;
+    seenGoal = g.score;
   });
   window.addEventListener('tendril:events', (e) => {
     for (const ev of (e as CustomEvent<ViewEvent[]>).detail) if (ev[0] === EVENT.sale && (trail.lastSale === null || ev[1] > trail.lastSale)) trail.lastSale = ev[1];
@@ -131,7 +142,9 @@ export function mountResultScreen({ loop, api, challenge: c, view }: ResultDeps)
     const mine = ++run;
     const actions = loop.logChunks().flatMap((k) => k.actions).filter((a) => a[0] < c.ticks);
     const local = localResult(c, actions);
-    const netWorth = local.netWorth ?? snapshot.netWorth;
+    const kind = local.goal?.kind;
+    const netWorth = local.goal ? local.score : local.netWorth ?? snapshot.netWorth; // "score" below: net worth on a classic day, the goal's score on a brief
+    const practice = !!c.practice;
     const missed = belowPar(c, local.parTick);
 
     layer = el('div', { class: 'rs-layer', 'data-phase': 'dusk' });
@@ -144,51 +157,66 @@ export function mountResultScreen({ loop, api, challenge: c, view }: ResultDeps)
 
     let server: EntryResult | null = null;
     let program: ProgramStatus | null = null;
-    let submitting = signedIn;
-    let note = signedIn ? 'Sending your run to the server…' : 'Saved on this device. Sign in to submit this run and see your rank.';
-    const prevBest = readBest(c.id);
-    writeBest(c.id, Math.max(netWorth, prevBest ?? 0));
+    let submitting = signedIn && !practice;
+    let note = practice ? 'Practice farm: nothing was submitted. Only the real day counts, and its hidden farms stay hidden.' : signedIn ? 'Sending your run to the server…' : 'Saved on this device. Sign in to submit this run and see your rank.';
+    const bestKey = practice ? `${c.id}.practice` : c.id; // practice scores never mix with the real day's
+    const prevBest = readBest(bestKey);
+    writeBest(bestKey, Math.max(netWorth, prevBest ?? 0));
 
     const title = el('h2', { id: 'rs-title', text: missed ? 'The day is over' : 'Sunset' });
     const coinsNum = el('b', { class: 'rs-coins-num', text: '0' });
-    const coinsLine = el('p', { class: 'rs-coins' }, coinsNum, el('small', { text: ' coins net worth' }));
+    const unit = el('small', { text: ` ${scoreParts(kind ?? 'wealth', 0).unit}` });
+    const coinsLine = el('p', { class: 'rs-coins' }, coinsNum, unit);
+    const finalBox = el('div', { class: 'rs-final', 'aria-live': 'polite' });
     const medalList = el('ol', { class: 'rs-medals', 'aria-label': 'Medals' });
     const rankLine = el('p', { class: 'rs-rank', 'aria-live': 'polite' });
     const ratingLine = el('p', { class: 'rs-muted rs-rating' });
-    const bestEl = el('p', { class: 'rs-best', text: bestLine(prevBest, netWorth, c.best) });
-    const hint = missed ? el('p', { class: 'rs-hint', role: 'note' }, el('b', { text: 'One thing to look at. ' }), hintFor(trail, c.ticks, netWorth, c.par)) : null;
+    const bestEl = el('p', { class: 'rs-best', text: bestLine(prevBest, netWorth, practice ? null : c.best, kind) });
+    const hint = missed ? el('p', { class: 'rs-hint', role: 'note' }, el('b', { text: 'One thing to look at. ' }), hintFor(trail, c.ticks, netWorth, c.par, kind)) : null;
     const noteEl = el('p', { class: 'rs-muted rs-note', 'aria-live': 'polite' });
 
     const shareBtn = el('button', { class: 'hk-button rs-share', type: 'button', text: 'Share' });
     const replay = el('a', { class: 'hk-button rs-replay', target: '_blank', rel: 'noopener', text: 'Watch replay' });
-    const tryBtn = el('button', { class: 'hk-button hk-primary rs-try', type: 'button', 'aria-keyshortcuts': 'Enter' }, 'Try again ', el('kbd', { text: 'Enter' }));
+    const tryBtn = el('button', { class: 'hk-button hk-primary rs-try', type: 'button', 'aria-keyshortcuts': 'Enter' }, practice ? 'Same farm again ' : 'Try again ', el('kbd', { text: 'Enter' }));
+    const anotherBtn = el('button', { class: 'hk-button rs-another', type: 'button', text: practice ? 'Another farm' : 'Try another farm', title: "This brief on a random farm. Never submitted." });
+    anotherBtn.addEventListener('click', () => anotherFarm(c));
     const nextBtn = el('button', { class: 'hk-button rs-next', type: 'button', text: 'Next' });
     const signInBtn = el('button', { class: 'hk-button rs-signin', type: 'button', text: 'Sign in to submit' });
     signInBtn.addEventListener('click', () => startSignIn());
     const duel = createDuelPanel(api, c, () => actions);
     const duelBox = el('details', { class: 'rs-duel' }, el('summary', { text: 'Challenge a friend' }), duel.el);
-    const buttons = el('div', { class: 'rs-buttons' }, ...(missed ? [tryBtn, shareBtn, replay, nextBtn] : [shareBtn, replay, tryBtn, nextBtn]));
+    const more = kind ? [anotherBtn] : [];
+    const buttons = el('div', { class: 'rs-buttons' }, ...(practice ? [tryBtn, ...more, nextBtn] : missed ? [tryBtn, ...more, shareBtn, replay, nextBtn] : [shareBtn, replay, tryBtn, ...more, nextBtn]));
 
     const paint = (): void => {
       const s = server;
       const parTick = s ? s.parTick : local.parTick;
-      const views = medals({ par: c.par, netWorth: s?.netWorth ?? netWorth, parTick, ticks: c.ticks, signedIn, server: s, program, submitting });
+      const shown = kind ? (s?.score ?? netWorth) : s?.netWorth ?? netWorth;
+      const views = medals({ par: c.par, netWorth: shown, parTick, ticks: c.ticks, signedIn, server: s, program, submitting, kind, practice });
       medalList.querySelectorAll('li').forEach((li, idx) => {
         const m = views[idx]!;
         li.dataset.state = m.state;
+        const nm = li.querySelector('.rs-medal-body b'); if (nm) nm.textContent = m.name;
+        const st = li.querySelector('.rs-stamp'); if (st) st.textContent = m.name[0]!;
         li.querySelector('.rs-medal-line')!.textContent = m.line;
         li.querySelector('.rs-medal-rank')!.textContent = m.rank ?? '';
         li.setAttribute('aria-label', `${m.name} medal: ${m.state === 'earned' ? 'earned' : m.state === 'missed' ? 'not earned' : m.state}. ${m.line}${m.rank ? `. Rank ${m.rank}` : ''}`);
       });
       rankLine.textContent = s?.percentile != null ? `Rank ${rankText(s.ranks.wealth, s.total) ?? '—'} · top ${topShare(s.percentile)}%` : submitting ? 'Waiting for the server…' : '';
-      const rated = rateLine(c, signedIn, parTick);
+      const rated = practice ? null : kind ? briefRateLine(signedIn, parTick) : rateLine(c, signedIn, parTick);
       ratingLine.textContent = rated ?? '';
+      const fin = kind && !practice ? finalView({ kind, hiddenFarms: c.hiddenFarms ?? 0, closesAt: c.closesAt, now: Date.now(), entry: s, visible: netWorth }) : null;
+      finalBox.hidden = !fin || fin.state === 'none';
+      finalBox.dataset.state = fin?.state ?? 'none';
+      finalBox.replaceChildren(...(fin ? fin.lines.map((t, n) => el(n === 0 ? 'b' : 'span', { text: t })) : []));
       noteEl.textContent = note;
-      signInBtn.hidden = signedIn;
+      signInBtn.hidden = signedIn || practice;
+      shareBtn.hidden = practice;
       const text = shareText({ number: c.kind === 'season' ? null : c.number !== null && c.number > 0 ? c.number : null, label: c.kind === 'season' && c.number !== null && c.number > 0 ? `Season #${c.number}` : c.id, netWorth: s?.netWorth ?? netWorth, parTick, par: c.par, percentile: s?.percentile ?? null, mosaic: s?.mosaic ?? local.mosaic, entryId: s?.entryId ?? null, tokens: s?.tokens ?? null });
       shareBtn.onclick = async () => { const ok = await copyText(text); toast(ok ? 'Result copied' : 'Could not copy', ok ? 'Paste it anywhere.' : text); };
       if (s?.entryId) { replay.href = `replay.html?e=${encodeURIComponent(s.entryId)}`; replay.hidden = false; } else replay.hidden = true;
       duel.update({ signedIn, netWorth: s?.netWorth ?? netWorth, entry: s });
+      duelBox.hidden = practice || !!kind; // a duel copies a farm's brief; challenging from a brief result waits for the server side (see brain/notes/K6.md)
     };
     for (const name of ['Wealth', 'Speed', 'Brevity']) {
       medalList.append(el('li', { class: 'rs-medal', 'data-state': 'pending' },
@@ -197,7 +225,7 @@ export function mountResultScreen({ loop, api, challenge: c, view }: ResultDeps)
     paint();
 
     card = el('section', { class: 'hk-card rs-card', 'data-missed': String(missed), role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'rs-title' },
-      title, coinsLine, ...(hint ? [hint] : []), medalList, rankLine, bestEl, ratingLine, buttons, signInBtn, noteEl, duelBox);
+      title, coinsLine, finalBox, ...(hint ? [hint] : []), medalList, rankLine, bestEl, ratingLine, buttons, signInBtn, noteEl, duelBox);
     card.addEventListener('keydown', (e) => { if (e.key === 'Tab') trapTab(e, card!); });
     layer.append(card);
     layer.dataset.phase = 'card';
@@ -211,7 +239,7 @@ export function mountResultScreen({ loop, api, challenge: c, view }: ResultDeps)
     // Coins count up, medals are stamped one by one. Reduced motion shows the final numbers at once.
     const stamps = [...medalList.children] as HTMLElement[];
     const instant = reduced();
-    const setCoins = (n: number): void => { coinsNum.textContent = fmt(Math.round(n)); };
+    const setCoins = (n: number): void => { coinsNum.textContent = kind ? scoreParts(kind, Math.round(n)).num : fmt(Math.round(n)); };
     if (instant) { setCoins(netWorth); stamps.forEach((s) => s.classList.add('stamped')); } else {
       setCoins(0);
       const t0 = performance.now();
@@ -231,7 +259,7 @@ export function mountResultScreen({ loop, api, challenge: c, view }: ResultDeps)
       timers.push(window.setTimeout(() => { if (mine === run) skip = null; }, COUNT_MS * 0.6 + stamps.length * STAMP_MS + 200));
     }
 
-    if (!signedIn) return;
+    if (!signedIn || practice) return;
     try {
       const entry = await submitRun(api, c, actions, loop.sourceProvider?.() ?? null);
       if (mine !== run) return;
@@ -251,7 +279,13 @@ export function mountResultScreen({ loop, api, challenge: c, view }: ResultDeps)
     if (server) void showRating(mine, ratingLine);
   }
 
-  /** The player's latest closed rating, when the rating module has one: a line under the medals. */
+  /** Brief days: what the standings will use. Visible-farm par is only a first look; the final par is judged over all farms. */
+function briefRateLine(signedIn: boolean, parTick: number | null): string | null {
+  if (!signedIn) return null;
+  return parTick !== null ? 'On course to be rated: you reached par on this farm. Rated entries need a verified program, and the hidden farms count at close.' : 'Par was not reached on this farm. Only the sum over all farms counts at close, so a program that does well everywhere can still be rated.';
+}
+
+/** The player's latest closed rating, when the rating module has one: a line under the medals. */
   async function showRating(mine: number, line: HTMLElement): Promise<void> {
     try {
       const { latest } = await api.ratingLatest();

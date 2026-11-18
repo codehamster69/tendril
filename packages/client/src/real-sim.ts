@@ -5,6 +5,7 @@ import type { LogEntry } from '@tendril/sim/src/index.ts';
 import type { ChunkResponse, FarmResponse } from './api-client';
 import { targetTick, type Meta, type Mode } from './clock';
 import { planSubmission, trimLocalLog, validateFarm, type Accepted, type LogChunk, type Submission } from './chunks';
+import type { GoalProgress } from './goal-progress';
 import type { BotDebug, Diagnostic, FromWorker, OutputLine, Scenario, SimError, StateMessage, ToWorker, ViewEvent } from './sim-protocol';
 import { ViewStore } from './view-codec';
 import type { ViewSnapshot } from './view-codec';
@@ -112,6 +113,8 @@ export class RealSim implements SimSource {
 
   get busy(): boolean { return this.count > 0; }
   latest(): ViewSnapshot | null { return this.snap; }
+  private goal: GoalProgress | null = null;
+  goalProgress(): GoalProgress | null { return this.goal; }
   /** Events the screen must not miss (harvest, sale, order filled, error), oldest first. */
   drainEvents(): ViewEvent[] { return this.viewEvents.splice(0); }
   drainOutput(): OutputLine[] { return this.out.splice(0); }
@@ -437,6 +440,7 @@ export class RealSim implements SimSource {
     this.diagnostics = state.diagnostics;
     if (!isLean(m)) { this.debug = state.debug; this.heat = state.heat; }
     this.paused = state.paused;
+    this.goal = state.goal ?? null;
     // A breakpoint can stop the world inside tick T (some bots already acted). That state cannot be replayed
     // from a log, so it is kept in memory and only becomes a checkpoint once the tick completes.
     // A light step is not saved: its actions wait in memory with the others until the next full save (see requestStep).

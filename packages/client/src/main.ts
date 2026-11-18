@@ -20,7 +20,9 @@ import { mountProgression, selectedLesson } from './progression';
 import { mountCatalogue } from './catalogue-view';
 import { mountRating } from './rating';
 import { mountResultScreen } from './result-screen';
-import { challengeScenario, loadChallenge, marketOpensIn, mountArena } from './arena';
+import { briefOf, challengeScenario, loadChallenge, marketOpensIn, mountArena } from './arena';
+import { worldSeedOf } from './challenge-setup';
+import { mountGoalHud } from './goal-hud';
 import { FarmApi, signedInHint, wireSiteLinks } from './api-client';
 import { mountJoinDuel } from './join-duel';
 import { mountAutoSync } from './autosync';
@@ -52,15 +54,17 @@ const lesson = selectedLesson();
 const challenge = mode === 'daily' ? await loadChallenge(api, query) : null;
 const isSeason = challenge?.kind === 'season';
 const suffix = stress ? `.stress.${stress.name}` : mode === 'campaign' ? `.${lesson.id}` : challenge ? `.${challenge.id}` : '';
+// A practice farm has its own save (per world seed); the editor text is shared with the real day, so one program serves both.
+const farmSuffix = challenge?.practice ? `${suffix}.practice${worldSeedOf(challenge)}` : suffix;
 const scenario: Scenario = stress ? stress.scenario : { kind: mode, ...(mode === 'campaign' ? { features: lesson.features, setup: lesson.setup, tickLimit: lesson.tickLimit } : challenge ? challengeScenario(challenge) : {}) };
 const sim = new RealSim(mode, {
-  scenario, storageKey: `sprout.v1.${mode}${suffix}`, authoritative: ranked ? await connectRanked(api, rankedParam !== '1') : undefined,
-  seed: stress ? stress.seed : mode === 'campaign' ? lesson.seed : challenge?.seed,
+  scenario, storageKey: `sprout.v1.${mode}${farmSuffix}`, authoritative: ranked ? await connectRanked(api, rankedParam !== '1') : undefined,
+  seed: stress ? stress.seed : mode === 'campaign' ? lesson.seed : challenge ? worldSeedOf(challenge) : undefined,
 });
 window.addEventListener('tendril:recovered', () => toast('Farm restored from the server', 'This device\'s saved copy did not match, so your farm was rebuilt from the last checkpoint the server accepted and is catching up. Nothing on the server was lost.'));
 const names = { live: sim.ranked ? 'Endless · server-verified' : 'Local live · unverified', sandbox: 'Sandbox', campaign: 'Campaign', daily: isSeason ? 'Weekly season' : 'Daily challenge' };
-document.getElementById('mode-label')!.textContent = stress ? `Stress farm · ${stress.plots} plots, ${stress.bots} bots · local only` : names[mode];
-document.getElementById('mode-note')!.textContent = mode === 'live' ? (sim.ranked ? '10 ticks per second · syncs to the server as it runs' : '10 ticks per second · local and unverified until connected') : mode === 'sandbox' ? 'Experiment freely · separate from your live farm' : mode === 'daily' ? `The same seed for everyone · ${challenge?.ticks.toLocaleString('en-US') ?? '3,000'} ticks` : 'Learn one recipe at a time';
+document.getElementById('mode-label')!.textContent = stress ? `Stress farm · ${stress.plots} plots, ${stress.bots} bots · local only` : challenge?.practice ? 'Practice farm' : names[mode];
+document.getElementById('mode-note')!.textContent = mode === 'live' ? (sim.ranked ? '10 ticks per second · syncs to the server as it runs' : '10 ticks per second · local and unverified until connected') : mode === 'sandbox' ? 'Experiment freely · separate from your live farm' : mode === 'daily' ? (challenge?.practice ? `Practice · nothing is submitted · ${challenge.ticks.toLocaleString('en-US')} ticks` : `${challenge && briefOf(challenge) ? 'One brief' : 'The same seed'} for everyone · ${challenge?.ticks.toLocaleString('en-US') ?? '3,000'} ticks`) : 'Learn one recipe at a time';
 const loop = new GameLoop(sim);
 const firstRun = !stress && await isFirstRun(mode, sim.ranked, query, sim.prefix);
 boot.done('save');
@@ -79,6 +83,7 @@ mountProgression({ loop, editor, view, api });
 if (firstRun) mountFirstRun({ editor });
 if (challenge) mountArena({ loop, api, challenge });
 if (challenge) mountResultScreen({ loop, api, challenge, view });
+if (challenge) mountGoalHud({ challenge });
 mountNotice({ live: mode === 'live', verified: sim.ranked });
 mountUpdates();
 mountRating(api);

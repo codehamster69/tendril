@@ -1,4 +1,4 @@
-import type { LogEntry } from '@tendril/sim/src/index.ts';
+import type { Goal, LogEntry, Twist } from '@tendril/sim/src/index.ts';
 
 export interface FarmResponse {
   id: string; seed: number; startedAtMs: number; /** Absent from an old server: 0. */ restedMs?: number; tick: number;
@@ -25,10 +25,24 @@ export interface ChallengeInfo {
   players: number; best: number | null;
   /** The day's market (rules v4): prices in centicoins and multipliers in permille of base, index = item id, plus yesterday's observed shares. Absent or null: base prices. */
   market?: { prices: number[]; multipliers: number[]; shares: number[] | null } | null;
+  /** Daily briefs (setup version 2). The client draws the same brief locally from `seed` and `briefSource`; these are what the server says. */
+  brief?: { goal: Goal; twists: Twist[]; notice: string; labels: string[] } | null;
+  /** Farms the program also runs on at close (2 on a daily, 4 on a season, 0 on a duel). */
+  hiddenFarms?: number;
+  /** World seeds of the hidden farms; null until the challenge has closed. */
+  siblingSeeds?: number[] | null;
+  /** A duel copied from a brief challenge: which kind it copied (needed to draw the same brief). */
+  briefSource?: 'daily' | 'season';
+  /** Client only: a practice farm never reaches the server. `farmSeed` is the world seed when it differs from the brief seed. */
+  practice?: boolean; farmSeed?: number;
+  /** Client only: the server could not be reached on a brief day, so this is a random practice brief and today's real one is not playable. */
+  offline?: boolean;
 }
 export interface EntryResult {
   entryId: string; netWorth: number; parTick: number | null; tokens: number | null; mosaic: string;
   ranks: { wealth: number | null; speed: number | null; brevity: number | null }; percentile: number | null; improved: boolean; total: number;
+  /** Briefs: the visible farm's score, the final score over all farms (null until the hidden farms are scored) and whether it is still provisional. */
+  score?: number | null; finalScore?: number | null; finalParTick?: number | null; provisional?: boolean;
 }
 export interface DuelPage {
   id: string; seed: number; ticks: number; par: number | null; rulesVersion: number; createdAt: number;
