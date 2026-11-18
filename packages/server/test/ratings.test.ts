@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ALGO_VERSION, PLACEMENT_EVENTS, START_RATING, rateContest } from '@tendril/rating/src/index.ts';
 import { createApp, createDb, migrate } from '../src/index.ts';
 import type { Db } from '../src/index.ts';
@@ -29,13 +29,13 @@ async function challenge(id: string, kind: 'daily' | 'season', closesAt: number)
   await db.execute('INSERT INTO challenges (id, kind, number, seed, ticks, par, opens_at, closes_at, created_by, rules_version, setup_v) VALUES (?, ?, 1, 7, 3000, 100, ?, ?, NULL, 3, 0)',
     [id, kind, closesAt - (kind === 'daily' ? 1 : 7) * DAY_MS, closesAt]);
 }
-interface E { c: string; u: string; net: number; par?: number | null; tokens?: number | null; hash?: string; kind?: 'human' | 'model'; source?: string | null; at?: number }
+interface E { c: string; u: string; net: number; verified?: 0 | 1; par?: number | null; tokens?: number | null; hash?: string; kind?: 'human' | 'model'; source?: string | null; at?: number }
 let seq = 0;
 async function entry(e: E): Promise<void> {
   const id = `e${++seq}`;
   await db.execute(
-    'INSERT INTO entries (id, challenge_id, user_id, net_worth, par_tick, tokens, actions_count, log_hash, source, author_kind, created_at) VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?)',
-    [id, e.c, e.u, e.net, e.par === undefined ? 100 : e.par, e.tokens ?? null, e.hash ?? `h-${id}`, e.source ?? null, e.kind ?? 'human', e.at ?? seq]);
+    'INSERT INTO entries (id, challenge_id, user_id, net_worth, par_tick, tokens, actions_count, log_hash, source, source_verified, author_kind, created_at) VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?)',
+    [id, e.c, e.u, e.net, e.par === undefined ? 100 : e.par, e.tokens ?? null, e.hash ?? `h-${id}`, e.source ?? null, e.verified ?? 1, e.kind ?? 'human', e.at ?? seq]);
 }
 /** Player i finishes i-th: a strictly decreasing net worth. */
 async function field(c: string, ids: string[], reverse = false): Promise<void> {
@@ -391,5 +391,94 @@ describe('routes', () => {
     expect((await call('/ratings/me/latest?seen=d-2026-12-05', token)).json.latest.challengeId).toBe('d-2026-12-06');
     expect((await call('/ratings/me/latest?seen=bad', token)).status).toBe(400);
     expect(PLACEMENT_EVENTS).toBe(5);
+  });
+});
+
+describe('K4 briefs and programs', () => {
+  const D = 'd-2026-12-06';
+  const briefChallenge = async (id = D, closesAt = DEC7): Promise<void> => { await challenge(id, 'daily', closesAt); await db.execute('UPDATE challenges SET setup_v = 2 WHERE id = ?', [id]); };
+  /** A brief entry: visible values are deliberately the reverse of the final ones, so the wrong column would show. */
+  const brief = async (c: string, u: string, final: number | null, finalPar: number | null, done = 1, tokens = 50): Promise<void> => {
+    await entry({ c, u, net: 100000 - (final ?? 0), par: 1, tokens });
+    await db.execute('UPDATE entries SET final_score = ?, final_par_tick = ?, hidden_done = ? WHERE id = ?', [final, finalPar, done, `e${seq}`]);
+  };
+  const place = async (u: string): Promise<number> => (await profile(u))!.d.overall.h[0].p;
+
+  it('does not rate an entry without a verified program, and counts it', async () => {
+    const ids = await users(9);
+    await challenge(D, 'daily', DEC7);
+    await field(D, ids.slice(0, 8));
+    await entry({ c: D, u: ids[8]!, net: 99999, verified: 0 }); // the best score, but the server never re-ran a program for it
+    await rateDue(db, {}, NOW);
+    expect(await profile(ids[8]!)).toBeNull();
+    expect(await place(ids[0]!)).toBe(1);
+    expect(JSON.parse((await contestRows())[0]!.summary).excluded).toMatchObject({ noProgram: 1 });
+  });
+
+  it('keeps the noProgram counter out of summaries when nobody lacks a program', async () => {
+    const ids = await users(8);
+    await challenge(D, 'daily', DEC7);
+    await field(D, ids);
+    await rateDue(db, {}, NOW);
+    expect(JSON.parse((await contestRows())[0]!.summary).excluded).not.toHaveProperty('noProgram');
+  });
+
+  it('ranks a brief contest by final score, final par tick and tokens, not by the visible farm', async () => {
+    const ids = await users(8);
+    await briefChallenge();
+    // Final scores fall with the index; final par ticks rise with it; tokens fall with it (the last player is shortest).
+    for (let i = 0; i < 8; i++) await brief(D, ids[i]!, 9000 - i * 100, 500 + i * 10, 1, 80 - i);
+    await rateDue(db, {}, NOW);
+    for (let i = 0; i < 8; i++) {
+      const p = (await profile(ids[i]!))!.d;
+      expect([p.overall.h[0].p, p.speed.h[0].p, p.brevity.h[0].p]).toEqual([i + 1, i + 1, 8 - i]);
+    }
+  });
+
+  it('leaves out of every board an entry that did not reach par on all farms', async () => {
+    const ids = await users(9);
+    await briefChallenge();
+    for (let i = 0; i < 8; i++) await brief(D, ids[i]!, 9000 - i * 100, 500 + i);
+    await brief(D, ids[8]!, 99999, null); // the biggest total, but par missed on a hidden farm
+    await rateDue(db, {}, NOW);
+    expect(await profile(ids[8]!)).toBeNull();
+    expect(await place(ids[0]!)).toBe(1);
+  });
+
+  it('waits for hidden checks, rates once they are done, and never waits for a player who cannot be rated', async () => {
+    const ids = await users(10, (i) => (i === 9 ? DEC7 - 1 : OLD)); // player 9's GitHub account is too young
+    await briefChallenge();
+    for (let i = 0; i < 8; i++) await brief(D, ids[i]!, 9000 - i * 100, 500 + i);
+    await brief(D, ids[8]!, null, null, 0); // checks still running
+    await brief(D, ids[9]!, null, null, 0); // too young: irrelevant
+    expect((await rateDue(db, {}, DEC7 + DAY_MS)).ran).toBe(false);
+    expect(await db.query('SELECT 1 FROM rating_contests')).toHaveLength(0);
+    await db.execute('UPDATE entries SET hidden_done = 1, final_score = 8000, final_par_tick = 700 WHERE user_id = ?', [ids[8]!]);
+    expect((await rateDue(db, {}, DEC7 + DAY_MS + 1)).contests).toHaveLength(1);
+    expect(await place(ids[8]!)).toBe(9);
+  });
+
+  it('rates with what is done 48 hours after close, and an unfinished entry drops out', async () => {
+    const ids = await users(9);
+    await briefChallenge();
+    for (let i = 0; i < 8; i++) await brief(D, ids[i]!, 9000 - i * 100, 500 + i);
+    await brief(D, ids[8]!, null, null, 0);
+    expect((await rateDue(db, {}, DEC7 + 47 * 3_600_000)).ran).toBe(false);
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const run = await rateDue(db, {}, DEC7 + 48 * 3_600_000);
+    expect(run.contests).toHaveLength(1);
+    expect(warn).toHaveBeenCalledOnce();
+    warn.mockRestore();
+    expect(await profile(ids[8]!)).toBeNull();
+    expect(await place(ids[0]!)).toBe(1);
+  });
+
+  it('an old contest is rated from the stored net worth and par tick, ignoring brief columns', async () => {
+    const ids = await users(8);
+    await challenge(D, 'daily', DEC7); // setup_v 0
+    await field(D, ids);
+    await db.execute('UPDATE entries SET final_score = 1, final_par_tick = NULL, hidden_done = 0');
+    await rateDue(db, {}, NOW);
+    expect((await profile(ids[0]!))!.d.overall.h[0]).toMatchObject({ p: 1, f: 8 });
   });
 });

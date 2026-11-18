@@ -3,7 +3,7 @@ import { authenticate, clearSessionCookie, devAuthEnabled, devLogin, finishGithu
 import type { Ctx, Env, FetchFn, Identity } from './auth.ts';
 import type { Db } from './db.ts';
 import { acceptDuel, duelCounts, duelPage } from './duels.ts';
-import { board, challengeInfo, createDuel, entryReplay, entrySource, entrySummary, hallOfFame, publishedSources, KIND_LIMITS, legacyLeaderboard, legacySubmit, noteLegacySubmit, refreshLegacyGrace, loadChallenge, MAX_SOURCE_BYTES, moveLegacyDaily, stats, submitEntry } from './arena.ts';
+import { board, challengeInfo, createDuel, entryReplay, entrySource, entrySummary, hallOfFame, publishedSources, KIND_LIMITS, legacyLeaderboard, legacySubmit, noteLegacySubmit, refreshLegacyGrace, loadChallenge, marketOf, MAX_SOURCE_BYTES, moveLegacyDaily, stats, submitEntry } from './arena.ts';
 import type { AuthorKind, Medal } from './arena.ts';
 import { createFarm, dailyInfo, getFarm, getReplay, isValidDate, leaderboard, reserveAttempt, utcDate, verifyChunk, wakeFarm } from './game.ts';
 import type { Board } from './game.ts';
@@ -13,6 +13,7 @@ import { handleDailyPages } from './daily-pages.ts';
 import { createGuard, dropReplaysOutsideTop, pruneOncePerDay, rateScale, refreshGuard, prune, syncScale, withCacheHeaders } from './housekeeping.ts';
 import type { SourceVerifier } from './verify-client.ts';
 import { reportProgram } from './moderation.ts';
+import { challengeSalt, createBriefCloser } from './brief.ts';
 import { createRater, decorateBoard, disciplineParam, latestChange, ratingBoard, ratingModels } from './ratings.ts';
 import { migrate } from './migrations.ts';
 import type { Migration } from './migrations.ts';
@@ -69,7 +70,10 @@ function createInnerApp(options: AppOptions): (request: Request) => Promise<Resp
   };
   const ctx: Ctx = { db, env, fetch: options.fetch ?? ((input, init) => fetch(input, init)), now };
   const guard = createGuard(db, env, now);
+  // K3: the secret behind brief seeds. Empty when unconfigured; only brief challenges need it.
+  const salt = challengeSalt(env);
   // Rating pauses at 'tight' (before play pauses at 'readonly'); the backlog is rated when the guard releases.
+  const closer = createBriefCloser(db, salt, options.verifySource, now, marketOf, async () => { const m = await guard.mode(); return m === 'normal' || m === 'lean'; });
   const rater = createRater(db, env, now, async () => { const m = await guard.mode(); return m === 'normal' || m === 'lean'; });
   let prunedDay = ''; // this instance has already checked today's prune claim
   let ready: Promise<unknown> | undefined;
@@ -134,6 +138,7 @@ function createInnerApp(options: AppOptions): (request: Request) => Promise<Resp
         if (!secret || request.headers.get('authorization') !== `Bearer ${secret}`) throw new HttpError(401, 'Unauthorized');
         rejectQuery(url);
         const report = await prune(db, now());
+        await closer.tick(true).catch(() => {}); // briefs that closed with nobody asking after them
         return json({ report, guard: await refreshGuard(db, env, now()), legacyGrace: await refreshLegacyGrace(db, now()) });
       }
       // Budget guard: read-only mode refuses writes except sign-in/out, so the game keeps serving without growing.
@@ -145,6 +150,8 @@ function createInnerApp(options: AppOptions): (request: Request) => Promise<Resp
       }
 
       // Lazy rating: the first request after a close rates it (under a lock). Rating routes wait for it; others check at most once a minute.
+      // K3: the first requests after a brief closes check each verified program on the hidden farms, a few per request, before rating needs them.
+      await closer.tick(method === 'GET' && /^\/(ratings\/.+|challenges\/[^/]+(\/board)?)$/.test(route));
       await rater.tick(method === 'GET' && /^\/(players\/[^/]+|ratings\/.+|challenges\/[^/]+\/board)$/.test(route));
 
       /** Requires a session; cookie-authenticated mutations also need the CSRF header. */
@@ -281,7 +288,7 @@ function createInnerApp(options: AppOptions): (request: Request) => Promise<Resp
         if (!isValidDate(body.date)) throw new HttpError(422, 'Invalid date');
         if (!Number.isInteger(body.rulesVersion)) throw new HttpError(409, 'Rules version mismatch');
         const actions = validateActions(body.actions, 0, DAILY_TICKS);
-        return json(await legacySubmit(db, identity.userId, body.date, actions, now(), options.setupVersion, body.rulesVersion as number));
+        return json(await legacySubmit(db, identity.userId, body.date, actions, now(), options.setupVersion, body.rulesVersion as number, salt));
       }
 
       // ---- arena: challenges, entries, duels ----
@@ -291,13 +298,13 @@ function createInnerApp(options: AppOptions): (request: Request) => Promise<Resp
         const [, ref, sub] = challengeRoute;
         if (!sub && method === 'GET') {
           rejectQuery(url);
-          return json(await challengeInfo(db, await loadChallenge(db, ref!, now(), options.verifySource, options.setupVersion)));
+          return json(await challengeInfo(db, await loadChallenge(db, ref!, now(), options.verifySource, options.setupVersion, salt), now(), salt));
         }
         if (sub === 'entries' && method === 'POST') {
           const identity = await requireUser();
           await reserveAttempt(db, identity.userId, 'entry', now(), undefined, scale);
           rejectQuery(url);
-          const challenge = await loadChallenge(db, ref!, now(), options.verifySource, options.setupVersion);
+          const challenge = await loadChallenge(db, ref!, now(), options.verifySource, options.setupVersion, salt);
           const input = entryInput(await readJson(request), MAX_SOURCE_BYTES);
           const limits = KIND_LIMITS[challenge.kind];
           const actions = validateActions(input.actions, 0, challenge.ticks, limits.maxActions);
@@ -307,7 +314,7 @@ function createInnerApp(options: AppOptions): (request: Request) => Promise<Resp
         }
         if (sub === 'sources' && method === 'GET') {
           rejectQuery(url, ['limit']);
-          return json(await publishedSources(db, await loadChallenge(db, ref!, now(), options.verifySource, options.setupVersion), limitParam(url), now()));
+          return json(await publishedSources(db, await loadChallenge(db, ref!, now(), options.verifySource, options.setupVersion, salt), limitParam(url), now()));
         }
         if (sub === 'board' && method === 'GET') {
           rejectQuery(url, ['medal', 'scope', 'author', 'limit']);
@@ -319,7 +326,7 @@ function createInnerApp(options: AppOptions): (request: Request) => Promise<Resp
           if (author !== null && author !== 'human' && author !== 'model') throw new HttpError(400, 'Invalid author');
           const viewer = await viewerId();
           if (scope === 'friends' && !viewer) throw new HttpError(401, 'Authentication required');
-          const challenge = await loadChallenge(db, ref!, now(), options.verifySource, options.setupVersion);
+          const challenge = await loadChallenge(db, ref!, now(), options.verifySource, options.setupVersion, salt);
           const result = await board(db, challenge, { medal: medal as Medal, friends: scope === 'friends', author: (author ?? undefined) as AuthorKind | undefined, limit: limitParam(url), viewerId: viewer, now: now() });
           return json(await decorateBoard(db, challenge, result, now()));
         }
@@ -348,20 +355,20 @@ function createInnerApp(options: AppOptions): (request: Request) => Promise<Resp
         await reserveAttempt(db, identity.userId, 'duel', now(), undefined, scale);
         rejectQuery(url);
         const input = duelInput(await readJson(request), KIND_LIMITS.duel.maxTicks);
-        return json(await createDuel(db, identity.userId, input, now(), options.verifySource, options.setupVersion), 201);
+        return json(await createDuel(db, identity.userId, input, now(), options.verifySource, options.setupVersion, salt), 201);
       }
       const duelRoute = /^\/duels\/(x-[A-Za-z0-9_-]{8})(?:\/(accept))?$/.exec(route);
       if (duelRoute) {
         const [, ref, action] = duelRoute;
         if (!action && method === 'GET') {
           rejectQuery(url);
-          return json(await duelPage(db, await loadChallenge(db, ref!, now(), options.verifySource, options.setupVersion), await viewerId()));
+          return json(await duelPage(db, await loadChallenge(db, ref!, now(), options.verifySource, options.setupVersion, salt), await viewerId()));
         }
         if (action && method === 'POST') {
           const identity = await requireUser();
           rejectQuery(url);
           objectWithKeys(await readJson(request), []);
-          return json(await acceptDuel(db, await loadChallenge(db, ref!, now(), options.verifySource, options.setupVersion), identity.userId, now()));
+          return json(await acceptDuel(db, await loadChallenge(db, ref!, now(), options.verifySource, options.setupVersion, salt), identity.userId, now()));
         }
       }
       // ---- players: profile, follows, README badge (B5) ----

@@ -106,7 +106,7 @@ describe('GET /challenges', () => {
     const start = Date.UTC(2026, 10, 12);
     expect(r.json).toEqual({
       id: DAILY, kind: 'daily', number: dailyNumber(TODAY), seed: dailySeed(TODAY), ticks: DAILY_TICKS, par: DAILY_PAR,
-      opensAt: start, closesAt: start + DAY_MS, rulesVersion: BASE_RULES_VERSION, setupVersion: 0, players: 0, best: null, market: null,
+      opensAt: start, closesAt: start + DAY_MS, rulesVersion: BASE_RULES_VERSION, setupVersion: 0, players: 0, best: null, market: null, brief: null, hiddenFarms: 0, siblingSeeds: null,
     });
     expect((await call(`/challenges/${DAILY}`)).json).toEqual(r.json);
     expect(await db.query('SELECT id FROM challenges')).toHaveLength(1);

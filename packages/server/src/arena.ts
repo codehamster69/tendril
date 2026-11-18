@@ -1,7 +1,7 @@
 import { createHash, randomBytes } from 'node:crypto';
-import { BASE_RULES_VERSION, challengeSetup, createWorld, dailyNumber, dailyRulesVersion, dailySeed, DAILY_PAR, DAILY_TICKS, IllegalAction, parFromReference, replayWithPar, marketActive, marketAllowed, seasonRulesVersion, SEASON_TICKS, SETUP_LEGACY, SETUP_VERSION, SUPPORTED_RULES_VERSIONS } from '@tendril/sim/src/index.ts';
+import { BASE_RULES_VERSION, challengeSetup, createWorld, dailyNumber, dailyRulesVersion, dailySeed, DAILY_PAR, DAILY_TICKS, IllegalAction, parFromReference, replayWithGoal, setupVersionFor, marketActive, marketAllowed, seasonRulesVersion, SEASON_TICKS, SETUP_LEGACY, SETUP_VERSION, SUPPORTED_RULES_VERSIONS } from '@tendril/sim/src/index.ts';
 import type { MarketTable } from '@tendril/sim/src/index.ts';
-import type { ChallengeKind, LogEntry } from '@tendril/sim/src/index.ts';
+import type { ChallengeKind, Goal, LogEntry, Twist } from '@tendril/sim/src/index.ts';
 import type { Db, Queryable } from './db.ts';
 import { DAY_MS, isValidDate, utcDate } from './game.ts';
 import { hiddenSql, isHidden } from './moderation.ts';
@@ -9,6 +9,7 @@ import { HttpError } from './validation.ts';
 import type { EntryInput } from './validation.ts';
 import type { SourceVerifier } from './verify-client.ts';
 import { REFERENCE_SOURCE } from './reference.ts';
+import { briefPar, briefSeed, hiddenFarmCount, isBriefSetup, requireSalt, siblingSeeds } from './brief.ts';
 import { computeDailyMarket, marketView, parseMarket, soldColumn } from './market.ts';
 
 // ---- limits ----
@@ -119,6 +120,12 @@ export interface ChallengeInfo {
   opensAt: number; closesAt: number | null; rulesVersion: number; setupVersion: number; players: number; best: number | null;
   /** The day's prices (centicoins, index = item id), multipliers in permille of base and yesterday's observed shares. Null without a market. */
   market: { prices: number[]; multipliers: number[]; shares: number[] | null } | null;
+  /** Brief challenges (setup version 2): the day's goal and twists; null on older challenges. */
+  brief: { goal: Goal; twists: Twist[]; notice: string; labels: string[] } | null;
+  /** Farms judged besides the visible one: dailies 2, seasons 4, duels and old challenges 0. */
+  hiddenFarms: number;
+  /** World seeds of the hidden farms, published only once the challenge has closed (null before; null on old challenges). */
+  siblingSeeds: number[] | null;
 }
 
 export const isOpen = (c: ChallengeRow, now: number): boolean => now >= c.opens_at && (c.closes_at === null || now < c.closes_at);
@@ -129,26 +136,27 @@ export const isClosed = (c: ChallengeRow, now: number): boolean => c.closes_at !
  */
 export const isSettled = (c: ChallengeRow, now: number): boolean => c.closes_at !== null && now >= c.closes_at + (c.kind === 'daily' ? legacyGraceMs() : 0);
 
-function newDailyRow(date: string, setupV: number): ChallengeRow {
-  const seed = dailySeed(date);
+function newDailyRow(date: string, setupV: number, salt?: string): ChallengeRow {
+  const seed = isBriefSetup(setupV) ? briefSeed(requireSalt(salt), dailyId(date)) : dailySeed(date);
   const start = Date.parse(`${date}T00:00:00Z`);
   return { id: dailyId(date), kind: 'daily', number: dailyNumber(date), seed, ticks: challengeSetup('daily', seed, setupV).ticks, par: DAILY_PAR, opens_at: start, closes_at: start + DAY_MS, created_by: null, rules_version: dailyRulesVersion(date), setup_v: setupV };
 }
-function newSeasonRow(ms: number, setupV: number): ChallengeRow {
+function newSeasonRow(ms: number, setupV: number, salt?: string): ChallengeRow {
   const id = seasonId(ms);
-  const seed = seasonSeed(id);
+  const seed = isBriefSetup(setupV) ? briefSeed(requireSalt(salt), id) : seasonSeed(id);
   const start = mondayOf(ms);
   return { id, kind: 'season', number: 1 + Math.round((start - SEASON_EPOCH_MONDAY) / WEEK_MS), seed, ticks: challengeSetup('season', seed, setupV).ticks, par: DAILY_PAR, opens_at: start, closes_at: start + WEEK_MS, created_by: null, rules_version: seasonRulesVersion(new Date(start).toISOString().slice(0, 10)), setup_v: setupV };
 }
 
 /** Rows that may be created on first request: today's and yesterday's daily, this and last week's season. */
-function creatable(id: string, now: number, setupV: number): ChallengeRow | null {
+function creatable(id: string, now: number, setupV: number | undefined, salt?: string): ChallengeRow | null {
+  // No explicit version: the date decides (briefs from BRIEF_EPOCH), and the choice is stored on the row from then on.
   if (id.startsWith('d-')) {
     const date = id.slice(2);
-    return isValidDate(date) && (date === utcDate(now) || date === utcDate(now - DAY_MS)) ? newDailyRow(date, setupV) : null;
+    return isValidDate(date) && (date === utcDate(now) || date === utcDate(now - DAY_MS)) ? newDailyRow(date, setupV ?? setupVersionFor(date), salt) : null;
   }
   if (id.startsWith('s-')) {
-    for (const ms of [now, now - WEEK_MS]) if (seasonId(ms) === id) return newSeasonRow(ms, setupV);
+    for (const ms of [now, now - WEEK_MS]) if (seasonId(ms) === id) return newSeasonRow(ms, setupV ?? setupVersionFor(new Date(mondayOf(ms)).toISOString().slice(0, 10)), salt);
   }
   return null;
 }
@@ -168,16 +176,19 @@ export function resolveChallengeId(ref: string, now: number): string {
 }
 
 /** Loads a challenge, creating today's daily or this week's season on first request. 404 for anything else unknown. */
-export async function loadChallenge(db: Db, ref: string, now: number, verify?: SourceVerifier, setupV: number = SETUP_VERSION): Promise<ChallengeRow> {
+export async function loadChallenge(db: Db, ref: string, now: number, verify?: SourceVerifier, setupV?: number, salt?: string): Promise<ChallengeRow> {
   const id = resolveChallengeId(ref, now);
   const [found] = await db.query<ChallengeRow>('SELECT * FROM challenges WHERE id = ?', [id]);
   if (found) return marketDue(found) && found.market == null ? ensureMarket(db, found) : found;
-  const fresh = creatable(id, now, setupV);
+  const fresh = creatable(id, now, setupV, salt);
   if (!fresh) throw new HttpError(404, 'Challenge not found');
   // A market day gets its table at the first request, in the same insert as the row, so the table and the par that
   // was measured under it are always stored together. The loser of a race re-reads the winner's row below.
   if (marketDue(fresh)) fresh.market = JSON.stringify(await computeDailyMarket(db, id.slice(2)));
-  fresh.par = await referencePar(fresh, verify) ?? fresh.par;
+  const par = await referencePar(fresh, verify, salt);
+  // A brief has no sensible constant par (scores differ by goal), so an outage opens nothing rather than store a wrong one.
+  if (par === null && isBriefSetup(fresh.setup_v)) throw new HttpError(503, 'Today\'s brief could not be set up yet. Try again in a moment.');
+  fresh.par = par ?? fresh.par;
   await insertChallenge(db, fresh);
   const [row] = await db.query<ChallengeRow>('SELECT * FROM challenges WHERE id = ?', [id]);
   return row!;
@@ -210,7 +221,7 @@ export function marketOf(c: Pick<ChallengeRow, 'id' | 'kind' | 'rules_version' |
   return t;
 }
 
-export async function challengeInfo(db: Db, c: ChallengeRow): Promise<ChallengeInfo> {
+export async function challengeInfo(db: Db, c: ChallengeRow, now: number = Date.now(), salt?: string): Promise<ChallengeInfo> {
   // players comes from the stored counter; MAX(net_worth) reads one index entry.
   const [stats] = await db.query<{ players: number; best: number | null }>(
     'SELECT (SELECT n_wealth FROM challenges WHERE id = ?1) AS players, (SELECT MAX(net_worth) FROM entries WHERE challenge_id = ?1) AS best', [c.id]);
@@ -218,6 +229,18 @@ export async function challengeInfo(db: Db, c: ChallengeRow): Promise<ChallengeI
     id: c.id, kind: c.kind, number: c.number, seed: c.seed, ticks: c.ticks, par: c.par, opensAt: c.opens_at,
     closesAt: c.closes_at, rulesVersion: c.rules_version, setupVersion: c.setup_v, players: stats!.players ?? 0, best: stats!.best,
     market: marketView(marketOf(c)),
+    ...briefView(c, now, salt),
+  };
+}
+
+/** The API's brief fields. The brief is a pure function of the stored seed; sibling seeds exist only after close. */
+function briefView(c: ChallengeRow, now: number, salt?: string): Pick<ChallengeInfo, 'brief' | 'hiddenFarms' | 'siblingSeeds'> {
+  if (!isBriefSetup(c.setup_v)) return { brief: null, hiddenFarms: 0, siblingSeeds: null };
+  const { brief } = challengeSetup(c.kind, c.seed, c.setup_v, marketOf(c), c.rules_version);
+  return {
+    brief: brief ? { goal: brief.goal, twists: brief.twists, notice: brief.notice, labels: brief.labels } : null,
+    hiddenFarms: hiddenFarmCount(c),
+    siblingSeeds: isClosed(c, now) ? siblingSeeds(requireSalt(salt), c) : null,
   };
 }
 
@@ -226,8 +249,18 @@ export async function challengeInfo(db: Db, c: ChallengeRow): Promise<ChallengeI
  * separate verify function (the main function never runs programs). Null when the check cannot be made, and the
  * caller keeps its constant fallback, so a verify outage never blocks a challenge from opening.
  */
-export async function referencePar(c: ChallengeRow, verify: SourceVerifier | undefined): Promise<number | null> {
+export async function referencePar(c: ChallengeRow, verify: SourceVerifier | undefined, salt?: string): Promise<number | null> {
   if (!verify || c.setup_v < 1) return null; // version 0 challenges keep the constant par
+  if (isBriefSetup(c.setup_v)) {
+    // Brief par: 90% of the reference's mean score over the visible farm and every hidden farm. A farm the reference cannot run fails the lot.
+    // TODO(K2): REFERENCE_SOURCE is daily.sprout for every goal; the K2 thread replaces it with the reference program of the brief's goal.
+    try {
+      const seeds = [c.seed, ...siblingSeeds(requireSalt(salt), c)];
+      const runs = await Promise.all(seeds.map((farmSeed) => verify({ source: REFERENCE_SOURCE, challengeId: c.id, kind: c.kind, seed: c.seed, farmSeed, ticks: c.ticks, rulesVersion: c.rules_version, setupVersion: c.setup_v, market: marketOf(c) })));
+      const scores = runs.map((r) => (r.ok && typeof r.score === 'number' && Number.isSafeInteger(r.score) ? r.score : NaN));
+      return scores.some(Number.isNaN) ? null : briefPar(scores);
+    } catch { return null; }
+  }
   try {
     const v = await verify({ source: REFERENCE_SOURCE, challengeId: c.id, kind: c.kind, seed: c.seed, ticks: c.ticks, rulesVersion: c.rules_version, setupVersion: c.setup_v, market: marketOf(c) });
     return v.ok && typeof v.netWorth === 'number' && Number.isSafeInteger(v.netWorth) ? parFromReference(v.netWorth) : null;
@@ -239,7 +272,7 @@ export async function referencePar(c: ChallengeRow, verify: SourceVerifier | und
 /** `from`: the id of a market daily whose rules and table the duel copies (so a duel played from that day's run replays the same). */
 export interface DuelInput { seed: number | null; ticks: number | null; from?: string | null }
 
-export async function createDuel(db: Db, userId: string, input: DuelInput, now: number, verify?: SourceVerifier, setupV: number = SETUP_VERSION): Promise<{ challengeId: string }> {
+export async function createDuel(db: Db, userId: string, input: DuelInput, now: number, verify?: SourceVerifier, setupV?: number, salt?: string): Promise<{ challengeId: string }> {
   const seed = input.seed ?? ((randomBytes(4).readUInt32LE() >>> 0) || 1);
   let source: ChallengeRow | null = null;
   if (input.from) {
@@ -249,12 +282,16 @@ export async function createDuel(db: Db, userId: string, input: DuelInput, now: 
     if (daily.seed !== seed) throw new HttpError(422, 'The duel seed must be the daily\'s seed');
     source = daily;
   }
-  const { ticks: defaultTicks } = challengeSetup('duel', seed, source?.setup_v ?? setupV);
+  const duelSetupV = source?.setup_v ?? setupV ?? SETUP_VERSION;
+  const { ticks: defaultTicks } = challengeSetup('duel', seed, duelSetupV);
+  const brief = isBriefSetup(duelSetupV);
+  // A brief duel copies its daily: same brief, same length, same par, no hidden farms. Its goal fixes the tick budget.
+  if (brief && input.ticks !== null && input.ticks !== defaultTicks) throw new HttpError(422, 'A brief duel has the length of its brief');
   const ticks = input.ticks ?? defaultTicks;
   // Only the standard length has a calibrated par, so other lengths have no Speed medal.
-  const row: ChallengeRow = { id: `x-${randomBytes(6).toString('base64url')}`, kind: 'duel', number: null, seed, ticks, par: ticks === DAILY_TICKS ? DAILY_PAR : null, opens_at: now, closes_at: null, created_by: userId, rules_version: source?.rules_version ?? seasonRulesVersion(new Date(now).toISOString().slice(0, 10)), setup_v: source?.setup_v ?? setupV, market: source?.market ?? null };
+  const row: ChallengeRow = { id: `x-${randomBytes(6).toString('base64url')}`, kind: 'duel', number: null, seed, ticks, par: brief ? source?.par ?? null : ticks === DAILY_TICKS ? DAILY_PAR : null, opens_at: now, closes_at: null, created_by: userId, rules_version: source?.rules_version ?? seasonRulesVersion(new Date(now).toISOString().slice(0, 10)), setup_v: duelSetupV, market: source?.market ?? null };
   if (source && marketAllowed(source.rules_version, source.kind)) marketOf(source); // refuses a market day whose table is missing or invalid
-  row.par = await referencePar(row, verify) ?? row.par;
+  if (!(brief && source)) row.par = await referencePar(row, verify, salt) ?? row.par;
   await insertChallenge(db, row);
   return { challengeId: row.id };
 }
@@ -265,23 +302,25 @@ interface EntryRow {
   id: string; challenge_id: string; user_id: string; net_worth: number; par_tick: number | null; tokens: number | null;
   actions: string | null; actions_count: number; log_hash: string; mosaic: string | null; source_public: number; source_verified: number;
   author_kind: AuthorKind; model: string | null; created_at: number;
+  score: number | null; final_score: number | null; final_par_tick: number | null; hidden_done: number;
 }
 export interface Ranks { wealth: number | null; speed: number | null; brevity: number | null }
 export interface SubmitResult {
-  entryId: string; netWorth: number; parTick: number | null; tokens: number | null; mosaic: string;
+  entryId: string; netWorth: number; /** The visible farm's score (equals netWorth on a brief challenge); null on older challenges. */ score: number | null; parTick: number | null; tokens: number | null; mosaic: string;
   ranks: Ranks; percentile: number | null; improved: boolean; total: number;
 }
 
-interface Replayed { netWorth: number; parTick: number | null; mosaic: string; sold: number[] }
+interface Replayed { netWorth: number; parTick: number | null; mosaic: string; sold: number[]; /** The visible farm's score by the brief's goal; null below setup version 2. */ score: number | null }
 
 /** Replays the log from the challenge's start. Throws 422 for an illegal log, never leaves partial state. */
 function replayLog(c: ChallengeRow, actions: LogEntry[]): Replayed {
-  const { setup } = challengeSetup(c.kind, c.seed, c.setup_v, marketOf(c), c.rules_version);
+  const { setup, brief } = challengeSetup(c.kind, c.seed, c.setup_v, marketOf(c), c.rules_version);
   const world = createWorld({ id: c.id, seed: c.seed }, setup);
   try {
-    const result = replayWithPar(world, actions, c.ticks, c.par ?? Number.MAX_SAFE_INTEGER);
-    if (!Number.isSafeInteger(world.coins) || !Number.isSafeInteger(result.netWorth) || !Number.isSafeInteger(world.tick)) throw new HttpError(422, 'Simulation overflow');
-    return result;
+    const result = replayWithGoal(world, actions, c.ticks, brief?.goal ?? null, c.par ?? Number.MAX_SAFE_INTEGER);
+    if (!Number.isSafeInteger(world.coins) || !Number.isSafeInteger(result.netWorth) || !Number.isSafeInteger(result.score) || !Number.isSafeInteger(world.tick)) throw new HttpError(422, 'Simulation overflow');
+    // On a brief challenge `net_worth` stores the score: every board, tie-break and prune already sorts on that column.
+    return { ...result, netWorth: brief ? result.score : result.netWorth, score: brief ? result.score : null };
   } catch (error) {
     if (error instanceof HttpError) throw error;
     if (error instanceof IllegalAction) throw new HttpError(422, `Invalid action log: ${error.message}`);
@@ -337,7 +376,7 @@ function rankedCte(medal: Medal, challengeId: string, filters: Filters = {}): { 
   // Identical non-empty logs (same grp) are the same run: they sit together, ordered by when the log first appeared,
   // and share the rank of the first. Everyone else ranks by the medal's keys, then earlier first.
   const sql = `WITH best AS (
-      SELECT e.id, e.user_id, e.net_worth, e.par_tick, e.tokens, e.created_at, e.${m.value} AS value, e.mosaic, e.author_kind, e.model,
+      SELECT e.id, e.user_id, e.net_worth, e.par_tick, e.tokens, e.created_at, e.${m.value} AS value, e.mosaic, e.author_kind, e.model, e.score, e.final_score, e.final_par_tick, e.hidden_done,
         CASE WHEN e.actions_count > 0 THEN e.log_hash ELSE e.id END AS grp,
         ROW_NUMBER() OVER (PARTITION BY e.user_id ORDER BY ${playerOrder(medal, 'e')}) AS pick
       FROM entries e WHERE e.challenge_id = ? AND ${m.where}${extra}
@@ -451,9 +490,9 @@ export async function submitEntry(db: Db, userId: string, c: ChallengeRow, input
         await tx.execute('UPDATE entries SET tokens = ?, source = ?, source_public = ?, source_verified = 1, author_kind = ?, model = ? WHERE id = ?', [tokens, input.source, input.sourcePublic ? 1 : 0, input.authorKind, input.model, entryId]);
       } else {
         await tx.execute(
-          `INSERT INTO entries (id, challenge_id, user_id, net_worth, par_tick, tokens, actions, actions_count, log_hash, mosaic, source, source_public, source_verified, author_kind, model, created_at, sold)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          [id, c.id, userId, replayed.netWorth, replayed.parTick, tokens, JSON.stringify(actions), actions.length, hash, replayed.mosaic, tokens === null ? null : input.source, tokens === null ? 0 : input.sourcePublic ? 1 : 0, tokens === null ? 0 : 1, input.authorKind, input.model, now, soldColumn(replayed.sold)],
+          `INSERT INTO entries (id, challenge_id, user_id, net_worth, par_tick, tokens, actions, actions_count, log_hash, mosaic, source, source_public, source_verified, author_kind, model, created_at, sold, score)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [id, c.id, userId, replayed.netWorth, replayed.parTick, tokens, JSON.stringify(actions), actions.length, hash, replayed.mosaic, tokens === null ? null : input.source, tokens === null ? 0 : input.sourcePublic ? 1 : 0, tokens === null ? 0 : 1, input.authorKind, input.model, now, soldColumn(replayed.sold), replayed.score],
         );
       }
       const mine = await tx.query<EntryRow>('SELECT * FROM entries WHERE challenge_id = ? AND user_id = ?', [c.id, userId]);
@@ -472,7 +511,7 @@ export async function submitEntry(db: Db, userId: string, c: ChallengeRow, input
       }
     }
     const { ranks, percentile, total } = await standing(tx, c.id, userId);
-    return { entryId, netWorth: replayed.netWorth, parTick: replayed.parTick, tokens, mosaic: replayed.mosaic, ranks, percentile, improved, total };
+    return { entryId, netWorth: replayed.netWorth, score: replayed.score, parTick: replayed.parTick, tokens, mosaic: replayed.mosaic, ranks, percentile, improved, total };
   });
 }
 
@@ -481,6 +520,8 @@ export async function submitEntry(db: Db, userId: string, c: ChallengeRow, input
 export interface BoardRow {
   rank: number; entryId: string; userId: string; login: string; displayName: string; avatarUrl: string | null; value: number;
   mosaic: string | null; authorKind: AuthorKind; model: string | null; createdAt: number;
+  /** Brief challenges: the visible farm's score (same as `value` on the wealth board), the final score over every farm once checked, and whether the checks are still pending. Null/false on older challenges. */
+  score: number | null; finalScore: number | null; finalParTick: number | null; provisional: boolean;
 }
 export interface Histogram { min: number; max: number; width: number; counts: number[] }
 export interface BoardResult { medal: Medal; entries: BoardRow[]; histogram: Histogram; total: number; me: (BoardRow & { percentile: number }) | null }
@@ -488,12 +529,14 @@ export interface BoardResult { medal: Medal; entries: BoardRow[]; histogram: His
 interface RankedRow {
   rank: number; id: string; user_id: string; value: number; mosaic: string | null; author_kind: AuthorKind; model: string | null; created_at: number;
   login: string; display_name: string; avatar_url: string | null;
+  score: number | null; final_score: number | null; final_par_tick: number | null; hidden_done: number;
 }
 const boardRow = (r: RankedRow): BoardRow => ({
   rank: r.rank, entryId: r.id, userId: r.user_id, login: r.login, displayName: r.display_name, avatarUrl: r.avatar_url, value: r.value,
   mosaic: r.mosaic, authorKind: r.author_kind, model: r.model, createdAt: r.created_at,
+  score: r.score, finalScore: r.hidden_done === 1 ? r.final_score : null, finalParTick: r.hidden_done === 1 ? r.final_par_tick : null, provisional: r.score !== null && r.hidden_done !== 1,
 });
-const RANKED_SELECT = 'SELECT r.rank, r.id, r.user_id, r.value, r.mosaic, r.author_kind, r.model, r.created_at, u.login, u.display_name, u.avatar_url FROM ranked r JOIN users u ON u.id = r.user_id';
+const RANKED_SELECT = 'SELECT r.rank, r.id, r.user_id, r.value, r.mosaic, r.author_kind, r.model, r.created_at, r.score, r.final_score, r.final_par_tick, r.hidden_done, u.login, u.display_name, u.avatar_url FROM ranked r JOIN users u ON u.id = r.user_id';
 
 export interface BoardQuery { medal: Medal; friends: boolean; author?: AuthorKind; limit: number; viewerId?: string; now?: number; /** Tests: the largest board still computed in full. */ fullMax?: number }
 
@@ -656,7 +699,8 @@ export async function entrySummary(db: Db, id: string, viewerId: string | undefi
   return {
     id: e.id,
     player: { login: e.login, displayName: e.display_name, avatarUrl: e.avatar_url },
-    netWorth: e.net_worth, parTick: e.par_tick, tokens: e.tokens, mosaic: e.mosaic,
+    netWorth: e.net_worth, score: e.score, finalScore: e.hidden_done === 1 ? e.final_score : null, finalParTick: e.hidden_done === 1 ? e.final_par_tick : null, provisional: e.score !== null && e.hidden_done !== 1,
+    parTick: e.par_tick, tokens: e.tokens, mosaic: e.mosaic,
     authorKind: e.author_kind, model: e.model, sourceVerified: e.source_verified === 1, sourcePublic: e.source_public === 1,
     createdAt: e.created_at, sealed: !(await replayVisible(db, c!, e, viewerId, now)),
     challenge: { id: c!.id, kind: c!.kind, number: c!.number, seed: c!.seed, ticks: c!.ticks, par: c!.par, opensAt: c!.opens_at, closesAt: c!.closes_at, rulesVersion: c!.rules_version, setupVersion: c!.setup_v, market: marketView(marketOf(c!)) },
@@ -712,9 +756,9 @@ export async function publishedSources(db: Db, c: ChallengeRow, limit: number, n
 
 // ---- old /api/daily* routes ----
 
-export async function legacySubmit(db: Db, userId: string, date: string, actions: LogEntry[], now: number, setupV: number = SETUP_VERSION, rulesVersion: number = BASE_RULES_VERSION) {
+export async function legacySubmit(db: Db, userId: string, date: string, actions: LogEntry[], now: number, setupV?: number, rulesVersion: number = BASE_RULES_VERSION, salt?: string) {
   if (date !== utcDate(now) && date !== utcDate(now - DAY_MS)) throw new HttpError(422, 'Only today or yesterday (UTC) can be submitted');
-  const c = await loadChallenge(db, dailyId(date), now, undefined, setupV);
+  const c = await loadChallenge(db, dailyId(date), now, undefined, setupV, salt);
   const input: EntryInput = { rulesVersion, actions, source: null, sourcePublic: false, authorKind: 'human', model: null };
   const result = await submitEntry(db, userId, c, input, actions, now, { graceMs: legacyGraceMs(), repeatOk: true });
   const [best] = await db.query<{ best: number }>('SELECT MAX(net_worth) AS best FROM entries WHERE challenge_id = ? AND user_id = ?', [c.id, userId]);

@@ -82,6 +82,24 @@ export function normalizeSource(source: string): string {
 export interface Cand {
   id: string; user_id: string; net_worth: number; par_tick: number | null; tokens: number | null; created_at: number;
   log_hash: string; actions_count: number; author_kind: string; github_created_at: number | null;
+  /** 1 when the entry's program was re-run by the server. Only such entries are rated. */
+  source_verified?: number;
+}
+
+/** Brief contests (setup version 2, K4): ranked by the final score over every farm, not the visible farm alone. */
+export const SETUP_BRIEF = 2;
+/** A brief contest still missing hidden-farm checks this long after it closed is rated with what is done. */
+export const HIDDEN_WAIT_MS = 48 * 60 * 60_000;
+export const isBrief = (c: Pick<ChallengeRow, 'setup_v'>): boolean => c.setup_v >= SETUP_BRIEF;
+
+/**
+ * What the standings see of a row. Old contests: the row as stored. Brief contests: `net_worth` is the final score and `par_tick` the
+ * final par tick (null unless par was reached on every farm); an entry whose hidden checks are not done has neither, so it is out.
+ */
+export function standingsView<T extends { net_worth: number; par_tick: number | null; final_score?: number | null; final_par_tick?: number | null; hidden_done?: number }>(row: T, brief: boolean): T {
+  if (!brief) return row;
+  const done = row.hidden_done === 1 && row.final_score != null;
+  return { ...row, net_worth: done ? row.final_score! : 0, par_tick: done ? row.final_par_tick ?? null : null };
 }
 
 type Cmp = (a: Cand, b: Cand) => number;
@@ -100,7 +118,7 @@ const TIE_KEY: Record<Discipline, (c: Cand) => string> = {
 };
 
 /** `banned` appears only when an operator exclusion applied, so unbanned contests keep their stored bytes. */
-export interface Exclusions { belowPar: number; account: number; dupLog: number; dupSource: number; banned?: number }
+export interface Exclusions { belowPar: number; account: number; dupLog: number; dupSource: number; banned?: number; noProgram?: number }
 interface Built {
   standings: { id: string; place: number; entryId: string }[];
   entrants: number; excluded: Exclusions; dupSource: string[];
@@ -120,15 +138,18 @@ export function buildStandings(
   const entrantIds = new Set(humans.map((c) => c.user_id));
   const gates = (c: Cand): boolean => c.par_tick !== null && (discipline !== 'brevity' || c.tokens !== null);
   const parIds = new Set(humans.filter((c) => c.par_tick !== null).map((c) => c.user_id));
+  // K4: a rated run needs a program the server re-ran (source_verified). Players with a par entry but none of them are counted apart.
+  const programIds = new Set(humans.filter((c) => c.par_tick !== null && c.source_verified === 1).map((c) => c.user_id));
   const best = new Map<string, Cand>();
   for (const c of humans) {
-    if (!gates(c)) continue;
+    if (!gates(c) || c.source_verified !== 1) continue;
     const cur = best.get(c.user_id);
     if (!cur || ORDER[discipline](c, cur) < 0) best.set(c.user_id, c);
   }
   const chosen = [...best.values()];
 
   const excluded: Exclusions = { belowPar: entrantIds.size - parIds.size, account: 0, dupLog: 0, dupSource: 0 };
+  if (parIds.size > programIds.size) excluded.noProgram = parIds.size - programIds.size; // absent when 0, so older summaries keep their bytes
   // R9: only players who could be rated take part in the duplicate check. Otherwise an account that can never be rated (too young,
   // excluded by an operator) could submit someone's published program first and push the real player out as "the copy".
   const eligible: Cand[] = [];
@@ -237,12 +258,15 @@ async function writeProfiles(tx: Queryable, rows: [string, ProfileData][], updat
 export async function rateChallenge(db: Db, c: ChallengeRow, options: RateOptions): Promise<ContestReport | null> {
   if (c.closes_at === null) throw new Error('Only closed challenges are rated');
   const closesAt = c.closes_at;
-  const cands = await db.query<Cand & { model: string | null }>(
-    `SELECT e.id, e.user_id, e.net_worth, e.par_tick, e.tokens, e.created_at, e.log_hash, e.actions_count, e.author_kind, e.model, u.github_created_at
+  const brief = isBrief(c);
+  const rows = await db.query<Cand & { model: string | null; final_score: number | null; final_par_tick: number | null; hidden_done: number }>(
+    `SELECT e.id, e.user_id, e.net_worth, e.par_tick, e.tokens, e.created_at, e.log_hash, e.actions_count, e.author_kind, e.model, e.source_verified,
+            e.final_score, e.final_par_tick, e.hidden_done, u.github_created_at
      FROM entries e JOIN users u ON u.id = e.user_id WHERE e.challenge_id = ?`, [c.id]);
+  const cands = rows.map((r) => standingsView(r, brief));
   const sourceKeys = new Map<string, string>();
   for (const r of await db.query<{ id: string; source: string }>(
-    "SELECT id, source FROM entries WHERE challenge_id = ? AND source IS NOT NULL AND author_kind = 'human' AND par_tick IS NOT NULL", [c.id])) {
+    `SELECT id, source FROM entries WHERE challenge_id = ? AND source IS NOT NULL AND author_kind = 'human' AND ${brief ? 'hidden_done = 1 AND final_par_tick IS NOT NULL' : 'par_tick IS NOT NULL'}`, [c.id])) {
     sourceKeys.set(r.id, sha(normalizeSource(r.source)));
   }
   const banned = await excludedUsers(db);
@@ -296,7 +320,7 @@ export async function rateChallenge(db: Db, c: ChallengeRow, options: RateOption
     summaries.overall!.writes = report.writes;
     // R7 ghost step: after the human field is rated and its rows are written; reads the humans' starting ratings, writes only model rows.
     report.modelWrites = await rateGhosts(tx, {
-      challenge: { id: c.id, kind: c.kind, closesAt }, weight: weightOf(c), cands: banned.size ? cands.filter((x) => !banned.has(x.user_id)) : cands, humans: humanField, order: ORDER, tieKey: TIE_KEY,
+      challenge: { id: c.id, kind: c.kind, closesAt }, weight: weightOf(c), cands: (banned.size ? cands.filter((x) => !banned.has(x.user_id)) : cands).filter((x) => x.source_verified === 1), humans: humanField, order: ORDER, tieKey: TIE_KEY,
       gate: (d, e) => e.par_tick !== null && (d !== 'brevity' || e.tokens !== null),
     });
     await tx.execute(
@@ -315,6 +339,27 @@ const ratingFrom = (env: Env): number => {
   const ms = env.TENDRIL_RATING_FROM ? Date.parse(env.TENDRIL_RATING_FROM) : NaN;
   return Number.isFinite(ms) ? ms : 0;
 };
+
+/**
+ * K4: a brief contest is rated once every verified entry that could be rated has its hidden-farm checks (`hidden_done = 1`), so a
+ * player's best entry is the same on the day it is rated and on a rebuild. Entries of excluded players (operator list, GitHub account
+ * too young or unknown when the contest closed) cannot be rated and never hold it up. After HIDDEN_WAIT_MS the contest is rated with
+ * what is done (entries still missing a check have no final score and drop out of the field), and that is logged.
+ */
+export async function hiddenChecksDone(db: Db, c: ChallengeRow, now: number, log = true): Promise<boolean> {
+  if (!isBrief(c) || c.closes_at === null) return true;
+  const open = await db.query<{ user_id: string }>(
+    `SELECT DISTINCT e.user_id FROM entries e JOIN users u ON u.id = e.user_id
+     WHERE e.challenge_id = ?1 AND e.source_verified = 1 AND e.hidden_done = 0 AND u.github_created_at IS NOT NULL AND u.github_created_at <= ?2 LIMIT 200`,
+    [c.id, c.closes_at - MIN_ACCOUNT_AGE_MS]);
+  if (open.length === 0) return true;
+  const banned = await excludedUsers(db);
+  const waiting = open.filter((r) => !banned.has(r.user_id)).length;
+  if (waiting === 0) return true;
+  if (now < c.closes_at + HIDDEN_WAIT_MS) return false;
+  if (log) console.warn(`Rating ${c.id} without ${waiting} unfinished hidden-farm check(s) (48 h after close)`);
+  return true;
+}
 
 /** Unrated closed dailies and seasons that have entries, in closing order (a daily before a season that closes with it). */
 async function findPending(db: Db, now: number, env: Env, limit: number): Promise<ChallengeRow[]> {
@@ -360,6 +405,7 @@ export async function rateDue(db: Db, env: Env, now: number, options: RateDueOpt
   // every request, so a contest waiting out its alias grace day, or an engine mismatch, would otherwise cost two writes per page view.
   const [next] = await findPending(db, now, env, 1);
   if (!next || !isSettled(next, now)) return none('none');
+  if (!(await hiddenChecksDone(db, next, now, false))) return none('none'); // waiting for hidden-farm checks (K4); reads only, no lock
   if ((await db.query('SELECT 1 FROM rating_contests WHERE algo_version <> ? LIMIT 1', [ALGO_VERSION])).length > 0) return none('stale-algo');
   if (options.canWrite && !(await options.canWrite())) return none('paused');
   const token = await claimLock(db, now);
@@ -367,7 +413,7 @@ export async function rateDue(db: Db, env: Env, now: number, options: RateDueOpt
   const contests: ContestReport[] = [];
   try {
     for (const c of await findPending(db, now, env, max)) {
-      if (!isSettled(c, now)) break;
+      if (!isSettled(c, now) || !(await hiddenChecksDone(db, c, now))) break;
       const report = await rateChallenge(db, c, { ratedAt: now });
       if (report) contests.push(report);
     }
@@ -408,7 +454,7 @@ export async function recomputeRatings(db: Db, env: Env, now: number, algoVersio
       const batch = await findPending(db, now, env, 50);
       let progressed = false;
       for (const c of batch) {
-        if (!isSettled(c, now)) { batch.length = 0; break; }
+        if (!isSettled(c, now) || !(await hiddenChecksDone(db, c, now))) { batch.length = 0; break; }
         const k = keep[c.id];
         const report = await rateChallenge(db, c, { ratedAt: k?.at ?? now, dupSource: k?.dup });
         if (report) { contests++; writes += report.writes; progressed = true; }
