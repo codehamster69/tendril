@@ -2,7 +2,8 @@
 // Real server-rendered HTML (no script), so crawlers see the winners. A closed daily never changes, so pages carry long CDN
 // cache headers: one render per closed daily per cache lifetime. Only logins are shown (never display names or model names),
 // replays and programs only once the challenge is settled, and programs hidden by moderation are left out.
-import { challengeSetup, DAILY_EPOCH, describeModifiers } from '@tendril/sim/src/index.ts';
+import { challengeSetup, DAILY_EPOCH, describeModifiers, SETUP_BRIEF } from '@tendril/sim/src/index.ts';
+import type { Brief } from '@tendril/sim/src/index.ts';
 import type { Db } from './db.ts';
 import { board, isSettled } from './arena.ts';
 import type { BoardRow, ChallengeRow, Medal } from './arena.ts';
@@ -80,16 +81,26 @@ async function programs(db: Db, c: ChallengeRow): Promise<ProgramRow[]> {
      ORDER BY e.net_worth DESC, e.created_at ASC, e.id ASC LIMIT ?`, [c.id, PROGRAMS_SHOWN]);
 }
 
-export function openPage(c: { number: number | null }, date: string, origin: string): string {
+/** Brief challenges (setup v2) carry a goal and twists; older rows have none, so this is null for them. */
+export function briefOf(c: ChallengeRow): Brief | null {
+  return c.setup_v === SETUP_BRIEF ? challengeSetup('daily', c.seed, SETUP_BRIEF).brief ?? null : null;
+}
+function briefHtml(brief: Brief): string {
+  return `<h2>Today's brief</h2><p>${esc(brief.notice)}</p>` + (brief.labels.length ? `<p class="dim">Twists: ${brief.labels.map(esc).join(' · ')}</p>` : '');
+}
+
+export function openPage(c: { number: number | null }, date: string, origin: string, brief: Brief | null = null): string {
   const title = `Tendril daily #${c.number} (${date}): still open`;
   return shell(title, 'This daily challenge is still open. Results are published here once it closes.', `${origin}/daily/${c.number}`,
     `<h1>Daily #${c.number} is still open</h1><p>This challenge (${esc(fmtDate(date))}) has not closed yet, so its results are not public. Results, replays and published programs appear here once it closes.</p>` +
+    (brief ? briefHtml(brief) : '') +
     `<p><a href="${esc(origin)}/play/?mode=daily">Play it now</a></p>`, origin, false);
 }
 
 export async function closedPage(db: Db, c: ChallengeRow, origin: string): Promise<string> {
   const date = c.id.slice(2);
-  const mods = describeModifiers(challengeSetup('daily', c.seed, c.setup_v).modifiers, 'daily');
+  const brief = briefOf(c);
+  const mods = brief ? [] : describeModifiers(challengeSetup('daily', c.seed, c.setup_v).modifiers, 'daily');
   const boards = await Promise.all(MEDALS.map((m) => board(db, c, { medal: m.medal, friends: false, limit: 3 })));
   const wealth = boards[0]!;
   const progs = await programs(db, c);
@@ -97,7 +108,7 @@ export async function closedPage(db: Db, c: ChallengeRow, origin: string): Promi
   const title = `Tendril daily #${c.number}, ${fmtDate(date)}: results and winners`;
   const desc = `Tendril daily challenge #${c.number} (${date}): ${wealth.total} players${top ? `, top net worth ${top.value} by ${top.login}` : ''}. Winners, replays and published Sprout programs.`;
   const body = `<h1>Daily #${c.number}</h1><p class="dim">${esc(fmtDate(date))} · ${c.ticks.toLocaleString('en-US')} ticks · par ${c.par ?? 'none'} · ${wealth.total} player${wealth.total === 1 ? '' : 's'}</p>` +
-    `<p>${mods.length ? `Modifiers: ${esc(mods.join(', '))}.` : 'Plain farm, no modifiers.'}</p>` +
+    (brief ? briefHtml(brief) : `<p>${mods.length ? `Modifiers: ${esc(mods.join(', '))}.` : 'Plain farm, no modifiers.'}</p>`) +
     MEDALS.map((m, i) => winnersHtml(origin, m, boards[i]!.entries)).join('') +
     histogramHtml(wealth.histogram, wealth.total) +
     (progs.length ? `<h2>Published programs</h2>${progs.map((p) => `<h3>${esc(p.login)}${p.author_kind === 'model' ? ' (AI)' : ''}: ${p.net_worth}</h3><pre>${esc(p.source.slice(0, PROGRAM_CHARS))}${p.source.length > PROGRAM_CHARS ? '\n...' : ''}</pre>`).join('')}` : '') +
@@ -148,6 +159,6 @@ export async function handleDailyPages(path: string, method: string, c: DailyPag
   const [row] = await c.db.query<ChallengeRow>("SELECT * FROM challenges WHERE id = ? AND kind = 'daily'", [`d-${date}`]);
   if (row && isSettled(row, c.now)) return send(await closedPage(c.db, row, c.origin), html, CLOSED_CACHE);
   // Today's daily, or yesterday's during the legacy grace: nothing is public yet. An old date nobody played has no page.
-  if (row || date === utcDate(c.now)) return send(openPage({ number: n }, date, c.origin), html, SHORT_CACHE);
+  if (row || date === utcDate(c.now)) return send(openPage({ number: n }, date, c.origin, row ? briefOf(row) : null), html, SHORT_CACHE);
   return notFound();
 }
