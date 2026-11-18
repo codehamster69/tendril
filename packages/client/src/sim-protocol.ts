@@ -1,4 +1,5 @@
 import type { LogEntry, Setup, ViewScalars } from '@tendril/sim/src/index.ts';
+import type { GoalProgress } from './goal-progress';
 import type { BotDebug, Diagnostic, OutputLine, ScriptError } from '@tendril/lang/src/index.ts';
 
 export type { BotDebug, Diagnostic, OutputLine, ScriptError };
@@ -42,6 +43,8 @@ export interface StateMessage {
   debug: BotDebug[];
   paused: { bot: number; line: number } | null;
   heat: [number, number][];
+  /** Brief worlds only: progress toward the goal (null or absent otherwise). */
+  goal?: GoalProgress | null;
 }
 
 export type FromWorker =

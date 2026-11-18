@@ -1,12 +1,14 @@
 // Challenge play: daily (`?mode=daily`) and any challenge (`?mode=challenge&id=`). The sim mode is always 'daily'.
-import { setupOf, challengeScenario } from './challenge-setup';
-import { challengeSetup, createWorld, marketFits, dailyNumber, dailySeed, DAILY_PAR, daysUntilMarket, describeModifiers, describeMarket, replayWithPar, BASE_RULES_VERSION, SETUP_VERSION, SUPPORTED_RULES_VERSIONS } from '@tendril/sim/src/index.ts';
-import type { LogEntry, Snapshot } from '@tendril/sim/src/index.ts';
+import { setupOf, challengeScenario, worldSeedOf } from './challenge-setup';
+import { briefActive, challengeSetup, createWorld, marketFits, dailyNumber, dailySeed, DAILY_PAR, daysUntilMarket, describeModifiers, describeMarket, replayWithGoal, BASE_RULES_VERSION, SETUP_BRIEF, SETUP_VERSION, SUPPORTED_RULES_VERSIONS } from '@tendril/sim/src/index.ts';
+import type { Goal, LogEntry, Snapshot } from '@tendril/sim/src/index.ts';
 import { ApiError } from './api-client';
 import type { ChallengeInfo, EntryResult, FarmApi } from './api-client';
 import type { GameLoop } from './game-loop';
 import { el, toast } from './palette';
 import { createPendingRuns } from './pending-run';
+import { goalLine, scoreText } from './goal-view';
+import { newPracticeSeed, practiceParam, practiceSearch } from './practice';
 import { declaredModel, modelBox, publishBox, submitWithProgram } from './publish';
 import type { ProgramStatus } from './publish';
 
@@ -18,19 +20,47 @@ export const utcToday = (): string => new Date().toISOString().slice(0, 10);
 export async function loadChallenge(api: FarmApi, query: URLSearchParams): Promise<ChallengeInfo> {
   const requested = query.get('mode') === 'challenge' ? query.get('id') ?? '' : `d-${utcToday()}`;
   if (!CHALLENGE_ID.test(requested)) { location.replace('?mode=daily'); throw new Error('Unknown challenge'); }
-  try { return requireKnownRules(await api.challenge(requested)); } catch (e) {
+  const practice = practiceParam(query);
+  try {
+    const c = requireKnownRules(await api.challenge(requested));
+    // A practice farm runs the real brief on another world seed, with no deadline and nothing sent to the server.
+    return practice !== null && c.setupVersion === SETUP_BRIEF ? { ...c, practice: true, farmSeed: practice, closesAt: null, opensAt: null, best: null } : c;
+  } catch (e) {
     if (e instanceof RulesTooNew) throw e;
     if (query.get('mode') === 'challenge') {
       if (e instanceof ApiError && e.status !== 0) { toast('Challenge not found', 'Opening today\'s farm instead.'); location.replace('?mode=daily'); }
       throw e;
     }
     const date = utcToday();
+    if (briefActive(date)) return offlineBrief(date, practice ?? newPracticeSeed());
     return {
       id: `d-${date}`, kind: 'daily', number: dailyNumber(date), seed: dailySeed(date), ticks: challengeSetup('daily', dailySeed(date)).ticks, par: DAILY_PAR,
       opensAt: null, closesAt: null, rulesVersion: BASE_RULES_VERSION, setupVersion: SETUP_VERSION, players: 0, best: null,
       market: null, // offline: base prices, practice only (a market day's table comes from the server)
     };
   }
+}
+
+/** Brief days need the server (today's seed is secret). Offline you get a random practice brief and a line saying so. */
+function offlineBrief(date: string, seed: number): ChallengeInfo {
+  return {
+    id: `d-${date}`, kind: 'daily', number: dailyNumber(date), seed, ticks: challengeSetup('daily', seed, SETUP_BRIEF).ticks, par: null,
+    opensAt: null, closesAt: null, rulesVersion: BASE_RULES_VERSION, setupVersion: SETUP_BRIEF, players: 0, best: null, market: null,
+    practice: true, offline: true, hiddenFarms: 0,
+  };
+}
+
+/** The brief this page plays (null on a classic challenge). The same pure draw the server replays with. */
+export const briefOf = (c: ChallengeInfo) => setupOf(c).brief ?? null;
+
+/** Opens another practice farm of the same brief. */
+export function anotherFarm(c: ChallengeInfo): void { location.assign(practiceSearch(location.search || `?mode=daily`, newPracticeSeed(c.farmSeed ?? (c.practice ? c.seed : null)))); }
+
+export const OFFLINE_LINE = "Connect to play today's brief. Today's farm comes from the server, so this is a random practice brief and nothing is submitted.";
+/** "Your program also runs on N hidden farms at close." (the start card and the arena card say it the same way) */
+export function hiddenLine(n: number, kind: 'daily' | 'season' | 'duel' = 'daily'): string {
+  if (n <= 0) return '';
+  return `Your program also runs on ${n === 1 ? 'one hidden farm' : `${n} hidden farms`} when the ${kind === 'season' ? 'week' : 'day'} closes. Write it for any farm, not just this one.`;
 }
 
 export const UPDATE_NEEDED = 'This day needs a newer Tendril. Update the app.';
@@ -78,9 +108,12 @@ const clock = (ms: number): string => {
 };
 
 /** The score the player just earned, replayed locally exactly as the server will replay it. */
-export function localResult(c: ChallengeInfo, actions: LogEntry[]): { netWorth: number; parTick: number | null; mosaic: string } {
-  const world = createWorld({ id: c.id, seed: c.seed }, setupOf(c).setup);
-  return replayWithPar(world, actions, c.ticks, c.par ?? Number.MAX_SAFE_INTEGER);
+export function localResult(c: ChallengeInfo, actions: LogEntry[]): { netWorth: number; score: number; parTick: number | null; mosaic: string; goal: Goal | null } {
+  const setup = setupOf(c);
+  const goal = setup.brief?.goal ?? null;
+  const world = createWorld({ id: c.id, seed: worldSeedOf(c) }, setup.setup);
+  const r = replayWithGoal(world, actions, c.ticks, goal, c.par ?? Number.MAX_SAFE_INTEGER);
+  return { netWorth: r.netWorth, score: r.score, parTick: r.parTick, mosaic: r.mosaic, goal };
 }
 
 const PENDING_KEY = 'tendril.pending-runs.v1';
@@ -110,6 +143,7 @@ async function submitPlain(api: FarmApi, c: ChallengeInfo, actions: LogEntry[]):
 
 /** With a program: sent with the run for the Brevity check. If the server cannot be reached the plain run goes through the retry queue. */
 export async function submitRun(api: FarmApi, c: ChallengeInfo, actions: LogEntry[], source: string | null = null): Promise<EntryResult & { program: ProgramStatus }> {
+  if (c.practice) throw new Error('A practice farm is never submitted.');
   if (source !== null && source.trim() !== '') {
     try { return await submitWithProgram(api, c, actions, source); }
     catch (e) { if (declaredModel() !== null || !(e instanceof ApiError && (e.status === 0 || e.status === 429 || e.status >= 500))) throw e; }
@@ -120,6 +154,10 @@ export async function submitRun(api: FarmApi, c: ChallengeInfo, actions: LogEntr
 
 /** The challenge's name: "Daily farm #12", "Weekly season #3", "Duel", or a practice label. */
 export function challengeTitle(c: ChallengeInfo): string {
+  const base = challengeTitleBase(c);
+  return c.practice ? `Practice · ${base}` : base;
+}
+function challengeTitleBase(c: ChallengeInfo): string {
   const number = c.number !== null && c.number > 0 ? c.number : null; // days before the 1 Dec 2026 launch count as practice
   return c.kind === 'season' ? (number !== null ? `Weekly season #${number}` : 'Practice week') : number !== null ? `Daily farm #${number}` : c.kind === 'daily' ? `Practice farm · ${c.id.slice(2)}` : c.kind === 'duel' ? 'Duel' : c.id;
 }
@@ -138,10 +176,19 @@ export function mountArena({ loop, api, challenge: c }: { loop: GameLoop; api: F
   const head = el('header', { id: 'arena-head' }, el('span', { class: 'eyebrow', text: title }), el('span', { class: 'arena-head-actions' }, fold, runEnd));
   const mods = describeModifiers(setupOf(c).modifiers, c.kind);
   const modLine = mods.length ? el('p', { id: 'arena-mods', title: "Today's modifiers", text: `Today: ${mods.join(' · ')}` }) : null;
+  const brief = briefOf(c);
   // Practice challenges have no deadline, so they say that instead of "Time left open".
-  const stats = el('p', { id: 'arena-stats' }, c.closesAt === null ? 'No deadline in practice' : 'Time left ', left, ' · Score to beat ', beat);
+  const stats = el('p', { id: 'arena-stats' }, c.practice ? 'Practice: nothing is submitted' : c.closesAt === null ? 'No deadline in practice' : 'Time left ', left, ' · Score to beat ', beat);
   const marketEl = marketPanel(c);
-  const body = el('div', { id: 'arena-body' }, publishBox(), modelBox(), el('h3', { text: `One seed. ${c.ticks.toLocaleString('en-US')} ticks. Your best program.` }), ...(modLine ? [modLine] : []), ...(marketEl ? [marketEl] : []), stats);
+  const briefEl = brief ? el('div', { id: 'arena-brief' },
+    el('p', { class: 'arena-notice', text: brief.notice }),
+    el('p', { id: 'arena-goal', text: goalLine(brief.goal) }),
+    el('p', { id: 'arena-twists', text: brief.labels.length ? `Twists: ${brief.labels.join(' · ')}` : 'No twists today.' }),
+    ...(c.practice ? [] : [el('p', { id: 'arena-hidden', class: 'muted', text: hiddenLine(c.hiddenFarms ?? 0, c.kind) })]),
+    ...(c.offline ? [el('p', { id: 'arena-offline', role: 'status', text: OFFLINE_LINE })] : [])) : null;
+  const another = brief ? el('button', { id: 'btn-another-farm', class: 'hk-button', type: 'button', text: 'Try another farm', title: "Today's brief on a random farm. Never submitted." }) : null;
+  another?.addEventListener('click', () => anotherFarm(c));
+  const body = el('div', { id: 'arena-body' }, ...(c.practice ? [] : [publishBox(), modelBox()]), el('h3', { text: brief ? `One brief. ${c.ticks.toLocaleString('en-US')} ticks. Your best program.` : `One seed. ${c.ticks.toLocaleString('en-US')} ticks. Your best program.` }), ...(briefEl ? [briefEl] : modLine ? [modLine] : []), ...(marketEl ? [marketEl] : []), stats, ...(another ? [another] : []));
   host.append(head, body);
   // The card can be folded away so the editor always has room; it also scrolls if it is taller than the panel allows.
   fold.addEventListener('click', () => { const open = body.hidden; body.hidden = !open; fold.setAttribute('aria-expanded', String(open)); fold.textContent = open ? 'Hide details' : 'Show details'; });
@@ -149,7 +196,7 @@ export function mountArena({ loop, api, challenge: c }: { loop: GameLoop; api: F
   const draw = (): void => {
     left.textContent = c.closesAt === null ? '' : c.closesAt <= Date.now() ? 'closed' : clock(c.closesAt - Date.now());
     const target = c.best ?? c.par;
-    beat.textContent = target === null ? '—' : `${target.toLocaleString('en-US')} coins`;
+    beat.textContent = target === null ? '—' : brief ? scoreText(brief.goal.kind, target) : `${target.toLocaleString('en-US')} coins`;
   };
   draw(); setInterval(draw, 1000);
   window.addEventListener('tendril:status', (event) => { runEnd.disabled = !(event as CustomEvent<{ canStep: boolean }>).detail.canStep; });

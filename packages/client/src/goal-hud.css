@@ -1,0 +1,20 @@
+/* Goal HUD (K6): a small glass card under the top-left chips. Quotas as bars; other goals a score and a par meter. */
+.goal-hud { position: fixed; z-index: 24; bottom: 78px; left: 14px; width: min(260px, calc(100vw - 28px)); display: grid; gap: 6px; padding: 10px 12px; font: 13px/1.3 var(--hk-body); color: var(--hk-text); }
+.goal-hud .gh-name { font: 600 11px/1 var(--hk-display); letter-spacing: .08em; text-transform: uppercase; color: var(--hk-lantern); }
+.goal-hud .gh-line { margin: 0; display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; }
+.goal-hud .gh-score { font: 700 24px/1 var(--hk-display); font-variant-numeric: tabular-nums; }
+.goal-hud .gh-unit { color: var(--hk-dim); font-size: 12px; }
+.goal-hud .gh-par { color: var(--hk-dim); font-size: 12px; }
+.goal-hud[data-par="reached"] .gh-par { color: var(--hk-leaf); }
+.goal-hud .gh-bar { display: block; height: 6px; border-radius: var(--hk-r-pill); background: rgba(244, 234, 216, .12); overflow: hidden; }
+.goal-hud .gh-fill { display: block; height: 100%; width: 0; border-radius: inherit; background: var(--hk-lantern); transition: width .25s ease; }
+.goal-hud[data-par="reached"] .gh-par-bar .gh-fill { background: var(--hk-leaf); }
+.goal-hud .gh-quotas { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.goal-hud .gh-quota { display: grid; grid-template-columns: 4.6em 1fr auto; align-items: center; gap: 8px; }
+.goal-hud .gh-item { text-transform: capitalize; }
+.goal-hud .gh-have { font-variant-numeric: tabular-nums; color: var(--hk-dim); font-size: 12px; }
+.goal-hud .gh-quota[data-done="true"] .gh-fill { background: var(--hk-leaf); }
+.goal-hud .gh-quota[data-done="true"] .gh-have { color: var(--hk-leaf); }
+body.start-open .goal-hud, body.menu-open .goal-hud { visibility: hidden; }
+@media (max-width: 720px) { .goal-hud { z-index: 30; bottom: 120px; width: min(220px, calc(100vw - 28px)); padding: 8px 10px; } .goal-hud .gh-score { font-size: 20px; } }
+@media (prefers-reduced-motion: reduce) { .goal-hud .gh-fill { transition: none; } }

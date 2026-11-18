@@ -3,7 +3,7 @@ import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'n
 import { randomBytes } from 'node:crypto';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
-import { challengeSetup, createWorld, replayWithPar, SETUP_LEGACY, SUPPORTED_RULES_VERSIONS, describeModifiers, marketPrices } from '@tendril/sim/src/index.ts';
+import { challengeSetup, createWorld, replayWithGoal, replayWithPar, SETUP_BRIEF, SETUP_LEGACY, SUPPORTED_RULES_VERSIONS, describeModifiers, marketPrices } from '@tendril/sim/src/index.ts';
 import type { ChallengeKind, LogEntry } from '@tendril/sim/src/index.ts';
 import { createRun } from './index.ts';
 
@@ -31,8 +31,8 @@ export function loadToken(): string | null {
   return saved && saved.api === apiOrigin() ? saved.token : null;
 }
 
-export interface Challenge { id: string; kind: ChallengeKind; number: number | null; seed: number; ticks: number; par: number | null; rulesVersion: number; setupVersion?: number; market?: { prices: number[]; multipliers: number[]; shares: number[] | null } | null }
-export interface LastRun { api: string; challengeId: string; rulesVersion: number; actions: LogEntry[]; netWorth: number; parTick: number | null; mosaic: string; source: string }
+export interface Challenge { id: string; kind: ChallengeKind; number: number | null; seed: number; ticks: number; par: number | null; rulesVersion: number; setupVersion?: number; market?: { prices: number[]; multipliers: number[]; shares: number[] | null } | null; /** Hidden farm seeds: null until the challenge closes, absent on older servers. */ siblingSeeds?: number[] | null }
+export interface LastRun { api: string; challengeId: string; rulesVersion: number; actions: LogEntry[]; netWorth: number; /** The challenge's score (the goal's on a brief day, net worth otherwise). Absent in runs saved before briefs. */ score?: number; parTick: number | null; mosaic: string; source: string }
 
 async function api<T>(path: string, init: { body?: unknown; token?: string | null } = {}): Promise<{ status: number; json: T }> {
   const headers: Record<string, string> = { 'X-Tendril-Client': '1' };
@@ -117,33 +117,70 @@ export async function getChallenge(id: string): Promise<Challenge> {
   return r.status === 200 ? r.json : fail('Challenge', r);
 }
 
-/** Run a Sprout file on the challenge's world, then replay its log with par tracking (the same check the server makes). */
-export function playLocal(c: Challenge, source: string): LastRun & { errors: string[] } {
+/**
+ * Run a Sprout file on the challenge's world (`worldSeed`: the visible farm unless a hidden one is asked for), then replay its
+ * log with par tracking (the same check the server makes). A brief day scores by its goal; older days by net worth.
+ */
+export function playLocal(c: Challenge, source: string, worldSeed: number = c.seed): LastRun & { errors: string[] } {
   if (!SUPPORTED_RULES_VERSIONS.includes(c.rulesVersion)) throw new Error('This day needs a newer Tendril. Update the CLI.');
-  const { setup } = challengeSetup(c.kind, c.seed, c.setupVersion ?? SETUP_LEGACY, c.market ? { p: c.market.prices } : null, c.rulesVersion);
+  const { setup, brief } = challengeSetup(c.kind, c.seed, c.setupVersion ?? SETUP_LEGACY, c.market ? { p: c.market.prices } : null, c.rulesVersion);
   if (c.market && marketPrices(c.market.multipliers).some((p, i) => p !== c.market!.prices[i])) throw new Error('The challenge has an invalid price table.');
-  const run = createRun(createWorld({ id: c.id, seed: c.seed }, setup), source);
+  const run = createRun(createWorld({ id: c.id, seed: worldSeed }, setup), source);
   for (let left = c.ticks; left > 0; left -= Math.min(left, 20_000)) run.step(Math.min(left, 20_000));
   const actions = run.pending.slice();
-  const fresh = createWorld({ id: c.id, seed: c.seed }, setup);
-  const result = replayWithPar(fresh, actions, c.ticks, c.par ?? Number.MAX_SAFE_INTEGER);
+  const fresh = createWorld({ id: c.id, seed: worldSeed }, setup);
+  const par = c.par ?? Number.MAX_SAFE_INTEGER;
+  const goalReplay = brief ? replayWithGoal(fresh, actions, c.ticks, brief.goal, par) : null;
+  const result = goalReplay ?? replayWithPar(fresh, actions, c.ticks, par);
+  const score = goalReplay ? goalReplay.score : result.netWorth;
   const errors = run.errors.map((e) => `Line ${e.line}, bot ${e.bot}: ${e.message}`);
-  return { api: apiOrigin(), challengeId: c.id, rulesVersion: c.rulesVersion, actions, netWorth: result.netWorth, parTick: c.par === null ? null : result.parTick, mosaic: result.mosaic, source, errors };
+  return { api: apiOrigin(), challengeId: c.id, rulesVersion: c.rulesVersion, actions, netWorth: result.netWorth, score, parTick: c.par === null ? null : result.parTick, mosaic: result.mosaic, source, errors };
 }
 
-export async function play(id: string, file: string | undefined): Promise<void> {
+export interface PlayOptions {
+  /** `--farm <seed>`: recheck one of the challenge's hidden farms (published once it closes). Not saved for submit. */
+  farm?: number;
+  /** `--practice`: run the same brief on a random farm. Not saved for submit. */
+  practice?: boolean;
+}
+
+/** The world seed a play runs on. Practice draws a random one; a hidden farm must be one the server has published (if it says). */
+export function farmSeedFor(c: Challenge, options: PlayOptions): number {
+  if (options.farm !== undefined && !Number.isSafeInteger(options.farm)) throw new Error('--farm needs a seed: a whole number, from the challenge page.');
+  if (options.practice) return randomBytes(4).readUInt32BE(0);
+  if (options.farm === undefined || options.farm === c.seed) return c.seed;
+  if (c.siblingSeeds === null) throw new Error(`The hidden farms of ${c.id} are published when it closes.`);
+  if (c.siblingSeeds !== undefined && !c.siblingSeeds.includes(options.farm)) throw new Error(`Seed ${options.farm} is not a hidden farm of ${c.id}.`);
+  return options.farm;
+}
+
+export async function play(id: string, file: string | undefined, options: PlayOptions = {}): Promise<void> {
   const c = await getChallenge(id);
+  const farm = farmSeedFor(c, options);
+  const recheck = farm !== c.seed;
+  const saves = !options.practice && !recheck;
   console.log(`${c.kind} ${c.id}${c.number ? ` (#${c.number})` : ''}: seed ${c.seed}, ${c.ticks} ticks${c.par !== null ? `, par ${c.par}` : ''}`);
-  const mods = describeModifiers(challengeSetup(c.kind, c.seed, c.setupVersion ?? SETUP_LEGACY).modifiers, c.kind);
-  if (mods.length) console.log(`Today's modifiers: ${mods.join(', ')}`);
+  if (c.setupVersion === SETUP_BRIEF) {
+    const { brief } = challengeSetup(c.kind, c.seed, SETUP_BRIEF);
+    if (brief) {
+      console.log(`Brief: ${brief.notice}`);
+      if (brief.labels.length) console.log(`Twists: ${brief.labels.join(', ')}`);
+    }
+  } else {
+    const mods = describeModifiers(challengeSetup(c.kind, c.seed, c.setupVersion ?? SETUP_LEGACY).modifiers, c.kind);
+    if (mods.length) console.log(`Today's modifiers: ${mods.join(', ')}`);
+  }
+  if (options.practice) console.log(`Practice farm: seed ${farm}. The run is not saved for submit.`);
+  else if (recheck) console.log(`Hidden farm ${farm}: a recheck. The run is not saved for submit.`);
   if (!file) { console.log('Add a Sprout file to play it: tendril daily my.sprout'); return; }
-  const { errors, ...last } = playLocal(c, readFileSync(file, 'utf8'));
+  const { errors, ...last } = playLocal(c, readFileSync(file, 'utf8'), farm);
   for (const e of errors) console.error(e);
-  writePrivate('last-run.json', JSON.stringify(last));
-  console.log(`Net worth: ${last.netWorth}`);
+  if (saves) writePrivate('last-run.json', JSON.stringify(last));
+  const isBrief = c.setupVersion === SETUP_BRIEF;
+  console.log(isBrief ? `Score:     ${last.score}` : `Net worth: ${last.netWorth}`);
   console.log(`Par tick:  ${last.parTick === null ? (c.par === null ? 'no par for this challenge' : `par ${c.par} not reached`) : last.parTick}`);
   console.log(last.mosaic ? renderMosaic(last.mosaic) : '');
-  console.log('Submit it with: tendril submit');
+  console.log(saves ? 'Submit it with: tendril submit' : 'Not saved, so `tendril submit` still sends your last saved run.');
   if (errors.length) process.exitCode = 1;
 }
 

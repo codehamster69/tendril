@@ -147,6 +147,19 @@ Six free queries (`goal quota budget twists bot_cap plot_cap`) read optional wor
 - **Why:** the plan (`challenges/plan.md`) needs a different problem every day, and dispatch by stored data keeps old challenges, Endless farms and duels replaying exactly. Drought is `weatherBias 2` (rain segments of length 0), hard frost is `-2`.
 - **Open:** festival quota sizes are first values for K2 to calibrate (`brain/notes/K1.md`).
 
+## D-K6 (2026-11-17): brief client
+Live goal progress comes from the sim worker (`tendril:goal`), with `World.brief.orderCoins` added to the sim for the orders score. A practice farm is the real brief on another world seed (`?practice=<seed>`), never submitted. On a brief day the offline fallback is a random practice brief, since today's seed is secret. Duel panel hidden on brief results until K3 confirms duel copies. Details: `brain/notes/K6.md`.
+
+## D-K2 (2026-11-17) Reference programs, par floors and the reroll rule (K2)
+- **Decision:** one plain reference Sprout program per goal (`packages/lang/examples/brief-<goal>.sprout`; the server holds copies in `REFERENCE_SOURCES`). A brief whose reference scores under a per-goal floor on the visible farm is redrawn from `rerollSeed(seed, n)`, at most 8 times, then the best draw is kept (SIM_SPEC 6.6). `QUOTA_UNIT` and the twist strengths are unchanged.
+- **Why:** par is 90% of the reference, so a day the reference cannot play (a festival that needs 650 coins of research from a 30-coin start) would have a meaningless par. About 1 festival draw in 6 is rerolled, other goals under 2%. Rerolling shifts the goal mix slightly away from festival. Numbers and the checks run: `brain/notes/K2.md`.
+
+
+## D-K7 (2026-11-17) Brief pages, CLI practice and recheck, how-to-play section (K7)
+- **Decision:** daily pages show the brief's notice and twists (from `challengeSetup(..., SETUP_BRIEF)` on the stored seed; older rows show none). The CLI prints the brief, scores brief days by their goal, and takes `--practice` (random farm, not saved) and `--farm <seed>` (recheck a hidden farm, not saved; refused until the server publishes siblings). How-to-play gets "A new problem every day". CHANGELOG entry under Unreleased.
+- **Why:** players see the problem before they play, and practice runs cannot touch the submitted run. Practice reads as "today's brief on a random farm"; the brief stays fixed.
+- **Open:** closed-page sibling seeds and final scores wait for K3/K4 columns and API fields; the season page (client) waits for K6/K3.
+
 ## D-K3 (2026-11-17) Brief challenges on the server: HMAC seeds, hidden farms checked lazily after close (K3)
 - **Decision:** from `setup_v >= 2` a daily or season takes `seed = HMAC-SHA256(CHALLENGE_SALT, "tendril-brief:" + id)` (first 4 bytes), sibling i the same over `id + ":h" + i`. `CHALLENGE_SALT` env, else sha256 of the Turso token; a brief with neither is refused (503). Par = 90% of the reference program's mean score over the visible and every hidden farm, min 1, stored once; if the reference cannot run, the day does not open (503) instead of storing a wrong par. After close, `closeBrief` runs each `source_verified` entry's program on the hidden farms (3 entries per request, hidden farms in parallel, arena_meta lock) and stores `final_score`, `final_par_tick`, `hidden_done`.
 - **Why:** the contract's FNV hash of salt and id lets anyone continue the visible seed's hash with `:h1` and get every sibling seed without the salt (a test proves the HMAC does not). A plain brief par fallback (`DAILY_PAR`) would be meaningless for festival (permille) or orders goals.

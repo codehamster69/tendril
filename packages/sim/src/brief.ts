@@ -198,3 +198,42 @@ export function describeBrief(b: Brief, kind: BriefKind): { notice: string; labe
   }
   return { notice, labels };
 }
+
+/**
+ * The reroll rule (K2, SIM_SPEC 6.6). A brief whose reference program scores less than the floor on the visible farm is not played:
+ * the generator moves to the next derived seed, at most `MAX_REROLLS` times. Floors are in score units (permille for festival),
+ * set from `brain/notes/K2.md` so that roughly 1 draw in 50 is rerolled, except festival (about 1 in 6: pools of only expensive crops).
+ */
+export const MAX_REROLLS = 8;
+export const BRIEF_FLOOR: Record<'daily' | 'season', Record<GoalKind, number>> = {
+  daily: { wealth: 300, festival: 250, specialist: 250, orders: 250, inherited: 600 },
+  season: { wealth: 500, festival: 250, specialist: 800, orders: 500, inherited: 2000 },
+};
+/** Floor for a goal of a challenge kind (a duel copies its source's brief and is never rerolled). */
+export const briefFloor = (kind: 'daily' | 'season', goal: GoalKind): number => BRIEF_FLOOR[kind][goal];
+
+/** The seed tried after `n` rerolls: `n = 0` is the challenge seed itself. A murmur3-style mix, so the tries are unrelated draws. */
+export function rerollSeed(seed: number, n: number): number {
+  if (!Number.isSafeInteger(seed) || !Number.isInteger(n) || n < 0 || n > MAX_REROLLS) throw new Error('bad reroll');
+  if (n === 0) return seed;
+  let h = (seed ^ Math.imul(n, 0x9E3779B1)) >>> 0;
+  h ^= h >>> 16; h = Math.imul(h, 0x85EBCA6B); h ^= h >>> 13; h = Math.imul(h, 0xC2B2AE35); h ^= h >>> 16;
+  return (h >>> 0) || 1;
+}
+
+/**
+ * Picks the seed a challenge uses. `reference(seed, brief)` runs the reference program on the visible farm (world seed = that seed) and
+ * returns its score; the first try at or above the goal's floor wins, otherwise the best of the 9 tries (the earliest on a tie).
+ * The result is stored as the challenge's seed, so players and hidden farms never see the rejected ones.
+ */
+export function pickBrief(kind: 'daily' | 'season', seed: number, reference: (seed: number, brief: Brief) => number): { seed: number; tries: number; score: number; brief: Brief } {
+  let best: { seed: number; tries: number; score: number; brief: Brief } | null = null;
+  for (let n = 0; n <= MAX_REROLLS; n++) {
+    const s = rerollSeed(seed, n);
+    const brief = drawBrief(kind, s).brief;
+    const score = reference(s, brief);
+    if (score >= briefFloor(kind, brief.goal.kind)) return { seed: s, tries: n + 1, score, brief };
+    if (!best || score > best.score) best = { seed: s, tries: n + 1, score, brief };
+  }
+  return best!;
+}

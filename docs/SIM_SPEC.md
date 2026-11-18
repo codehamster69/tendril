@@ -497,5 +497,13 @@ Same validation as `replayChunk`; returns `{ score, parTick, netWorth, sold, dep
 - `finalOf(scores, parTicks, budget, par)`: `finalScore = sum(scores)`; `finalParTick = sum(parTick ?? budget)` when `finalScore >= par * farms`, else null.
 - `describeBrief(brief, kind)`: the village notice (`The village fair wants 300 wheat and 80 pumpkins by sundown.`; seasons say `by the end of the week`) and one short label per twist (`One bot only`, `Drought: no rain`, `Pumpkin research locked`, ...). `GOAL_TITLES` names the goals.
 
-### 6.6 What is not here
-Seeds and salt (K3), par and the reference programs (K2), ratings (K4), the Sprout calls (K5), the client and site (K6, K7). Nothing reads `BRIEF_EPOCH` except `briefActive` and `setupVersionFor`.
+### 6.6 The reroll rule (K2)
+A brief is only played if its reference program (one per goal, `packages/lang/examples/brief-<goal>.sprout`) clears a floor on the **visible** farm. `pickBrief(kind, seed, reference)` tries `rerollSeed(seed, 0..8)` in order (`rerollSeed(seed, 0) = seed`; n >= 1 is a murmur3-style mix of `seed ^ imul(n, 0x9E3779B1)`, never 0) and keeps the first draw whose reference score is at least `briefFloor(kind, goal)`; if all nine fall short it keeps the highest (the earliest on a tie). The whole brief is redrawn from the new seed, so the goal can change. The kept seed is stored as the challenge seed, so the visible farm uses it as its world seed. Hidden farm world seeds do not depend on it.
+| Floor | wealth | festival (permille) | specialist | orders | inherited |
+|---|---|---|---|---|---|
+| daily | 300 | 250 | 250 | 250 | 600 |
+| season | 500 | 250 | 800 | 500 | 2000 |
+`MAX_REROLLS = 8`. Duels copy their source's brief and are never rerolled. Par is then 90% of the reference's mean over the visible and hidden farms (min 1), computed by K3. Numbers: `brain/notes/K2.md`.
+
+### 6.7 What is not here
+Seeds and salt (K3), the par calculation (K3, from the K2 reference programs), ratings (K4), the Sprout calls (K5), the client and site (K6, K7). Nothing reads `BRIEF_EPOCH` except `briefActive` and `setupVersionFor`.

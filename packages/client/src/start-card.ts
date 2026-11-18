@@ -2,29 +2,42 @@
 import './menu.css';
 import type { ChallengeInfo } from './api-client';
 import type { GameLoop } from './game-loop';
-import { challengeTitle } from './arena';
+import { anotherFarm, briefOf, challengeTitle, hiddenLine, OFFLINE_LINE } from './arena';
+import { GOAL_NAMES, goalLine, parText, twistLines } from './goal-view';
 import { el, itemName } from './palette';
 import type { Snapshot } from './sim-types';
 import { TICKS_PER_SECOND } from './clock';
 
-export interface StartCardInfo { eyebrow: string; goal: string; par: number | null; ticks: number }
+export interface StartCardInfo {
+  eyebrow: string; goal: string; par: number | null; ticks: number;
+  /** Daily briefs: the village notice, goal name, twist labels and the lines about hidden farms and practice. */
+  brief?: { notice: string; name: string; twists: string[]; parText: string | null; hidden: string; practice: boolean; offline: boolean; another: () => void };
+}
 
 const WEATHER: Record<string, string> = { clear: 'Clear skies', rain: 'Rain: crops grow faster', frost: 'Frost: crops grow slowly' };
 const fmt = (n: number): string => n.toLocaleString('en-US');
 
-export const challengeCardInfo = (c: ChallengeInfo): StartCardInfo => ({
-  eyebrow: challengeTitle(c), goal: `Finish with the highest net worth after ${fmt(c.ticks)} ticks.`, par: c.par, ticks: c.ticks,
-});
+export function challengeCardInfo(c: ChallengeInfo): StartCardInfo {
+  const base = { eyebrow: challengeTitle(c), goal: `Finish with the highest net worth after ${fmt(c.ticks)} ticks.`, par: c.par, ticks: c.ticks };
+  const brief = briefOf(c);
+  if (!brief) return base;
+  return {
+    ...base, goal: goalLine(brief.goal),
+    brief: { notice: brief.notice, name: GOAL_NAMES[brief.goal.kind], twists: twistLines(brief.labels), parText: parText(brief.goal, c.par), hidden: c.practice ? '' : hiddenLine(c.hiddenFarms ?? 0, c.kind), practice: !!c.practice, offline: !!c.offline, another: () => anotherFarm(c) },
+  };
+}
 
 /** Shows the card whenever a run sits at tick 0 and has not started. Returns a function that hides it. */
 export function mountStartCard({ loop, info, skip }: { loop: GameLoop; info: StartCardInfo | null; skip?: boolean }): { hide(): void } {
   if (!info || skip) return { hide() {} };
   const overlay = el('div', { id: 'start-card', class: 'hk-overlay start-card', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'start-card-title', hidden: '' });
   const body = el('div', { class: 'start-body' });
+  const another = info.brief ? el('button', { id: 'btn-start-another', class: 'hk-button start-another', type: 'button', text: info.brief.practice ? 'Another practice farm' : 'Try another farm', title: "This brief on a random farm. Never submitted." }) : null;
+  another?.addEventListener('click', () => info.brief?.another());
   const start = el('button', { id: 'btn-start-day', class: 'hk-button hk-primary start-go', type: 'button', text: 'Start the day' });
   overlay.append(el('div', { class: 'hk-card start-panel' },
     el('p', { class: 'menu-label', text: info.eyebrow }), el('h2', { id: 'start-card-title', text: 'Today on the farm' }), body,
-    el('div', { class: 'start-actions' }, start, el('small', { text: 'Press Enter' }))));
+    el('div', { class: 'start-actions' }, start, el('small', { text: 'Press Enter' }), ...(another ? [another] : []))));
   document.body.append(overlay);
 
   let shown = false, dismissed = false;
@@ -36,12 +49,21 @@ export function mountStartCard({ loop, info, skip }: { loop: GameLoop; info: Sta
     const orders = live.length
       ? el('ul', { class: 'start-orders' }, ...live.map((o) => el('li', { text: `${itemName(o.crop)} × ${o.qty} for ${fmt(o.reward)} coins, due tick ${fmt(o.deadline)}` })))
       : el('span', { text: 'None open yet. They arrive as the day goes on.' });
-    body.replaceChildren(el('dl', { class: 'start-facts' },
-      row('Goal', info.goal),
-      ...(info.par === null ? [] : [row('Par', `${fmt(info.par)} coins. Reach it and the run is rated.`)]),
-      row('Length', `${fmt(info.ticks)} ticks · about ${Math.round(info.ticks / TICKS_PER_SECOND)} s at 1×`),
-      row('Weather', WEATHER[s.weather] ?? s.weather),
-      row('Orders', orders)));
+    const b = info.brief;
+    const parRow = b
+      ? (b.parText === null ? [] : [row('Par', b.practice ? `${b.parText}. Practice runs are never rated.` : `${b.parText}. Reach it, with a program on the slate, and the run is rated.`)])
+      : (info.par === null ? [] : [row('Par', `${fmt(info.par)} coins. Reach it and the run is rated.`)]);
+    body.replaceChildren(
+      ...(b ? [el('blockquote', { class: 'start-notice', text: b.notice })] : []),
+      ...(b?.offline ? [el('p', { class: 'start-offline', role: 'status', text: OFFLINE_LINE })] : []),
+      el('dl', { class: 'start-facts' },
+        row(b ? b.name : 'Goal', info.goal),
+        ...(b ? [row('Twists', b.twists.length === 1 ? b.twists[0]! : el('ul', { class: 'start-twists' }, ...b.twists.map((t) => el('li', { text: t }))))] : []),
+        ...parRow,
+        row('Length', `${fmt(info.ticks)} ticks · about ${Math.round(info.ticks / TICKS_PER_SECOND)} s at 1×`),
+        ...(b?.hidden ? [row('Hidden farms', b.hidden)] : []),
+        row('Weather', WEATHER[s.weather] ?? s.weather),
+        row('Orders', orders)));
   };
   const go = (): void => { dismissed = true; hide(); loop.run(); };
   start.addEventListener('click', go);

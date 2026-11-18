@@ -2,13 +2,19 @@
 import type { ChallengeInfo, EntryResult } from './api-client.ts';
 import { ordinal } from './share.ts';
 import type { ProgramStatus } from './publish.ts';
+import type { GoalKind } from '@tendril/sim/src/index.ts';
+import { SCORE_NAMES, scoreParts } from './goal-view.ts';
 
 const fmt = (n: number): string => n.toLocaleString('en-US');
+/** A score or a gap in the goal's own unit: coins, or percent points of the quotas for a festival. */
+export const amount = (kind: GoalKind | undefined, n: number): string => (kind === 'festival' ? `${scoreParts('festival', n).num}%` : `${fmt(n)} coins`);
 
 export type MedalKey = 'wealth' | 'speed' | 'brevity';
 export interface MedalView { key: MedalKey; name: string; state: 'earned' | 'missed' | 'pending' | 'locked'; line: string; rank: string | null }
 export interface MedalInput {
   par: number | null; netWorth: number; parTick: number | null; ticks: number;
+  /** Daily briefs: the goal (names the first medal and picks the unit); a practice farm is never rated. */
+  kind?: GoalKind; practice?: boolean;
   signedIn: boolean; /** The server's answer, or null while it is still thinking or when signed out. */
   server: Pick<EntryResult, 'tokens' | 'ranks' | 'total'> | null; program: ProgramStatus | null; submitting: boolean;
 }
@@ -19,8 +25,8 @@ export const rankText = (rank: number | null | undefined, total: number | undefi
 export function medals(i: MedalInput): MedalView[] {
   const wealthEarned = i.par === null ? i.netWorth > 0 : i.netWorth >= i.par;
   const wealth: MedalView = {
-    key: 'wealth', name: 'Wealth', state: wealthEarned ? 'earned' : 'missed',
-    line: i.par === null ? `${fmt(i.netWorth)} coins` : wealthEarned ? `${fmt(i.netWorth - i.par)} coins over par` : `${fmt(i.par - i.netWorth)} coins short of par`,
+    key: 'wealth', name: i.kind ? SCORE_NAMES[i.kind] : 'Wealth', state: wealthEarned ? 'earned' : 'missed',
+    line: i.par === null ? amount(i.kind, i.netWorth) : wealthEarned ? `${amount(i.kind, i.netWorth - i.par)} over par` : `${amount(i.kind, i.par - i.netWorth)} short of par`,
     rank: rankText(i.server?.ranks.wealth, i.server?.total),
   };
   const speed: MedalView = {
@@ -29,7 +35,8 @@ export function medals(i: MedalInput): MedalView[] {
     rank: rankText(i.server?.ranks.speed, i.server?.total),
   };
   let brevity: MedalView;
-  if (!i.signedIn) brevity = { key: 'brevity', name: 'Brevity', state: 'locked', line: 'Sign in to enter', rank: null };
+  if (i.practice) brevity = { key: 'brevity', name: 'Brevity', state: 'locked', line: 'Practice farms are not rated', rank: null };
+  else if (!i.signedIn) brevity = { key: 'brevity', name: 'Brevity', state: 'locked', line: 'Sign in to enter', rank: null };
   else if (i.submitting) brevity = { key: 'brevity', name: 'Brevity', state: 'pending', line: 'The server is checking your program…', rank: null };
   else if (i.parTick === null && i.par !== null) brevity = { key: 'brevity', name: 'Brevity', state: 'missed', line: 'Needs par first', rank: null };
   else if (i.server?.tokens != null && i.program === 'verified') {
@@ -44,21 +51,22 @@ export const belowPar = (c: Pick<ChallengeInfo, 'par'>, parTick: number | null):
 export interface Trail { lastSale: number | null; lastGrow: number | null; error: { bot: number; line?: number; message: string } | null }
 
 /** One concrete hint for a run that missed par: a crashed bot first, else the tick where selling stopped. */
-export function hintFor(t: Trail, ticks: number, netWorth: number, par: number | null): string {
+export function hintFor(t: Trail, ticks: number, netWorth: number, par: number | null, kind?: GoalKind): string {
   if (t.error) return `Bot ${t.error.bot} stopped${t.error.line ? ` on line ${t.error.line}` : ''}: ${t.error.message}. Fix that and the day runs on.`;
   const stop = t.lastSale ?? t.lastGrow;
-  if (stop === null || stop <= 0) return 'Your coins never grew. Get one harvest sold early and build from there.';
+  if (stop === null || stop <= 0) return kind && kind !== 'wealth' && kind !== 'specialist' ? 'Your score never moved. Get something done toward the goal early and build from there.' : 'Your coins never grew. Get one harvest sold early and build from there.';
   const left = Math.max(0, ticks - stop);
-  const gap = par !== null && netWorth < par ? ` You finished ${fmt(par - netWorth)} coins short of par.` : '';
-  return `Your coins stopped growing at tick ${fmt(stop)}, ${fmt(left)} ticks before sunset.${gap} What were your bots doing after that?`;
+  const gap = par !== null && netWorth < par ? ` You finished ${amount(kind, par - netWorth)} short of par.` : '';
+  return `Your ${kind && kind !== 'wealth' && kind !== 'specialist' ? 'score' : 'coins'} stopped growing at tick ${fmt(stop)}, ${fmt(left)} ticks before sunset.${gap} What were your bots doing after that?`;
 }
 
 /** The "compared with your best" line. `prev` is the best this player scored here before this run, `top` the score to beat. */
-export function bestLine(prev: number | null, now: number, top: number | null): string {
-  const topBit = top === null ? '' : now >= top ? ' · at or above the score to beat' : ` · ${fmt(top - now)} below the score to beat`;
-  if (prev === null) return `First run on this seed${topBit}`;
-  if (now > prev) return `New personal best, ${fmt(now - prev)} above your last best (${fmt(prev)})${topBit}`;
-  if (now === prev) return `Matches your best (${fmt(prev)})${topBit}`;
-  return `${fmt(prev - now)} below your best (${fmt(prev)})${topBit}`;
+export function bestLine(prev: number | null, now: number, top: number | null, kind?: GoalKind): string {
+  const a = (n: number): string => (kind === 'festival' ? amount(kind, n) : fmt(n));
+  const topBit = top === null ? '' : now >= top ? ' · at or above the score to beat' : ` · ${a(top - now)} below the score to beat`;
+  if (prev === null) return `First run on this ${kind ? 'farm' : 'seed'}${topBit}`;
+  if (now > prev) return `New personal best, ${a(now - prev)} above your last best (${a(prev)})${topBit}`;
+  if (now === prev) return `Matches your best (${a(prev)})${topBit}`;
+  return `${a(prev - now)} below your best (${a(prev)})${topBit}`;
 }
 
