@@ -4,15 +4,19 @@ import { createWorld, hashWorld, netWorth, replayChunk, BASE_RULES_VERSION } fro
 import type { LogEntry } from '@tendril/sim/src/index.ts';
 import { createRun } from './index.ts';
 import { login, me, parseSubmitOptions, play, submit } from './arena-cli.ts';
-const [command, file, ...options] = process.argv.slice(2);
+const raw = process.argv.slice(2);
+// `--practice` and `--farm <seed>` apply to daily and challenge; they are taken out so positional arguments keep their places.
+const farmAt = raw.indexOf('--farm');
+const playOptions = { practice: raw.includes('--practice'), farm: farmAt < 0 ? undefined : Number(raw[farmAt + 1]) };
+const [command, file, ...options] = raw.filter((a, i) => a !== '--practice' && !(farmAt >= 0 && (i === farmAt || i === farmAt + 1)));
 try {
   if (command === 'login') await login();
   else if (command === 'me') await me();
   else if (command === 'submit') await submit(parseSubmitOptions([file, ...options].filter((a): a is string => a !== undefined)));
-  else if (command === 'daily') await play('today', file);
-  else if (command === 'challenge') { if (!file) throw new Error('Usage: tendril challenge <id> [file.sprout]'); await play(file, options[0]); }
+  else if (command === 'daily') await play('today', file, playOptions);
+  else if (command === 'challenge') { if (!file) throw new Error('Usage: tendril challenge <id> [file.sprout]'); await play(file, options[0], playOptions); }
   else {
-  if (!file || !['run', 'replay'].includes(command ?? '')) throw new Error('Usage: tendril run file.sprout --seed 42 --ticks 3000 [--log file.json] | replay file.json | login | me | daily [file] | challenge <id> [file] | submit [--publish] [--model <name>]');
+  if (!file || !['run', 'replay'].includes(command ?? '')) throw new Error('Usage: tendril run file.sprout --seed 42 --ticks 3000 [--log file.json] | replay file.json | login | me | daily [file] [--practice] [--farm <seed>] | challenge <id> [file] [--practice] [--farm <seed>] | submit [--publish] [--model <name>]');
   const option = (name: string, fallback: string): string => { const i = options.indexOf(name); return i < 0 ? fallback : options[i + 1] ?? fallback; };
   if (command === 'run') {
     const seed = Number(option('--seed', '42')), ticks = Number(option('--ticks', '3000'));
