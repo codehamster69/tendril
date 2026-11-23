@@ -16,8 +16,8 @@ importers:
         specifier: ^10.0.1
         version: 10.0.1(eslint@10.15.0(jiti@2.7.0))
       '@vercel/node':
-        specifier: ^30.0.0
-        version: 30.0.0(@emnapi/core@2.0.0-beta.2)(@emnapi/runtime@2.0.0-beta.2)(@vercel/build-utils@15.3.0)(rollup@4.68.2)
+        specifier: ^32.0.0
+        version: 32.0.0(@emnapi/core@2.0.0-beta.2)(@emnapi/runtime@2.0.0-beta.2)(@vercel/build-utils@15.5.0)(rollup@4.68.2)
       esbuild:
         specifier: ^0.28.2
         version: 0.28.2
@@ -1992,6 +1992,9 @@ packages:
   '@tybys/wasm-util@0.10.4':
     resolution: {integrity: sha512-W3c4gRigFS0T/Ma4qIYF3GDAc5AQdHb1yL5znJT1Zv1YaD9Kitx656wBjvr19qbiosmZT8lWDM5BEMynUqX65A==}
 
+  '@tybys/wasm-util@0.10.5':
+    resolution: {integrity: sha512-dOGOPxlaNV+G046mZzN+9C0dAcQZeSKcXiVaM0TYy/LM4ttTmgSBDxYfovcYI8Em3+eAbiAYpvWLOv8+ZVRJKA==}
+
   '@types/cacheable-request@6.0.3':
     resolution: {integrity: sha512-IQ3EbTzGxIigb1I3qPZc1rWJnH0BmSKv5QYTalEwweFvyBDLSAe24zP0le/hyi7ecGfZVlIVAg4BZqb8WBwKqw==}
 
@@ -2138,8 +2141,8 @@ packages:
   '@ungap/structured-clone@1.4.0':
     resolution: {integrity: sha512-1mEZtMKPM09vDmQt5y7YvmN2+DFTP7Tg0EWXdic8/C6VRnpb33e4ghisCIE3WZjsE2N8mf+QV1Zqh7ZFYLWInQ==}
 
-  '@vercel/build-utils@15.3.0':
-    resolution: {integrity: sha512-gXR/D6yFovhZd/e3t+EsVKgOdQSNS7R7s+fuvcvEqTvd8mxcw2//UTG7vPM65zfHl1vNDCafNlPQ4vGDa/QoLA==}
+  '@vercel/build-utils@15.5.0':
+    resolution: {integrity: sha512-qUrRU29DrO96sGBtgp6kp6EK5sq49ZsumNlnXeWFZ+KQ9uZMxiyAgzLLvzPpT37V7pjHne1JPbCc/KG3WMHpsw==}
 
   '@vercel/error-utils@2.2.1':
     resolution: {integrity: sha512-9DhP8jP7raLML4hGsBemxX5fXuQnu5xxMV+HjGygGbzEmVK/+KyJ3QP2Cw7PdF0uXdb9N0Qa4c3tRGH34ZX6vw==}
@@ -2149,10 +2152,10 @@ packages:
     engines: {node: '>=20'}
     hasBin: true
 
-  '@vercel/node@30.0.0':
-    resolution: {integrity: sha512-zaQQa4h34HgtV1gBSTs49C9s3J4ZhjhhSESlMcnQf6JlOIC2+qHVgHB1vgqgaBCkpyxI64PObTlSPByxTK+wlA==}
+  '@vercel/node@32.0.0':
+    resolution: {integrity: sha512-IHnWSpzGWQOkF75GBTtNei3kp6/I28KHQy3j2pWvFwN/5oI4c4hDEh9tyfa4Xc0EGRECdFIRSPwlZTEb/BDdzw==}
     peerDependencies:
-      '@vercel/build-utils': 15.3.0
+      '@vercel/build-utils': 15.5.0
 
   '@vercel/static-config@3.4.4':
     resolution: {integrity: sha512-WppaPyEKQhO8qo5gVee3mSo1QSCgDZaUcUDHrqICSlt90oYeC/SHTmKCPWY1x1NB9hU+kR2oDzJwAeRKKv5NIw==}
@@ -6167,7 +6170,7 @@ snapshots:
     dependencies:
       '@emnapi/core': 2.0.0-beta.2
       '@emnapi/runtime': 2.0.0-beta.2
-      '@tybys/wasm-util': 0.10.4
+      '@tybys/wasm-util': 0.10.5
     optional: true
 
   '@neon-rs/load@0.0.4': {}
@@ -6482,6 +6485,11 @@ snapshots:
     dependencies:
       tslib: 2.9.1
 
+  '@tybys/wasm-util@0.10.5':
+    dependencies:
+      tslib: 2.9.1
+    optional: true
+
   '@types/cacheable-request@6.0.3':
     dependencies:
       '@types/http-cache-semantics': 4.2.0
@@ -6675,7 +6683,7 @@ snapshots:
 
   '@ungap/structured-clone@1.4.0': {}
 
-  '@vercel/build-utils@15.3.0':
+  '@vercel/build-utils@15.5.0':
     dependencies:
       cjs-module-lexer: 1.2.3
       es-module-lexer: 1.5.0
@@ -6701,13 +6709,13 @@ snapshots:
       - rollup
       - supports-color
 
-  '@vercel/node@30.0.0(@emnapi/core@2.0.0-beta.2)(@emnapi/runtime@2.0.0-beta.2)(@vercel/build-utils@15.3.0)(rollup@4.68.2)':
+  '@vercel/node@32.0.0(@emnapi/core@2.0.0-beta.2)(@emnapi/runtime@2.0.0-beta.2)(@vercel/build-utils@15.5.0)(rollup@4.68.2)':
     dependencies:
       '@edge-runtime/node-utils': 2.3.0
       '@edge-runtime/primitives': 4.1.0
       '@edge-runtime/vm': 3.2.0
       '@types/node': 20.11.0
-      '@vercel/build-utils': 15.3.0
+      '@vercel/build-utils': 15.5.0
       '@vercel/error-utils': 2.2.1
       '@vercel/nft': 1.10.0(rollup@4.68.2)
       '@vercel/static-config': 3.4.4(@emnapi/core@2.0.0-beta.2)(@emnapi/runtime@2.0.0-beta.2)
@@ -7727,7 +7735,6 @@ snapshots:
       '@esbuild/win32-arm64': 0.28.2
       '@esbuild/win32-ia32': 0.28.2
       '@esbuild/win32-x64': 0.28.2
-    optional: true
 
   escalade@3.2.0: {}
 

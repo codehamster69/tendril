@@ -35,7 +35,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
-    "@vercel/node": "^30.0.0",
+    "@vercel/node": "^32.0.0",
     "esbuild": "^0.28.2",
     "eslint": "^10.15.0",
     "globals": "^17.14.0",
