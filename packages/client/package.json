@@ -32,7 +32,7 @@
     "@tendril/lang": "workspace:*",
     "@tendril/sim": "workspace:*",
     "@types/three": "^0.187.0",
-    "electron": "^45.3.2",
+    "electron": "^45.4.1",
     "electron-builder": "^26.18.0",
     "three": "^0.187.0",
     "typescript": "^5.9.3",

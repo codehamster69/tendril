@@ -12,7 +12,7 @@
   },
   "dependencies": {
     "@astrojs/mdx": "^4.0.0",
-    "@astrojs/sitemap": "^3.7.5",
+    "@astrojs/sitemap": "^3.7.6",
     "@tendril/lang": "workspace:*",
     "@tendril/sim": "workspace:*",
     "astro": "^5.0.0"
