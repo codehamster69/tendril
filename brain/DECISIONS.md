@@ -169,3 +169,6 @@ Live goal progress comes from the sim worker (`tendril:goal`), with `World.brief
 - **Decision:** `BRIEF_EPOCH` is `2026-11-18` (Rohan set the launch date to today, 18 Nov his time). Dailies dated on or after it, and seasons starting on or after it, draw a brief (setup version 2). Earlier rows and every row already stored keep their version.
 - **Why:** the choice is stored on the row when it is first created, so the switch changes nothing already running. `CHALLENGE_SALT` is set in Vercel; without it a brief day answers 503 instead of opening.
 - **Consequences:** server tests that use a real date pin `setupVersion` to the old version where they test the pre-brief world. To roll back, set `BRIEF_EPOCH` back to a far date; rows already created as briefs keep working.
+
+## D-H7 Welcome back card from the catch-up log (2026-11-24)
+The away card counts sales and bot activity from the action log that catch-up already produces, instead of a second replay or new sim counters. Rules and goldens are untouched. Streak comes from the existing player page API; no email or push (they would need accounts or keys). Details in `brain/notes/H7.md`.
