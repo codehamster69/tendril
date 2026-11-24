@@ -169,3 +169,8 @@ Live goal progress comes from the sim worker (`tendril:goal`), with `World.brief
 - **Decision:** `BRIEF_EPOCH` is `2026-11-18` (Rohan set the launch date to today, 18 Nov his time). Dailies dated on or after it, and seasons starting on or after it, draw a brief (setup version 2). Earlier rows and every row already stored keep their version.
 - **Why:** the choice is stored on the row when it is first created, so the switch changes nothing already running. `CHALLENGE_SALT` is set in Vercel; without it a brief day answers 503 instead of opening.
 - **Consequences:** server tests that use a real date pin `setupVersion` to the old version where they test the pre-brief world. To roll back, set `BRIEF_EPOCH` back to a far date; rows already created as briefs keep working.
+
+## D-H2 (2026-11-24) Live code: edits equip while the farm runs (H2)
+- **Decision:** while a farm runs, an edit that parses and changes more than comments or spacing is compiled onto the bots 600 ms after typing stops; the farm is kept and bots restart from the top. Setting "Apply code as I type" (default on). Code that does not parse never reaches the worker; the last working program keeps running with one chip and one console line.
+- **Why:** hot reload makes trying ideas free, and a typo costs nothing. Parsing on the main thread avoids halting and saving the worker on every half-typed line.
+- **Consequences:** on a non-practice challenge, code swapped after tick 0 makes the run unverifiable as one program, so the result card says so and offers "Re-run my final code from the start". No rule, server or epoch change. Specs that edit a running farm and expect no effect must turn the setting off.

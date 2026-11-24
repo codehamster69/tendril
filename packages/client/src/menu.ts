@@ -86,7 +86,7 @@ export function mountMenu(ctx: MenuContext): MenuApi {
   tool('debugger', 'Debugger', 'Variables and breakpoints', () => ctx.openDebugger());
   tool('reference', 'Reference', 'Every Sprout command', () => q('#btn-reference')?.click());
   tool('account', 'Account', 'Sign in or out', () => byId('btn-account')?.click());
-  tool('settings', 'Settings', 'Sound, graphics, motion, keys', () => showSettings());
+  tool('settings', 'Settings', 'Sound, graphics, motion, code, keys', () => showSettings());
   if (isDesktop) tool('quit', 'Quit', 'Close Tendril', () => (window as unknown as { tendrilDesktop?: { quit?(): void } }).tendrilDesktop?.quit?.());
 
   const links = el('div', { class: 'menu-links' });
