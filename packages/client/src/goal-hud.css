@@ -15,6 +15,12 @@
 .goal-hud .gh-have { font-variant-numeric: tabular-nums; color: var(--hk-dim); font-size: 12px; }
 .goal-hud .gh-quota[data-done="true"] .gh-fill { background: var(--hk-leaf); }
 .goal-hud .gh-quota[data-done="true"] .gh-have { color: var(--hk-leaf); }
+/* H1: the machine's score as a tick on the bar, and its name under the par line. */
+.goal-hud .gh-track { position: relative; display: block; }
+.goal-hud .gh-track[hidden], .goal-hud .gh-marker[hidden], .goal-hud .gh-machine[hidden] { display: none; }
+.goal-hud .gh-marker { position: absolute; top: -3px; bottom: -3px; width: 2px; margin-left: -1px; border-radius: 1px; background: var(--hk-text); box-shadow: 0 0 0 1px rgba(0, 0, 0, .45); }
+.goal-hud .gh-machine { color: var(--hk-dim); font-size: 12px; }
+.goal-hud .gh-machine[data-passed="true"] { color: var(--hk-leaf); }
 body.start-open .goal-hud, body.menu-open .goal-hud { visibility: hidden; }
 @media (max-width: 720px) { .goal-hud { z-index: 30; bottom: 120px; width: min(220px, calc(100vw - 28px)); padding: 8px 10px; } .goal-hud .gh-score { font-size: 20px; } }
 @media (prefers-reduced-motion: reduce) { .goal-hud .gh-fill { transition: none; } }
