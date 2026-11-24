@@ -35,7 +35,9 @@ export interface Setup {
   /** The challenge goal; kept on the world for Sprout to read, never changes a rule by itself. */
   goal?: Goal;
 }
-export type GoalKind = 'wealth' | 'festival' | 'specialist' | 'orders' | 'inherited';
+export type GoalKind = 'wealth' | 'festival' | 'specialist' | 'orders' | 'inherited' | 'picture';
+/** Crop Circles (SIM_SPEC section 7): a pixel picture `w` x `h` laid on the tiles from the barn tile (0, 0), row by row. `cells` has `w * h` characters '0'..'8' (grass, soil, carrot..apple, barn). */
+export interface Picture { id: string; w: number; h: number; title: string; cells: string }
 export interface Goal {
   kind: GoalKind;
   /** Tick budget of the challenge. */
@@ -44,6 +46,8 @@ export interface Goal {
   quotas?: number[];
   /** specialist: item ids whose price is raised / cut. */
   favoured?: number; shunned?: number;
+  /** picture: the picture to grow (setup version 3 only). */
+  picture?: Picture;
 }
 /** What a brief keeps on the world after creation (not hashed; only its effects are). Absent on every other world. */
 export interface BriefState {
