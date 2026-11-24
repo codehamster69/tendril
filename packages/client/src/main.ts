@@ -35,12 +35,21 @@ import { stressConfig, stressParam } from './stress-farm';
 import type { Mode } from './clock';
 import type { Scenario } from './sim-protocol';
 
+/** True once per browser: nothing saved, never visited, not signed in. Storage that cannot be read counts as a returning visit. */
+function isFirstVisit(): boolean {
+  try {
+    if (localStorage.getItem('tendril.visited.v1') || localStorage.getItem('tendril.sprout.v1.live') || signedInHint()) return false;
+    localStorage.setItem('tendril.visited.v1', '1');
+    return true;
+  } catch { return false; }
+}
 initSettings();
 wireSiteLinks();
 mountJoinDuel();
 mountSound();
 const query = new URLSearchParams(location.search);
-const requested = query.get('mode');
+// A first-ever visit with no mode in the link lands on today's farm and its start card, not an empty Endless farm.
+const requested = query.get('mode') ?? (isFirstVisit() ? 'daily' : null);
 // ?mode=challenge&id=<challenge id> plays any challenge; it shares the daily sim mode.
 const stressName = stressParam(query);
 const stress = stressName ? stressConfig(stressName) : null;

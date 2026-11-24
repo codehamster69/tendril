@@ -169,3 +169,8 @@ Live goal progress comes from the sim worker (`tendril:goal`), with `World.brief
 - **Decision:** `BRIEF_EPOCH` is `2026-11-18` (Rohan set the launch date to today, 18 Nov his time). Dailies dated on or after it, and seasons starting on or after it, draw a brief (setup version 2). Earlier rows and every row already stored keep their version.
 - **Why:** the choice is stored on the row when it is first created, so the switch changes nothing already running. `CHALLENGE_SALT` is set in Vercel; without it a brief day answers 503 instead of opening.
 - **Consequences:** server tests that use a real date pin `setupVersion` to the old version where they test the pre-brief world. To roll back, set `BRIEF_EPOCH` back to a far date; rows already created as briefs keep working.
+
+## D-H6 (2026-11-24) Navigation and first look
+- **Decision:** one site nav list (`packages/site/src/data/sitenav.ts`): Play, Today, Leaderboard, Learn, Community. Entries with `when` (Gallery, Seed packets) appear only once their page exists. A first-ever visit to the game with no `?mode=` opens today's farm and its start card; the Endless first-run tour now starts the first time a player picks Endless. The menu gives each mode a plain-words promise, `?` opens a shortcuts panel, and a dismissable "Things to try" list (`packages/client/src/try-it.ts`) points at unused features.
+- **Why:** Rohan asked for everything to be understandable at first look and easy to explore. A new player used to land on an empty Endless farm.
+- **Consequences:** e2e specs that opened `/` and expected Endless now open `/?mode=live`. New features add one line to `TRY_IT` or `sitenav.ts`. No sim, server or style changes.

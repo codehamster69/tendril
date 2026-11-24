@@ -1,4 +1,5 @@
 ---
+import NextStep from '../components/NextStep.astro';
 import Base from '../layouts/Base.astro';
 ---
 <Base title="Leaderboard" description="Today's Tendril farm, this week's season, the endless farm and the rating ladder: boards where every score was proven by replaying the moves on the server.">
@@ -92,6 +93,7 @@ import Base from '../layouts/Base.astro';
       </figure>
     </section>
   </section>
+  <NextStep text="Want a place on this board? Today's farm takes about ten minutes." links={[{ href: '/play/?mode=daily', label: "Play today's farm", primary: true }, { href: '/docs/sprout/', label: 'Learn Sprout' }]} />
 </Base>
 
 <script>
