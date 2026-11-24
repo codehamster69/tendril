@@ -9,6 +9,7 @@
   "rewrites": [
     { "source": "/api/(.*)", "destination": "/api" },
     { "source": "/r/:id", "destination": "/api" },
+    { "source": "/packets/:id", "destination": "/packets/view/" },
     { "source": "/daily", "destination": "/api" },
     { "source": "/daily/:n", "destination": "/api" },
     { "source": "/sitemap-daily.xml", "destination": "/api" }

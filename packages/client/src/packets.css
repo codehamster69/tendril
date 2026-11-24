@@ -1,0 +1,36 @@
+/* Seed packets (H8). Tokens and base classes come from hud-kit.css. */
+.pk-actions { display: flex; flex-wrap: wrap; gap: var(--hk-s2); padding: var(--hk-s2) var(--hk-s3); border-bottom: 1px solid var(--hk-line); }
+.pk-actions .hk-button { padding: .3rem .7rem; font-size: .8rem; }
+#editor { position: relative; }
+.pk-empty { position: absolute; inset: auto var(--hk-s4) var(--hk-s4) var(--hk-s4); z-index: 5; display: grid; gap: var(--hk-s2); justify-items: start; padding: var(--hk-s3) var(--hk-s4);
+  background: var(--hk-glass-strong); border: 1px solid var(--hk-line); border-radius: var(--hk-r-md); font: 500 .9rem/1.4 var(--hk-body); color: var(--hk-text); }
+.pk-empty[hidden] { display: none; }
+.pk-empty p { margin: 0; color: var(--hk-dim); }
+.pk-row-buttons { display: flex; flex-wrap: wrap; gap: var(--hk-s2); }
+.pk-dialog { width: min(40rem, 94vw); max-height: 85vh; overflow: auto; color: var(--hk-text); background: var(--hk-glass-strong); border: 1px solid var(--hk-line); border-radius: var(--hk-r-lg);
+  padding: var(--hk-s4); font-family: var(--hk-body); box-shadow: var(--hk-shadow); }
+.pk-dialog::backdrop { background: rgba(4, 16, 18, .7); }
+.pk-dialog > header { display: flex; justify-content: space-between; align-items: flex-start; gap: var(--hk-s3); margin-bottom: var(--hk-s3); }
+.pk-dialog h2 { margin: 0; font: 700 1.3rem/1.1 var(--hk-display); color: var(--hk-lantern); }
+.pk-lede, .pk-note, .pk-status { margin: 0 0 var(--hk-s3); color: var(--hk-dim); font: 500 .88rem/1.45 var(--hk-body); }
+.pk-status:empty { display: none; }
+.pk-status[data-tone="bad"] { color: var(--hk-bad); }
+.pk-tabs { display: flex; flex-wrap: wrap; gap: var(--hk-s2); align-items: center; margin-bottom: var(--hk-s3); }
+.pk-tabs [aria-pressed="true"] { border-color: var(--hk-lantern); color: var(--hk-lantern); }
+.pk-tabs select { margin-left: auto; }
+.pk-list { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--hk-s2); }
+.pk-item { display: grid; gap: var(--hk-s1); padding: var(--hk-s3); border: 1px solid var(--hk-line); border-radius: var(--hk-r-md); }
+.pk-item strong { font: 700 1rem var(--hk-display); }
+.pk-meta { color: var(--hk-dim); font: 500 .78rem var(--hk-mono); }
+.pk-item p { margin: 0; font: 500 .88rem/1.4 var(--hk-body); overflow-wrap: anywhere; }
+.pk-form { display: grid; gap: var(--hk-s3); }
+.pk-form label { display: grid; gap: var(--hk-s1); font: 600 .8rem var(--hk-mono); color: var(--hk-dim); }
+.pk-form input[type="text"], .pk-form textarea { font: 500 .95rem var(--hk-body); color: var(--hk-text); background: var(--hk-code-bg); border: 1px solid var(--hk-line); border-radius: var(--hk-r-sm); padding: .5rem .6rem; }
+.pk-tagpick { display: flex; flex-wrap: wrap; gap: var(--hk-s2); }
+.pk-tagpick label { display: inline-flex; grid: none; align-items: center; gap: .3rem; font: 500 .8rem var(--hk-body); }
+.pk-link { display: flex; gap: var(--hk-s2); }
+.pk-link input { flex: 1; min-width: 0; font: 500 .85rem var(--hk-mono); color: var(--hk-text); background: var(--hk-code-bg); border: 1px solid var(--hk-line); border-radius: var(--hk-r-sm); padding: .45rem .6rem; }
+@media (max-width: 720px) { .pk-empty { inset-inline: var(--hk-s2); } }
+/* The first-run tour card gets a third button; let the row wrap instead of squeezing the labels. */
+.fr-card .fr-actions { flex-wrap: wrap; }
+.fr-card .fr-actions .hk-button { white-space: nowrap; }

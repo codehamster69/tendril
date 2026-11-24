@@ -1,3 +1,4 @@
+import { recordEntryProgram } from './program-hash.ts';
 import { createHash, randomBytes } from 'node:crypto';
 import { BASE_RULES_VERSION, challengeSetup, createWorld, dailyNumber, dailyRulesVersion, dailySeed, DAILY_PAR, DAILY_TICKS, IllegalAction, parFromReference, replayWithGoal, setupVersionFor, marketActive, marketAllowed, seasonRulesVersion, SEASON_TICKS, SETUP_LEGACY, SETUP_VERSION, SUPPORTED_RULES_VERSIONS } from '@tendril/sim/src/index.ts';
 import type { MarketTable } from '@tendril/sim/src/index.ts';
@@ -488,12 +489,14 @@ export async function submitEntry(db: Db, userId: string, c: ChallengeRow, input
         // Same log, now with its program: add the verified source to the existing entry instead of refusing it.
         entryId = mineAlready[0]!.id;
         await tx.execute('UPDATE entries SET tokens = ?, source = ?, source_public = ?, source_verified = 1, author_kind = ?, model = ? WHERE id = ?', [tokens, input.source, input.sourcePublic ? 1 : 0, input.authorKind, input.model, entryId]);
+        if (input.source !== null) await recordEntryProgram(tx, entryId, input.source);
       } else {
         await tx.execute(
           `INSERT INTO entries (id, challenge_id, user_id, net_worth, par_tick, tokens, actions, actions_count, log_hash, mosaic, source, source_public, source_verified, author_kind, model, created_at, sold, score)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [id, c.id, userId, replayed.netWorth, replayed.parTick, tokens, JSON.stringify(actions), actions.length, hash, replayed.mosaic, tokens === null ? null : input.source, tokens === null ? 0 : input.sourcePublic ? 1 : 0, tokens === null ? 0 : 1, input.authorKind, input.model, now, soldColumn(replayed.sold), replayed.score],
         );
+        if (tokens !== null && input.source !== null) await recordEntryProgram(tx, id, input.source);
       }
       const mine = await tx.query<EntryRow>('SELECT * FROM entries WHERE challenge_id = ? AND user_id = ?', [c.id, userId]);
       // Players per medal: this player joins a medal's board the first time they hold an entry that qualifies for it.

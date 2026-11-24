@@ -15,6 +15,7 @@ function healthySite(overrides = {}) {
     if (url.endsWith('/api/daily')) return json({ date: DATE, seed: dailySeed(DATE), ticks: 1000, rulesVersion: RULES_VERSION });
     if (url.endsWith('/play/')) return new Response('<html>game</html>');
     if (url.endsWith('/api/budget')) return json({}, 404);
+    if (url.includes('/api/packets')) return json({ sort: 'popular', tag: null, packets: [] });
     if (url.endsWith('/')) return new Response('<html>home</html>');
     throw new Error(`unexpected ${url}`);
   };
@@ -25,6 +26,7 @@ test('healthy site passes every check and canary is skipped without a token', as
   const results = await runChecks(deps(healthySite()));
   assert.equal(isFailing(results), false);
   assert.equal(results.find((r) => r.name === 'canary verify').skipped, true);
+  assert.equal(results.find((r) => r.name === 'seed packets').ok, true);
   assert.equal(results.find((r) => r.name === 'local replay of known-good log').ok, true);
 });
 
