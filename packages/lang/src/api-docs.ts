@@ -420,5 +420,10 @@ export const KEYWORD_DOCS: Record<string, string> = {
   false: 'say false',
   none: 'say none\nsay scan_at(99, 99) is none',
   set: 'set x to 1\nset x to x + 1\nsay x',
+  tend: 'tend every tile:\n    when ripe: harvest\n    when empty: plant carrot',
+  when: 'tend every tile:\n    when empty and dry: water\n    when ripe: harvest',
+  every: 'tend every tile:\n    when empty: till',
+  unless: 'tend every tile:\n    when empty: plant carrot unless tired, else wheat',
+  region: 'tend region 0, 0 to 3, 3:\n    when empty: till',
   global: 'count = 0\ndefine bump():\n    global count\n    count = count + 1\nbump()\nsay count',
 };
