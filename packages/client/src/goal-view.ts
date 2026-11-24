@@ -6,9 +6,9 @@ const fmt = (n: number): string => n.toLocaleString('en-US');
 const name = (i: number): string => ITEMS[i]?.name ?? '?';
 
 /** Short name of a goal, as the start card and the result screen call it. */
-export const GOAL_NAMES: Record<GoalKind, string> = { wealth: 'Wealth', festival: 'Harvest festival', specialist: 'Specialist prices', orders: 'Orders only', inherited: 'Inherited farm' };
+export const GOAL_NAMES: Record<GoalKind, string> = { wealth: 'Wealth', festival: 'Harvest festival', specialist: 'Specialist prices', orders: 'Orders only', inherited: 'Inherited farm', picture: 'Crop circles' };
 /** What the first medal is called for each goal (it is the rated "Wealth" discipline underneath). */
-export const SCORE_NAMES: Record<GoalKind, string> = { wealth: 'Wealth', festival: 'Festival', specialist: 'Wealth', orders: 'Orders', inherited: 'Growth' };
+export const SCORE_NAMES: Record<GoalKind, string> = { wealth: 'Wealth', festival: 'Festival', specialist: 'Wealth', orders: 'Orders', inherited: 'Growth', picture: 'Picture' };
 
 /** A score as the number and the unit that follow it. Festival scores are permille of the quotas (0..1000), shown as a percent. */
 export function scoreParts(kind: GoalKind, n: number): { num: string; unit: string } {
