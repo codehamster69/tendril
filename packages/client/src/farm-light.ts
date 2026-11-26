@@ -15,15 +15,16 @@ export type Weather = 'clear' | 'rain' | 'frost';
 interface PresetDef {
   sun: number; sunI: number; dir: [number, number, number];
   sky: number; ground: number; hemiI: number; exposure: number;
-  top: string; bottom: string; fog: number; glow: number;
+  /** Sky in three calm stops, from the Blender target (renders/farm_scene_v2.py, TIMES): below the horizon, at it, at the zenith. Fog takes the horizon colour. */
+  low: number; hor: number; zen: number; glow: number;
 }
 const SUN_K = 2.6;
 const HEMI_K = 2.4;
 const PRESETS: Record<FixedPreset, PresetDef> = {
-  dawn: { sun: 0xffb48a, sunI: 1.25, dir: [-0.9, 0.42, 0.55], sky: 0xbcc8ff, ground: 0x8a7078, hemiI: 0.62, exposure: 0.95, top: '#2b4a75', bottom: '#f0b08e', fog: 0xd9a68c, glow: 0.7 },
-  noon: { sun: 0xfff3dc, sunI: 1.15, dir: [-0.35, 1, 0.45], sky: 0xcfe8ff, ground: 0x8aa070, hemiI: 0.62, exposure: 0.95, top: '#5ea9d0', bottom: '#dff0e8', fog: 0xcfe4e4, glow: 0.2 },
-  golden: { sun: 0xffa65a, sunI: 1.4, dir: [-1, 0.55, 0.5], sky: 0xb7c4ee, ground: 0x8a7676, hemiI: 0.7, exposure: 1.0, top: '#1f3260', bottom: '#f2a068', fog: 0xd09270, glow: 0.65 },
-  night: { sun: 0x8fb0ff, sunI: 0.9, dir: [-0.5, 0.9, 0.4], sky: 0x5a78b8, ground: 0x2a3d52, hemiI: 0.95, exposure: 1.2, top: '#050b1a', bottom: '#183550', fog: 0x0e2234, glow: 1.5 },
+  dawn: { sun: 0xffc9a0, sunI: 1.25, dir: [-0.9, 0.34, 0.55], sky: 0xbcc8ff, ground: 0x8a7078, hemiI: 0.62, exposure: 0.95, low: 0x8d9aa6, hor: 0xe6cdb8, zen: 0x93a9bf, glow: 0.7 },
+  noon: { sun: 0xfff1de, sunI: 1.15, dir: [-0.35, 1, 0.45], sky: 0xcfe8ff, ground: 0x8aa070, hemiI: 0.62, exposure: 0.95, low: 0x8fa3ae, hor: 0xd9dbd3, zen: 0x9fb6c4, glow: 0.2 },
+  golden: { sun: 0xffb07a, sunI: 1.4, dir: [-1, 0.36, 0.5], sky: 0xb7c4ee, ground: 0x8a7676, hemiI: 0.7, exposure: 1.0, low: 0x5e6678, hor: 0xb8a093, zen: 0x5d6b82, glow: 0.65 },
+  night: { sun: 0xa9bde6, sunI: 0.9, dir: [-0.5, 0.9, 0.4], sky: 0x5a78b8, ground: 0x2a3d52, hemiI: 0.95, exposure: 1.2, low: 0x0c111c, hor: 0x26324a, zen: 0x0f1624, glow: 1.5 },
 };
 
 /** Weather tint applied on top of a preset: colour mix target + strength, light scales, fog tightening. */
@@ -39,7 +40,7 @@ const mixDef = (a: PresetDef, b: PresetDef, t: number): PresetDef => {
   return {
     sun: mixC(a.sun, b.sun, t).getHex(), sunI: n(a.sunI, b.sunI), dir: [n(a.dir[0], b.dir[0]), n(a.dir[1], b.dir[1]), n(a.dir[2], b.dir[2])],
     sky: mixC(a.sky, b.sky, t).getHex(), ground: mixC(a.ground, b.ground, t).getHex(), hemiI: n(a.hemiI, b.hemiI), exposure: n(a.exposure, b.exposure),
-    top: `#${mixC(a.top, b.top, t).getHexString()}`, bottom: `#${mixC(a.bottom, b.bottom, t).getHexString()}`, fog: mixC(a.fog, b.fog, t).getHex(), glow: n(a.glow, b.glow),
+    low: mixC(a.low, b.low, t).getHex(), hor: mixC(a.hor, b.hor, t).getHex(), zen: mixC(a.zen, b.zen, t).getHex(), glow: n(a.glow, b.glow),
   };
 };
 /** Sunset is dusk, not full night: the end of a run should still be readable. */
@@ -60,11 +61,11 @@ const SHADOW_ON_DISTANCE = 120;
 const smooth = (a: number, b: number, x: number): number => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 
 interface LightState {
-  sun: THREE.Color; sky: THREE.Color; ground: THREE.Color; top: THREE.Color; bottom: THREE.Color; fog: THREE.Color;
+  sun: THREE.Color; sky: THREE.Color; ground: THREE.Color; low: THREE.Color; hor: THREE.Color; zen: THREE.Color;
   dir: THREE.Vector3; sunI: number; hemiI: number; exposure: number; glow: number; fogScale: number;
 }
 const makeState = (): LightState => ({
-  sun: new THREE.Color(), sky: new THREE.Color(), ground: new THREE.Color(), top: new THREE.Color(), bottom: new THREE.Color(), fog: new THREE.Color(),
+  sun: new THREE.Color(), sky: new THREE.Color(), ground: new THREE.Color(), low: new THREE.Color(), hor: new THREE.Color(), zen: new THREE.Color(),
   dir: new THREE.Vector3(0, 1, 0), sunI: 1, hemiI: 1, exposure: 1, glow: 1, fogScale: 1,
 });
 
@@ -72,9 +73,8 @@ export class FarmLight {
   private sun = new THREE.DirectionalLight(0xffffff, 1);
   private hemi = new THREE.HemisphereLight(0xffffff, 0x444444, 1);
   private fogObj = new THREE.Fog(0x000000, 50, 200);
-  private skyCanvas = document.createElement('canvas');
-  private skyCtx: CanvasRenderingContext2D | null;
-  private skyTex: THREE.CanvasTexture;
+  private dome: THREE.Mesh;
+  private domeMat: THREE.ShaderMaterial;
   private cur = makeState();
   private goal = makeState();
   private _preset: LightPreset = 'golden';
@@ -109,14 +109,29 @@ export class FarmLight {
     this.sun.shadow.normalBias = 0.04;
     this.sun.shadow.camera.near = 1;
     this.sun.shadow.camera.far = 160;
-    this.skyCanvas.width = 2;
-    this.skyCanvas.height = 256;
-    this.skyCtx = this.skyCanvas.getContext('2d');
-    this.skyTex = new THREE.CanvasTexture(this.skyCanvas);
-    this.skyTex.colorSpace = THREE.SRGBColorSpace;
-    scene.add(this.sun, this.sun.target, this.hemi);
+    // The sky is a dome that follows the camera, shaded by view direction: no screen-space canvas gradient.
+    this.domeMat = new THREE.ShaderMaterial({
+      uniforms: { uLow: { value: new THREE.Color() }, uHor: { value: new THREE.Color() }, uZen: { value: new THREE.Color() } },
+      vertexShader: 'varying vec3 vDir;\nvoid main() { vDir = position; gl_Position = projectionMatrix * viewMatrix * modelMatrix * vec4(position, 1.0); }',
+      fragmentShader: `uniform vec3 uLow; uniform vec3 uHor; uniform vec3 uZen; varying vec3 vDir;
+void main() {
+  float y = normalize(vDir).y;
+  vec3 c = y > 0.0 ? mix(uHor, uZen, pow(clamp(y * 1.6, 0.0, 1.0), 0.7)) : mix(uHor, uLow, pow(clamp(-y * 3.0, 0.0, 1.0), 0.6));
+  gl_FragColor = vec4(c, 1.0);
+  #include <colorspace_fragment>
+}`,
+      side: THREE.BackSide, depthTest: false, depthWrite: false, fog: false, toneMapped: false,
+    });
+    this.dome = new THREE.Mesh(new THREE.SphereGeometry(1, 24, 16), this.domeMat);
+    this.dome.renderOrder = -1000; this.dome.frustumCulled = false;
+    this.dome.onBeforeRender = (_r, _s, camera) => {
+      this.dome.position.copy(camera.position);
+      const cam = camera as THREE.PerspectiveCamera;
+      this.dome.scale.setScalar((cam.near + cam.far) * 0.45);
+      this.dome.updateMatrixWorld();
+    };
+    scene.add(this.sun, this.sun.target, this.hemi, this.dome);
     scene.fog = this.fogObj;
-    scene.background = this.skyTex;
     this.setPreset('day', true);
   }
 
@@ -183,9 +198,9 @@ export class FarmLight {
     tint(g.sun, p.sun, 0.8);
     tint(g.sky, p.sky);
     tint(g.ground, p.ground);
-    tint(g.top, p.top);
-    tint(g.bottom, p.bottom);
-    tint(g.fog, p.fog);
+    tint(g.low, p.low);
+    tint(g.hor, p.hor);
+    tint(g.zen, p.zen);
     g.dir.set(...p.dir).normalize();
     g.sunI = p.sunI * w.sun;
     g.hemiI = p.hemiI * w.hemi;
@@ -198,7 +213,7 @@ export class FarmLight {
   private step(a: number): void {
     const c = this.cur, g = this.goal;
     c.sun.lerp(g.sun, a); c.sky.lerp(g.sky, a); c.ground.lerp(g.ground, a);
-    c.top.lerp(g.top, a); c.bottom.lerp(g.bottom, a); c.fog.lerp(g.fog, a);
+    c.low.lerp(g.low, a); c.hor.lerp(g.hor, a); c.zen.lerp(g.zen, a);
     c.dir.lerp(g.dir, a).normalize();
     c.sunI += (g.sunI - c.sunI) * a; c.hemiI += (g.hemiI - c.hemiI) * a;
     c.exposure += (g.exposure - c.exposure) * a; c.glow += (g.glow - c.glow) * a;
@@ -209,24 +224,18 @@ export class FarmLight {
     this.hemi.groundColor.copy(c.ground);
     this.hemi.intensity = c.hemiI * HEMI_K;
     this.renderer.toneMappingExposure = c.exposure;
-    this.fogObj.color.copy(c.fog);
+    this.fogObj.color.copy(c.hor);
     this.skyDirty = true;
     this.shadowDirty = true;
     const cd = (x: THREE.Color, y: THREE.Color): number => Math.abs(x.r - y.r) + Math.abs(x.g - y.g) + Math.abs(x.b - y.b);
-    const err = cd(c.sun, g.sun) + cd(c.sky, g.sky) + cd(c.ground, g.ground) + cd(c.top, g.top) + cd(c.bottom, g.bottom) + cd(c.fog, g.fog)
+    const err = cd(c.sun, g.sun) + cd(c.sky, g.sky) + cd(c.ground, g.ground) + cd(c.low, g.low) + cd(c.hor, g.hor) + cd(c.zen, g.zen)
       + Math.abs(c.sunI - g.sunI) + Math.abs(c.hemiI - g.hemiI) + Math.abs(c.exposure - g.exposure) + Math.abs(c.glow - g.glow) + Math.abs(c.fogScale - g.fogScale) + c.dir.distanceTo(g.dir);
     if (a >= 1 || err < 2e-3) this.settled = true;
   }
 
   private paintSky(): void {
-    if (!this.skyCtx) return;
-    const grad = this.skyCtx.createLinearGradient(0, 0, 0, 256);
-    grad.addColorStop(0, `#${this.cur.top.getHexString()}`);
-    grad.addColorStop(0.62, `#${this.cur.fog.getHexString()}`);
-    grad.addColorStop(1, `#${this.cur.bottom.getHexString()}`);
-    this.skyCtx.fillStyle = grad;
-    this.skyCtx.fillRect(0, 0, 2, 256);
-    this.skyTex.needsUpdate = true;
+    const u = this.domeMat.uniforms;
+    u.uLow.value.copy(this.cur.low); u.uHor.value.copy(this.cur.hor); u.uZen.value.copy(this.cur.zen);
     this.skyDirty = false;
   }
 
@@ -279,7 +288,8 @@ export class FarmLight {
     this.sun.dispose();
     this.hemi.dispose();
     if (this.scene.fog === this.fogObj) this.scene.fog = null;
-    if (this.scene.background === this.skyTex) this.scene.background = null;
-    this.skyTex.dispose();
+    this.scene.remove(this.dome);
+    this.dome.geometry.dispose();
+    this.domeMat.dispose();
   }
 }

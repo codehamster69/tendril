@@ -264,7 +264,7 @@ export class FarmView {
     const bounds = this.world.bounds;
     this.rig.setBounds(bounds);
     const key = `${bounds ? `${bounds.x0},${bounds.x1},${bounds.z0},${bounds.z1}` : '-'}|${this.world.tileCount}`;
-    if (key !== this.islandKey) { this.islandKey = key; this.island.update(bounds, (x, y) => !!this.world.tileAt(x, y)); this.light.setFarm(bounds); this.light.markShadowDirty(); }
+    if (key !== this.islandKey) { this.islandKey = key; this.island.update(bounds); this.light.setFarm(bounds); this.light.markShadowDirty(); }
     if (this.market && !this.stallPlaced && this.world.tileAt(0, 0)) { this.market.setStallAt(1, 0); this.stallPlaced = true; }
     this.drones.setBots(snapshot.bots, tickDelta);
     if (this.selectedBot !== null && this.selectedBot >= snapshot.bots.length) this.selectedBot = null;
@@ -322,13 +322,13 @@ export class FarmView {
   priceAvailable(): boolean { return !!this.market?.multipliers; }
 
   setOverlay(overlay: FarmOverlay): void {
-    if (this.disposed || !['none', 'moisture', 'nitrogen', 'fatigue', 'growth', 'drop'].includes(overlay)) return;
+    if (this.disposed || !['none', 'grid', 'moisture', 'nitrogen', 'fatigue', 'growth', 'drop'].includes(overlay)) return;
     this.setLens(overlay);
   }
 
   /** Soil lens or price lens. `price` needs a market and quietly falls back to natural without one. */
   setLens(lens: Lens): void {
-    if (this.disposed || !['none', 'moisture', 'nitrogen', 'fatigue', 'growth', 'price', 'drop'].includes(lens)) return;
+    if (this.disposed || !['none', 'grid', 'moisture', 'nitrogen', 'fatigue', 'growth', 'price', 'drop'].includes(lens)) return;
     if (lens === 'price' && !this.priceAvailable()) lens = 'none';
     this.priceLens = lens === 'price';
     this.overlay = lens === 'price' ? 'none' : lens;
@@ -583,7 +583,6 @@ export class FarmView {
     const focus = this.rig.target;
     this.light.update(dt, focus, this.rig.distance);
     this.island.setDistance(this.rig.distance);
-    this.island.pulse(time);
     this.renderWorld(time);
     this.drones.update(dt, time, this.light.glow, droneViewScale(this.tilePx));
     this.fx.update(dt, time, focus, this.light.glow, droneViewScale(this.tilePx));
