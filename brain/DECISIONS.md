@@ -184,6 +184,9 @@ Live goal progress comes from the sim worker (`tendril:goal`), with `World.brief
 - **Decision:** buyable land shows survey stakes, a string line and carrot flags, plus a price board on the outer edge nearest the camera. Bots get a colour band at the hull waist and a trail capped at 2.5 tiles.
 - **Why:** the approved farm design replaces the glowing teal frontier with physical markers and makes bots readable at a glance.
 - **Consequences:** client only. The price is `plotPrice(count)` from sim, read-only, so no protocol change. Golden hashes and replays unchanged.
+## D-H7 Welcome back card from the catch-up log (2026-11-24)
+The away card counts sales and bot activity from the action log that catch-up already produces, instead of a second replay or new sim counters. Rules and goldens are untouched. Streak comes from the existing player page API; no email or push (they would need accounts or keys). Details in `brain/notes/H7.md`.
+
 ## D-H3 (2026-11-24) Crop Circles: the picture goal is setup version 3, shipped off (H3)
 - **Decision:** a new goal kind `picture` drawn only under `SETUP_PICTURE = 3`, behind `PICTURE_EPOCH = '2099-01-01'`. Dailies draw the goal out of 19 with picture 4 (about 21%); seasons keep the version 2 draw. A picture (8x8, 16x8 or 16x16, from a pool of 178 CC0 pictures or a seeded symmetric glyph, 1 draw in 5) is stored whole on the goal; extra plots come through `setup.plots`. Score is the permille of pixels matching the farm seen from above at the final tick (grass, soil, six ripe crops, the barn pixel matching anything); `parTick` is first time at par.
 - **Why:** every rule change ships off and dispatches by stored data, so every existing hash, challenge and duel replays as today (a digest of 4500 version 2 setups is pinned). Storing the picture on the goal means a later change to the pool cannot alter a stored challenge.
