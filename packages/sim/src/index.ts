@@ -14,7 +14,7 @@ export {
 export type { Crop } from './rules.ts';
 export { IllegalAction } from './types.ts';
 export type {
-  Farm, Setup, Goal, GoalKind, BriefState, World, Order, LogEntry, Snapshot, SnapshotTile, SnapshotBot, ScanResult, Segment, Bot, Plot,
+  Farm, Setup, Goal, GoalKind, Picture, BriefState, World, Order, LogEntry, Snapshot, SnapshotTile, SnapshotBot, ScanResult, Segment, Bot, Plot,
 } from './types.ts';
 export {
   MARKET, MARKET_EPOCH, baseMarket, describeMarket, blendedTarget, dailyRulesVersion, daysUntilMarket, isMarketTable, marketActive, marketPrices, nextMarket,
@@ -25,8 +25,9 @@ export type { MarketRow, MarketRowView, MarketTable, MarketView } from './arena.
 export { DAILY_EPOCH, DAILY_PAR, dailyNumber, farmMosaic, replayWithPar, challengeSetup, describeModifiers, parFromReference, MODIFIER_BOUNDS, PAR_PERCENT, PAR_MIN, SETUP_LEGACY, SETUP_VERSION } from './arena.ts';
 export type { ParReplay, ChallengeKind, ChallengeSetup, ChallengeModifiers } from './arena.ts';
 export {
-  BRIEF_EPOCH, SETUP_BRIEF, HIDDEN_FARMS, BRIEF_SALT, TWIST_KEYS, GOAL_KINDS, GOAL_TITLES, GOAL_WEIGHTS, QUOTA_UNIT, MAX_REROLLS, BRIEF_FLOOR, briefFloor, rerollSeed, pickBrief, briefActive, describeBrief, drawBrief,
+  BRIEF_EPOCH, SETUP_BRIEF, SETUP_PICTURE, PICTURE_EPOCH, pictureActive, HIDDEN_FARMS, BRIEF_SALT, TWIST_KEYS, GOAL_KINDS, GOAL_TITLES, GOAL_WEIGHTS, GOAL_WEIGHTS_V3, QUOTA_UNIT, MAX_REROLLS, BRIEF_FLOOR, briefFloor, rerollSeed, pickBrief, briefActive, describeBrief, drawBrief,
 } from './brief.ts';
 export type { Brief, BriefKind, Twist, TwistKey, DrawnBrief } from './brief.ts';
-export { replayWithGoal, finalOf, festivalScore, setupVersionFor } from './arena.ts';
+export { replayWithGoal, finalOf, festivalScore, setupVersionFor, pictureScore, pictureCodes, tileCode } from './arena.ts';
+export { PICTURES, PICTURE_PALETTE, PICTURE_SIZES, PIC_GRASS, PIC_SOIL, PIC_BARN, GLYPH_ONE_IN, picCrops, picturePlots, pictureById, proceduralPicture, drawPicture } from './pictures.ts';
 export type { GoalReplay } from './arena.ts';
