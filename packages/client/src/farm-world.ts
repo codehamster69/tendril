@@ -7,6 +7,7 @@ import { OverlayLayer, overlayColor, unit, type FarmOverlay } from './farm-overl
 import { dropDistances, dropUnit, type DropCell, type DropDistances } from './drop-distance.ts';
 import type { Bounds } from './farm-scenery.ts';
 import { motionQuery } from './settings.ts';
+import { groundModels, soilTint, type GroundModels } from './farm-ground.ts';
 
 /**
  * The view-window renderer. Tiles live in a sparse store of 32x32 chunks (nothing exists for land nobody owns).
@@ -79,7 +80,7 @@ export function lensColor(multiplier: number, out: THREE.Color): THREE.Color {
   return t < 0.5 ? out.copy(LENS_LO).lerp(LENS_MID, t * 2) : out.copy(LENS_MID).lerp(LENS_HI, (t - 0.5) * 2);
 }
 
-const GRASS = new THREE.Color(0x4e9a63), SOIL = new THREE.Color(0x6b4636), WET = new THREE.Color(0x45302a);
+const GRASS = new THREE.Color(0x5f8d3e), SOIL = new THREE.Color(0x6b4636), WET = new THREE.Color(0x45302a);
 const PATH = new THREE.Color(0xd1b98a), YOUNG = new THREE.Color(0x5fae5a);
 const CROP_NAMES: string[][] = CROPS.map((name) => [0, 1, 2, 3].map((stage) => `crop_${name}_s${stage}`));
 
@@ -99,23 +100,11 @@ interface Chunk { cx: number; cy: number; tiles: Map<string, SnapshotTile> }
 interface Batch { model: AssetModel; name: string | null; meshes: THREE.InstancedMesh[]; capacity: number; count: number; owned: THREE.Material[] }
 interface BatchOptions { name: string | null; cast: boolean; receive: boolean; sway?: boolean }
 
-/** Merge small primitives (with a colour each) into one flat-shaded geometry. */
-function merge(parts: { g: THREE.BufferGeometry; c: number; m: THREE.Matrix4 }[]): THREE.BufferGeometry {
-  const pos: number[] = [], nor: number[] = [], col: number[] = [];
-  const c = new THREE.Color();
-  for (const p of parts) {
-    const g = p.g.index ? p.g.toNonIndexed() : p.g.clone();
-    g.applyMatrix4(p.m); g.computeVertexNormals(); c.set(p.c);
-    const P = g.attributes.position.array, N = g.attributes.normal.array;
-    for (let i = 0; i < P.length; i++) { pos.push(P[i]); nor.push(N[i]); }
-    for (let i = 0; i < P.length / 3; i++) col.push(c.r, c.g, c.b);
-    g.dispose(); p.g.dispose();
-  }
-  const out = new THREE.BufferGeometry();
-  out.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-  out.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
-  out.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
-  return out;
+/** Grass clumps on an untilled tile: patches of tall meadow (1 to 3, from a slow hash noise) at Close zoom, one at Field zoom. */
+function bladeCount(t: SnapshotTile, close: boolean): number {
+  if (!close) return 1;
+  const patch = (hash(t.x >> 1, t.y >> 1, 90) + hash(t.x, t.y, 91)) / 2;
+  return patch > 0.6 ? 4 : patch > 0.36 ? 3 : 2;
 }
 
 const pow2 = (n: number): number => 2 ** Math.ceil(Math.log2(Math.max(1, n)));
@@ -167,7 +156,7 @@ export class FarmWorld {
   private color2 = new THREE.Color();
   private white = new THREE.Color(1, 1, 1);
   // Own models for the helpers that are not GLBs.
-  private cellModel: AssetModel; private furrowModel: AssetModel; private tuftModel: AssetModel; private padModel: AssetModel;
+  private cellModel: AssetModel; private padModel: AssetModel; private ground: GroundModels;
   /** Diagnostics for the renderer tests and data attributes. */
   debug = { tileColors: [] as { x: number; y: number; color: string }[], overlayColors: [] as { x: number; y: number; color: string }[], modelInstances: {} as Record<string, number> };
 
@@ -179,10 +168,8 @@ export class FarmWorld {
     this.scene.add(this.root);
     this.overlayLayer = new OverlayLayer(scene);
     const std = (o: THREE.MeshStandardMaterialParameters): THREE.MeshStandardMaterial => new THREE.MeshStandardMaterial({ roughness: 0.95, flatShading: true, ...o });
-    const M = (x = 0, y = 0, z = 0, rx = 0, rz = 0): THREE.Matrix4 => new THREE.Matrix4().compose(new THREE.Vector3(x, y, z), new THREE.Quaternion().setFromEuler(new THREE.Euler(rx, 0, rz)), new THREE.Vector3(1, 1, 1));
     this.cellModel = { parts: [{ geometry: new THREE.BoxGeometry(0.94, 0.3, 0.94).translate(0, -0.15, 0), material: std({}) }] };
-    this.furrowModel = { parts: [{ geometry: merge([-1, 0, 1].map((r) => ({ g: new THREE.BoxGeometry(0.84, 0.05, 0.1), c: 0xffffff, m: M(0, 0.025, r * 0.28) }))), material: std({ color: 0x8a5c45, roughness: 0.95 }) }] };
-    this.tuftModel = { parts: [{ geometry: merge([0, 1, 2].map((k) => ({ g: new THREE.ConeGeometry(0.04, 0.2, 3), c: 0x7ccd86, m: M(Math.cos(k * 2.1) * 0.05, 0.1, Math.sin(k * 2.1) * 0.05, Math.sin(k * 2.1) * 0.3, -Math.cos(k * 2.1) * 0.3) }))), material: std({ vertexColors: true, roughness: 0.9 }) }] };
+    this.ground = groundModels();
     this.padModel = { parts: [{ geometry: new THREE.BoxGeometry(0.88, 0.014, 0.88).translate(0, 0.008, 0), material: new THREE.MeshBasicMaterial({}) }] };
   }
 
@@ -410,8 +397,8 @@ transformed.z += cos(uTime * 1.3 + swayPhase) * 0.04 * position.y * uSway;
     return this.batchFor(name, this.models(name), need, { name, cast, receive: true, sway });
   }
 
-  private ownBatch(key: string, model: AssetModel, need: number, cast: boolean): Batch | null {
-    return this.batchFor(key, model, need, { name: null, cast, receive: true });
+  private ownBatch(key: string, model: AssetModel, need: number, cast: boolean, sway = false): Batch | null {
+    return this.batchFor(key, model, need, { name: null, cast, receive: true, sway });
   }
 
   /** Close and Field zoom at stride 1: real tile and prop models, furrows and tufts (Close), crops. */
@@ -427,14 +414,15 @@ transformed.z += cos(uTime * 1.3 + swayPhase) * 0.04 * position.y * uSway;
     }
     const mult = o.priceMultipliers, close = lod === 0;
     const need = this.need; need.clear();
-    const add = (name: string): void => { need.set(name, (need.get(name) ?? 0) + 1); };
+    const addN = (name: string, n: number): void => { if (n > 0) need.set(name, (need.get(name) ?? 0) + n); };
+    const add = (name: string): void => addN(name, 1);
     for (const t of vis) {
       add(isPath(t) ? 'tile_path' : t.tilled ? 'tile_soil' : 'tile_grass');
       if (t.crop >= 1 && t.crop < CROPS.length) add(CROP_NAMES[t.crop][THREE.MathUtils.clamp(Math.trunc(t.stage), 0, 3)]);
       const building = BUILDING_MODELS[t.building];
       if (building) add(building);
       if (t.building === 1 && t.honey > 0) add('item_honey');
-      if (close && !isPath(t)) add(t.tilled ? '~furrow' : '~tuft');
+      if (!isPath(t)) { if (t.tilled) { if (close && hash(t.x, t.y, 21) < 0.55) add('~clod'); } else addN('~blade', bladeCount(t, close)); }
       if (mult && ripe(t)) add('~pad');
     }
     const barn = this.tileAt(0, 0) && vis.some(isPath) ? 1 : 0;
@@ -444,8 +432,10 @@ transformed.z += cos(uTime * 1.3 + swayPhase) * 0.04 * position.y * uSway;
       let b = batches.get(name);
       if (b === undefined) {
         const n = need.get(name) ?? 0;
-        b = name === '~furrow' ? this.ownBatch(name, this.furrowModel, n, false)
-          : name === '~tuft' ? this.ownBatch(name, this.tuftModel, n, false)
+        b = name === 'tile_soil' ? this.ownBatch(name, this.ground.soil, n, false)
+          : name === 'tile_grass' ? this.ownBatch(name, this.ground.meadow, n, false)
+          : name === '~blade' ? this.ownBatch(name, this.ground.blades, n, false, true)
+          : name === '~clod' ? this.ownBatch(name, this.ground.clods, n, false)
           : name === '~pad' ? this.ownBatch(name, this.padModel, n, false)
           : this.modelBatch(name, n, !name.startsWith('tile_'), name.startsWith('crop_'));
         batches.set(name, b);
@@ -457,8 +447,10 @@ transformed.z += cos(uTime * 1.3 + swayPhase) * 0.04 * position.y * uSway;
       const ripeNow = ripe(t);
       const dimmed = mult ? (ripeNow ? 1 : 0.55) : 1;
       const terrain = isPath(t) ? 'tile_path' : t.tilled ? 'tile_soil' : 'tile_grass';
-      // Moisture is an integer percentage (0..100).
-      c.setScalar((1 - 0.32 * unit(t.moisture)) * dimmed);
+      // Moisture is an integer percentage (0..100). Soil pales when dry and darkens when wet; meadow only varies a little.
+      if (t.tilled && !isPath(t)) soilTint(unit(t.moisture), c).multiplyScalar(dimmed);
+      else if (isPath(t)) c.setScalar((1 - 0.32 * unit(t.moisture)) * dimmed);
+      else c.setScalar((1 - 0.18 * unit(t.moisture)) * dimmed); // meadow only darkens a little when wet; its patches come from world-space noise, so no grid shows
       if (this.debug.tileColors.length < 16) this.debug.tileColors.push({ x: t.x, y: t.y, color: c.getHexString() });
       this.place(batch(terrain), t.x, 0, t.y, 0, 1, 1, 1, c);
       dim.setScalar(dimmed);
@@ -474,9 +466,19 @@ transformed.z += cos(uTime * 1.3 + swayPhase) * 0.04 * position.y * uSway;
       const building = BUILDING_MODELS[t.building];
       if (building) this.place(batch(building), t.x, 0, t.y, ((t.x * 7 + t.y * 3) % 4 + 4) % 4 * (Math.PI / 2), 1, 1, 1, dim);
       if (t.building === 1 && t.honey > 0) this.place(batch('item_honey'), t.x + 0.18, 0.46, t.y + 0.18, 0, 1, 1, 1, dim);
-      if (close && !isPath(t)) {
-        if (t.tilled) this.place(batch('~furrow'), t.x, 0, t.y, 0, 1, 1, 1, dim);
-        else this.place(batch('~tuft'), t.x + (hash(t.x, t.y, 9) - 0.5) * 0.5, 0, t.y + (hash(t.x, t.y, 10) - 0.5) * 0.5, hash(t.x, t.y, 11) * 6, 0.8 + hash(t.x, t.y, 12) * 0.6, 0.8 + hash(t.x, t.y, 12) * 0.6, 0.8 + hash(t.x, t.y, 12) * 0.6, dim);
+      if (!isPath(t)) {
+        if (t.tilled) {
+          if (close && hash(t.x, t.y, 21) < 0.55) this.place(batch('~clod'), t.x, 0, t.y, hash(t.x, t.y, 22) * 6, 1, 1, 1, c);
+        } else {
+          const n = bladeCount(t, close);
+          for (let k = 0; k < n; k++) {
+            const s = 0.85 + hash(t.x, t.y, 30 + k) * 0.5;
+            // Clump colour: a little lighter or darker per clump; straw-tipped where the patch noise runs high.
+            const v = 0.82 + hash(t.x, t.y, 40 + k) * 0.36;
+            dim.setRGB(v * dimmed, v * (0.96 + hash(t.x, t.y, 50 + k) * 0.1) * dimmed, v * 0.9 * dimmed);
+            this.place(batch('~blade'), t.x + (hash(t.x, t.y, 60 + k) - 0.5) * 0.9, 0, t.y + (hash(t.x, t.y, 70 + k) - 0.5) * 0.9, hash(t.x, t.y, 80 + k) * 6.28, s, s, s, dim);
+          }
+        }
       }
     }
     if (barn) this.place(batch('prop_barn'), 0, 0, 0, 0, 1);
@@ -527,14 +529,14 @@ transformed.z += cos(uTime * 1.3 + swayPhase) * 0.04 * position.y * uSway;
       else if (t.tilled) c.copy(SOIL).lerp(WET, unit(t.moisture) * 0.7);
       else c.copy(GRASS);
       c.multiplyScalar(0.93 + hash(i, j, 4) * 0.12);
-      if (o.overlay !== 'none') overlayColor(o.overlay, t, c, dropUnit(dist, t.x, t.y));
+      if (o.overlay !== 'none' && o.overlay !== 'grid') overlayColor(o.overlay, t, c, dropUnit(dist, t.x, t.y));
       const hasCrop = t.crop >= 1 && t.crop < CROPS.length;
       if (hasCrop) {
         const s = THREE.MathUtils.clamp(Math.trunc(t.stage), 0, 3), isRipe = s >= 3;
         if (mult) {
           if (isRipe) lensColor(mult[t.crop] ?? 1, c).multiplyScalar(1 + 0.15 * pulse * Math.sin(time * 4 + i + j));
           else c.multiplyScalar(0.55);
-        } else if (o.overlay === 'none') {
+        } else if (o.overlay === 'none' || o.overlay === 'grid') {
           c.copy(YOUNG).multiplyScalar(0.7).lerp(c2.setHex(CROP_COLORS[t.crop] ?? 0xe6c34a), (s / 3) ** 2);
           if (isRipe) c.multiplyScalar(1.12 + 0.2 * pulse * Math.sin(time * 4 + i + j));
         }
@@ -550,7 +552,8 @@ transformed.z += cos(uTime * 1.3 + swayPhase) * 0.04 * position.y * uSway;
 
   dispose(): void {
     for (const [key, batch] of [...this.batches]) this.dropBatch(key, batch);
-    for (const model of [this.cellModel, this.furrowModel, this.tuftModel, this.padModel]) {
+    this.ground.dispose();
+    for (const model of [this.cellModel, this.padModel]) {
       for (const part of model.parts) {
         part.geometry.dispose();
         for (const m of Array.isArray(part.material) ? part.material : [part.material]) m.dispose();

@@ -44,5 +44,16 @@ get no Brevity entry.
 A model entry (`--model`) must be published and must match its run exactly, and is never sent without its program. See
 [Humans vs models](/docs/models/). Leave out the file to just see the challenge.
 
+## Seed packets
+
+```
+tendril packets                  # the popular packets this week (or: tendril packets new)
+tendril packet plant <id> [file.sprout]   # save a packet's program to a file
+tendril packet publish my.sprout --name "Carrot snake" [--note "..."] [--tag tiny] [--parent <id>]
+```
+
+A seed packet is a program you share for others to start from. `publish` needs `tendril login`. Pass `--parent` with the id of
+the packet you planted so yours is listed as a remix. See [Seed packets](/docs/packets/).
+
 Other commands: `tendril run file.sprout --seed 42 --ticks 3000 --log run.json` and `tendril replay run.json`.
 Set `TENDRIL_API` to point at another server.

@@ -50,6 +50,8 @@ export function editorTheme(name: EditorTheme): Extension {
       '.cm-bot-line.cm-bot-selected': { backgroundColor: 'color-mix(in srgb, var(--mark) 18%, transparent)', boxShadow: 'inset 3px 0 0 var(--mark)' },
       '.cm-bot-marker-selected': { width: '6px', marginLeft: '2px' },
       '.cm-mark-gutter .cm-bot-marker': { cursor: 'pointer' },
+      '.cm-applied-line': { animation: 'cm-applied 1.1s ease-out' },
+      '.cm-applied-gutter': { animation: 'cm-applied 1.1s ease-out' },
       '.cm-bot-line.cm-bot-paused': { backgroundColor: 'color-mix(in srgb, var(--mark) 24%, transparent)' },
       '.cm-matchingBracket': { backgroundColor: 'transparent', outline: `1px solid ${p.hot}` },
       '.cm-nonmatchingBracket': { outline: `1px solid ${p.error}` },

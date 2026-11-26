@@ -1,4 +1,5 @@
 ---
+import NextStep from '../components/NextStep.astro';
 import Base from '../layouts/Base.astro';
 import { PLATFORMS, RELEASES_PAGE } from '../data/downloads';
 ---
@@ -55,6 +56,7 @@ import { PLATFORMS, RELEASES_PAGE } from '../data/downloads';
       </section>
     </div>
   </section>
+  <NextStep text="Not sure yet? Everything works in the browser first." links={[{ href: '/play/?mode=daily', label: "Play today's farm", primary: true }, { href: '/docs/', label: 'Getting started' }]} />
 </Base>
 <script>
   import { detectOs, latestRelease, megabytes, preferredBuild } from '../scripts/releases';
