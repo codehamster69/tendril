@@ -28,12 +28,12 @@ const ogImage = new URL(`/og/${/^\/404/.test(path) ? 'index' : path.replace(/^\/
     <meta property="og:image:height" content="630" />
     <meta property="og:image:alt" content={fullTitle} />
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="theme-color" content="#2f6e35" />
+    <meta name="theme-color" content="#18130e" />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <link rel="canonical" href={canonical} />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible+Next:ital,wght@0,400;0,700;1,400&family=Bricolage+Grotesque:opsz,wght@12..96,500..800&family=JetBrains+Mono:wght@400;600&display=swap" />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible+Next:ital,wght@0,400;0,700;1,400&family=Barlow+Condensed:wght@500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" />
   </head>
   <body>
     <a class="skip" href="#main">Skip to content</a>
@@ -101,37 +101,37 @@ const ogImage = new URL(`/og/${/^\/404/.test(path) ? 'index' : path.replace(/^\/
 <style>
   .skip { position: absolute; left: -999px; top: 0; }
   .skip:focus { left: 1rem; top: 1rem; z-index: 10; background: var(--paper); padding: 0.5rem 0.75rem; }
-  .site-head { position: sticky; top: 0; z-index: 5; background: color-mix(in srgb, var(--paper) 92%, transparent); backdrop-filter: blur(8px); border-bottom: 1px solid var(--line); }
+  .site-head { position: sticky; top: 0; z-index: 5; background: var(--paper); border-bottom: 1px solid var(--line); }
   .bar { display: flex; align-items: center; justify-content: space-between; height: 4rem; gap: 1rem; }
-  .brand { display: flex; align-items: center; gap: 0.55rem; color: var(--ink); text-decoration: none; font: 700 1.35rem var(--display); letter-spacing: -0.02em; }
+  .brand { display: flex; align-items: center; gap: 0.55rem; color: var(--ink); text-decoration: none; font: 700 1.5rem var(--display); letter-spacing: 0.02em; text-transform: uppercase; }
   .site-head nav { display: flex; align-items: center; gap: clamp(0.75rem, 3vw, 1.75rem); }
-  .site-head nav a:not(.btn), .site-head nav .drop > summary { color: var(--ink); text-decoration: none; font-weight: 700; font-size: 0.98rem; }
-  .site-head nav a[aria-current='page'], .site-head nav .drop > summary[aria-current] { color: var(--leaf); }
-  .site-head nav .drop > summary { cursor: pointer; list-style: none; font-weight: 700; font-size: 0.98rem; }
+  .site-head nav a:not(.btn), .site-head nav .drop > summary { color: var(--ink); text-decoration: none; font: 600 1.05rem var(--display); text-transform: uppercase; letter-spacing: 0.08em; padding: 0.2rem 0; border-bottom: 2px solid transparent; }
+  .site-head nav a[aria-current='page'], .site-head nav .drop > summary[aria-current] { border-bottom-color: var(--carrot); }
+  .site-head nav .drop > summary { cursor: pointer; list-style: none; }
   .drop { position: relative; }
   .drop > summary::-webkit-details-marker { display: none; }
   .drop > summary::after { content: ' ▾'; font-size: 0.8em; }
   .drop[open] > summary::after { content: ' ▴'; }
-  .drop-panel { position: absolute; left: -0.5rem; top: calc(100% + 0.6rem); min-width: 16rem; display: grid; background: var(--paper); border: 1px solid var(--line); border-radius: 12px; padding: 0.4rem; box-shadow: 0 8px 24px rgb(0 0 0 / 0.12); }
-  .site-head nav .drop-panel a:not(.btn) { display: grid; padding: 0.5rem 0.75rem; border-radius: 8px; }
+  .drop-panel { position: absolute; left: -0.5rem; top: calc(100% + 0.6rem); min-width: 16rem; display: grid; background: var(--paper); border: 1px solid var(--rule); border-radius: 2px; padding: 0.3rem; }
+  .site-head nav .drop-panel a:not(.btn) { display: grid; padding: 0.5rem 0.75rem; border-radius: 0; border-bottom: 0; border-left: 2px solid transparent; }
   .drop-panel small { color: var(--dim); font-weight: 400; font-size: 0.85rem; }
-  .site-head nav .drop-panel a:hover { background: color-mix(in srgb, var(--leaf) 10%, transparent); }
+  .site-head nav .drop-panel a:hover { border-left-color: var(--carrot); }
   .menu-group { margin: 0.5rem 0.75rem 0.1rem; font: 600 0.8rem var(--display); color: var(--dim); text-transform: none; }
-  .site-head nav a:not(.btn):hover { color: var(--leaf); }
-  .btn.small { padding: 0.45rem 0.95rem; font-size: 0.95rem; }
+  .site-head nav a:not(.btn):hover, .site-head nav .drop > summary:hover { color: var(--ink); border-bottom-color: var(--carrot); }
+  .btn.small { padding: 0.3rem 0.2rem; font-size: 1.05rem; }
   .site-foot { border-top: 1px solid var(--line); margin-top: 6rem; padding-block: 2.5rem 3rem; color: var(--dim); font-size: 0.95rem; }
   .foot { display: flex; flex-wrap: wrap; gap: 1.5rem 3rem; justify-content: space-between; }
   .foot p { max-width: 34rem; margin: 0; }
   .foot nav { display: flex; flex-wrap: wrap; gap: 0.5rem 1.25rem; }
   .foot a { color: var(--dim); }
   .menu { display: none; position: relative; }
-  .menu summary { list-style: none; cursor: pointer; font-weight: 700; font-size: 0.98rem; padding: 0.4rem 0.2rem; }
+  .menu summary { list-style: none; cursor: pointer; font: 600 1.05rem var(--display); text-transform: uppercase; letter-spacing: 0.08em; padding: 0.4rem 0.2rem; }
   .menu summary::-webkit-details-marker { display: none; }
   .menu summary::after { content: ' ▾'; }
   .menu[open] summary::after { content: ' ▴'; }
-  .menu-panel { position: absolute; right: 0; top: calc(100% + 0.5rem); min-width: 12rem; max-height: 75vh; overflow: auto; display: grid; background: var(--paper); border: 1px solid var(--line); border-radius: 12px; padding: 0.4rem; box-shadow: 0 8px 24px rgb(0 0 0 / 0.12); }
-  .site-head nav .menu-panel a:not(.btn) { padding: 0.6rem 0.75rem; border-radius: 8px; }
-  .site-head nav .menu-panel a:hover { background: color-mix(in srgb, var(--leaf) 10%, transparent); }
+  .menu-panel { position: absolute; right: 0; top: calc(100% + 0.5rem); min-width: 12rem; max-height: 75vh; overflow: auto; display: grid; background: var(--paper); border: 1px solid var(--rule); border-radius: 2px; padding: 0.3rem; }
+  .site-head nav .menu-panel a:not(.btn) { padding: 0.6rem 0.75rem; border-radius: 0; border-left: 2px solid transparent; }
+  .site-head nav .menu-panel a:hover { border-left-color: var(--carrot); }
   @media (max-width: 640px) {
     .site-head nav > a:not(.btn), .site-head nav > .drop { display: none; }
     .menu { display: block; }

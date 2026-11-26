@@ -1,25 +1,17 @@
 ---
 import { Code } from 'astro:components';
 import Base from '../layouts/Base.astro';
-import FarmDemo from '../components/FarmDemo.astro';
 import DownloadCta from '../components/DownloadCta.astro';
 import CropTable from '../components/CropTable.astro';
 import { sprout } from '../sprout-lang';
-import { art } from '../data/art';
 import starter from '../../../lang/examples/starter.sprout?raw';
-
-const hive = art('prop_beehive');
-const composter = art('prop_compost');
-const bot = art('bot_tender');
+import composter from '../../../lang/examples/compost.sprout?raw';
 ---
 <Base>
   <section class="hero wrap">
     <div class="pitch">
-      <h1>Wordle for programmers. Every score is proven.</h1>
-      <p class="lede">
-        The farming game where your code competes with everyone else's. Everyone gets the same farm each day.
-        Write a program, watch it run, and see where it lands.
-      </p>
+      <h1>A farm you grow by writing code.</h1>
+      <p class="lede">Write one program in Sprout, a plain-English language, and every bot on your farm runs it.</p>
       <div class="today" data-today aria-live="polite">
         <p class="eyebrow">Today's farm <span data-num>#…</span></p>
         <p class="facts"><span><strong data-players>–</strong> players</span> <span>Score to beat <strong data-best>–</strong></span> <span data-left></span></p>
@@ -34,13 +26,10 @@ const bot = art('bot_tender');
       <DownloadCta />
       <p class="note">Free on Windows, macOS and Linux. No account needed to play.</p>
     </div>
-    <div class="live">
-      <FarmDemo />
-      <p class="caption">
-        This is the game's real rules engine and language running in your browser. The farm started with
-        one plot, one bot and an empty purse; the counters above are live. A <a href="/docs/examples/#home-page-farm">50-line program</a> is doing everything else.
-      </p>
-    </div>
+    <figure class="live">
+      <video class="replay" src="/hero-replay.webm" autoplay muted loop playsinline preload="metadata" aria-label="A replay of a daily farm being run by a Sprout program"></video>
+      <figcaption>A recorded replay of a daily farm. Each move is played back by the same rules the server uses.</figcaption>
+    </figure>
   </section>
 
   <nav class="wrap paths" aria-label="Where to go">
@@ -50,75 +39,53 @@ const bot = art('bot_tender');
     <a href="/duel/"><b>Race a friend</b><span>Same farm, same seed, no account</span></a>
   </nav>
 
-  <section class="wrap split">
-    <div>
-      <h2>You don't farm. You write the farmer.</h2>
-      <p>
-        There is no clicking on tiles. You write one program in Sprout, a small language that reads like
-        plain English, and every bot you own runs it. Bots walk, check the soil, plant what it can take,
-        and haul the harvest back to the barn.
-      </p>
-      <p>
-        This is the program every new farm starts with. It already makes money. Making it make more
-        is the game.
-      </p>
-      <p><a href="/docs/sprout/">Learn Sprout in ten minutes</a></p>
-    </div>
-    <div class="code"><Code code={starter.trim()} lang={sprout as any} themes={{ light: 'github-light', dark: 'github-dark-dimmed' }} defaultColor={false} /></div>
-  </section>
-
-  <section class="wrap">
-    <h2>Grow without a ceiling</h2>
-    <p class="section-lede">
-      Land comes in 8 by 8 plots and there is always another one next door. Each plot and each bot
-      costs more than the last, so past a point the only way to grow faster is a smarter program.
+  <section class="wrap column">
+    <h2>Write one program for every bot</h2>
+    <p>
+      There is no clicking on tiles. You write one program in Sprout, and every bot you own runs it. Bots walk,
+      check the soil, plant what they can carry, and haul the harvest back to the barn.
     </p>
-    <ul class="pillars" role="list">
-      <li>
-        {bot && <img src={bot} alt="" width="120" height="120" loading="lazy" />}
-        <h3>Bots</h3>
-        <p>Every bot runs the same program but knows its own id, so you can split the work any way you like.</p>
-      </li>
-      <li>
-        {hive && <img src={hive} alt="" width="120" height="120" loading="lazy" />}
-        <h3>Hives</h3>
-        <p>Hives make honey on their own and pollinate the crops around them for bigger harvests.</p>
-      </li>
-      <li>
-        {composter && <img src={composter} alt="" width="120" height="120" loading="lazy" />}
-        <h3>Compost</h3>
-        <p>Turn spare crops into compost and feed tired soil, so the same tile keeps producing.</p>
-      </li>
-    </ul>
+    <p>This is the program every new farm starts with. It already makes money. Making it make more is the game.</p>
+    <div class="code"><Code code={starter.trim()} lang={sprout as any} themes={{ light: 'github-light', dark: 'github-dark-dimmed' }} defaultColor={false} /></div>
+    <p><a href="/docs/sprout/">Learn Sprout in ten minutes</a></p>
   </section>
 
-  <section class="wrap">
+  <section class="wrap column">
+    <h2>Grow without a ceiling</h2>
+    <p>
+      Land comes in 8 by 8 plots and there is always another one next door. Each plot and each bot costs more
+      than the last, so past a point the only way to grow faster is a smarter program.
+    </p>
+    <p>
+      Hives make honey and pollinate the crops around them. Composters turn spare crops back into soil, so the same
+      tile keeps producing. Both are a few lines of Sprout:
+    </p>
+    <div class="code"><Code code={composter.trim()} lang={sprout as any} themes={{ light: 'github-light', dark: 'github-dark-dimmed' }} defaultColor={false} /></div>
+  </section>
+
+  <section class="wrap column">
     <h2>Six crops, one soil</h2>
-    <p class="section-lede">
-      Every crop drinks water, eats nitrogen and tires the ground. Clover puts nitrogen back. Berries and
-      apples regrow after harvest. Carrots and pumpkins die if frost arrives before they ripen, and the forecast is one call away.
+    <p>
+      Every crop drinks water, eats nitrogen and tires the ground. Clover puts nitrogen back. Berries and apples
+      regrow after harvest. Carrots and pumpkins die if frost arrives before they ripen, and the forecast is one
+      call away.
     </p>
     <CropTable />
     <p><a href="/docs/how-to-play/#crops">More on crops and soil</a></p>
   </section>
 
-  <section class="wrap">
-    <h2>Every move is checked</h2>
-    <p class="section-lede">
-      Your program runs on your own machine, so it can be as clever as you like. What reaches the
-      leaderboard is the list of moves it made, and the server plays those moves back through the same rules.
+  <section class="wrap column">
+    <h2>How a score reaches the leaderboard</h2>
+    <p>
+      Your program runs on your own machine, so it can be as clever as you like. What reaches the leaderboard is the
+      list of moves it made. The server plays those moves back through the same rules and never sees your code. A
+      doctored save doesn't match, so it doesn't count.
     </p>
-    <ol class="steps">
-      <li><h3>Write</h3><p>Edit your program in the game's editor, with autocomplete, breakpoints and a live line-by-line view of every bot.</p></li>
-      <li><h3>Run</h3><p>Your farm runs ten ticks a second. The game records each move: which bot, what it did, and on which tick.</p></li>
-      <li><h3>Replay</h3><p>The server replays that record from your last checkpoint. It never sees or runs your code.</p></li>
-      <li><h3>Rank</h3><p>If the replay lands on the same farm, your net worth counts. A doctored save simply doesn't match.</p></li>
-    </ol>
     <p><a href="/docs/leaderboard/">How the leaderboard stays fair</a></p>
   </section>
 
-  <section class="wrap closing">
-    <h2>Start with one plot.</h2>
+  <section class="wrap closing column">
+    <h2>Try it with one plot</h2>
     <p>The starter program farms it for you. What happens after that is up to you.</p>
     <DownloadCta />
   </section>
@@ -150,45 +117,36 @@ const bot = art('bot_tender');
 </script>
 
 <style>
-  .paths { display: grid; grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr)); gap: 0.75rem; margin-top: 1rem; }
-  .paths a { display: grid; gap: 0.2rem; padding: 0.9rem 1rem; border: 1px solid var(--line); border-radius: 12px; text-decoration: none; color: var(--ink); }
-  .paths a:hover { background: var(--panel); }
-  .paths span { color: var(--dim); font-size: 0.92rem; }
-  .today { background: var(--panel); border: 1.5px solid var(--line); border-radius: 12px; padding: 1rem 1.25rem; margin: 0 0 1.25rem; max-width: 34rem; }
-  .eyebrow { font: 700 1.2rem var(--display); margin: 0; }
-  .facts { display: flex; flex-wrap: wrap; gap: 0.25rem 1.25rem; color: var(--dim); margin: 0.4rem 0 0.9rem; }
-  .facts strong { color: var(--ink); }
-  .mods { margin: -0.4rem 0 0.9rem; color: var(--dim); font-size: 0.95rem; }
-  .mkt { margin: -0.4rem 0 0.9rem; color: var(--dim); font-size: 0.95rem; }
+  .hero { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 6fr); gap: clamp(2rem, 5vw, 4.5rem); align-items: center; padding-block: clamp(2.5rem, 7vw, 5.5rem) 3rem; }
+  .hero h1 { max-width: 14ch; }
+  .lede { font-size: 1.25rem; color: var(--dim); margin: 1.1rem 0 1.6rem; max-width: 32rem; }
+  .today { border-top: 1px solid var(--rule); border-bottom: 1px solid var(--line); padding: 0.9rem 0 1rem; margin: 0 0 1.25rem; max-width: 34rem; }
+  .eyebrow { margin: 0 0 0.3rem; }
+  .facts { display: flex; flex-wrap: wrap; gap: 0.25rem 1.25rem; color: var(--dim); margin: 0.3rem 0 0.8rem; font-variant-numeric: tabular-nums; }
+  .facts strong { color: var(--ink); font-weight: 700; }
+  .mods, .mkt { margin: -0.2rem 0 0.8rem; color: var(--dim); font-size: 0.95rem; }
   .mkt p { margin: 0 0 0.3rem; }
   .mkt ul { list-style: none; display: flex; flex-wrap: wrap; gap: 0.2rem 0.9rem; padding: 0; margin: 0 0 0.3rem; font-variant-numeric: tabular-nums; }
   .mkt li { text-transform: capitalize; }
-  .hero { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 6fr); gap: clamp(2rem, 5vw, 4.5rem); align-items: center; padding-block: clamp(2.5rem, 7vw, 5.5rem) 3rem; }
-  .hero h1 { font-size: clamp(2.5rem, 6vw, 4.25rem); line-height: 1.02; max-width: 12ch; }
-  .lede { font-size: 1.22rem; color: var(--dim); margin: 1.25rem 0 1.75rem; max-width: 34rem; }
   .note { color: var(--dim); font-size: 0.95rem; margin: 0.9rem 0 0; }
-  .caption { color: var(--dim); font-size: 0.92rem; margin: 0.6rem 0 0; max-width: 36rem; }
-  section + section { margin-top: clamp(4rem, 9vw, 7rem); }
-  section h2 { font-size: clamp(1.75rem, 3.2vw, 2.4rem); max-width: 22ch; margin-bottom: 1rem; }
-  .section-lede { max-width: 42rem; color: var(--dim); font-size: 1.1rem; margin: 0 0 2rem; }
-  .split { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: clamp(2rem, 5vw, 4rem); align-items: center; }
-  .split p { max-width: 34rem; }
+  .live { margin: 0; }
+  .replay { width: 100%; aspect-ratio: 2 / 1; object-fit: cover; border: 1px solid var(--line); border-radius: 2px; background: var(--code-bg); }
+  .live figcaption { color: var(--dim); font-size: 0.92rem; margin: 0.6rem 0 0; max-width: 36rem; }
+  section + section { margin-top: clamp(3.5rem, 8vw, 6rem); }
+  .paths { display: grid; grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr)); gap: 0 1.5rem; margin: 0 auto 3rem; border-top: 1px solid var(--rule); }
+  .paths a { display: grid; gap: 0.2rem; padding: 0.9rem 0 0.9rem; border-bottom: 1px solid var(--line); color: var(--ink); text-decoration: none; }
+  .paths a:hover b { text-decoration: underline; text-decoration-color: var(--carrot); text-decoration-thickness: 2px; text-underline-offset: 0.25em; }
+  .paths b { font: 600 1.15rem var(--display); text-transform: uppercase; letter-spacing: 0.08em; }
+  .paths span { color: var(--dim); font-size: 0.95rem; }
+  .column { max-width: 42rem; }
+  .column h2 { margin-bottom: 1rem; }
+  .column > p { font-size: 1.08rem; margin: 0 0 1rem; }
+  .column > p:has(+ .code) { margin-bottom: 1.25rem; }
+  .column > .code { margin: 0 0 1.25rem; }
   .code :global(pre) { margin: 0; font-size: 0.86rem; }
-  .pillars { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 2rem; }
-  .pillars img { width: 120px; height: 120px; object-fit: contain; margin: 0 0 0.5rem -0.5rem; }
-  .pillars h3 { margin-bottom: 0.4rem; }
-  .pillars p { margin: 0; color: var(--dim); max-width: 22rem; }
-  .steps { list-style: none; counter-reset: s; padding: 0; margin: 0 0 1.75rem; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1.5rem; }
-  .steps li { counter-increment: s; border-top: 2px solid var(--ink); padding-top: 0.9rem; }
-  .steps li::before { content: counter(s); font: 700 2.5rem/1 var(--display); color: var(--leaf); display: block; margin-bottom: 0.6rem; }
-  .steps h3 { margin-bottom: 0.4rem; }
-  .steps p { margin: 0; color: var(--dim); }
-  .closing { border-top: 1px solid var(--line); padding-top: 3.5rem; }
+  .closing { border-top: 1px solid var(--line); padding-top: 3rem; }
   .closing p { color: var(--dim); font-size: 1.1rem; margin: 0 0 1.5rem; }
   @media (max-width: 900px) {
-    .hero, .split { grid-template-columns: minmax(0, 1fr); }
-    .steps { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-    .pillars { grid-template-columns: 1fr; gap: 1.5rem; }
+    .hero { grid-template-columns: minmax(0, 1fr); }
   }
-  @media (max-width: 520px) { .steps { grid-template-columns: minmax(0, 1fr); } }
 </style>
