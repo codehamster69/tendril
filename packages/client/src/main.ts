@@ -16,6 +16,7 @@ import { mountAccount, connectRanked } from './account';
 import { mountNotice } from './notice';
 import { mountUpdates } from './updates';
 import { isFirstRun, mountFirstRun } from './firstrun';
+import { mountPackets } from './packets';
 import { mountProgression, selectedLesson } from './progression';
 import { mountCatalogue } from './catalogue-view';
 import { mountRating } from './rating';
@@ -92,6 +93,7 @@ mountIslandHud(view, () => sim.meta.seed, () => scenario.tickLimit ?? null);
 if (challenge) view.setMarket(challenge.market ?? null, { opensInDays: marketOpensIn(challenge) });
 mountProgression({ loop, editor, view, api });
 if (firstRun) mountFirstRun({ editor });
+if (!stress) mountPackets({ editor, api, mode });
 if (challenge) mountRival({ api, challenge }); // before the HUD, the result screen and the start card, which read it
 if (challenge) mountArena({ loop, api, challenge });
 if (challenge) mountResultScreen({ loop, api, challenge, view });

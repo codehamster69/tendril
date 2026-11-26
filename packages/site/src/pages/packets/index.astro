@@ -1,0 +1,28 @@
+---
+import Base from '../../layouts/Base.astro';
+---
+<Base title="Seed packets" description="Programs Tendril players shared. Plant one in your editor, change it, and share your version. Every packet shows its best verified result.">
+  <section class="wrap pk-page" data-pk>
+    <h1>Seed packets</h1>
+    <p class="lede">A seed packet is a program another player shared. Plant it in the game, change a line or two, and share your version. Remixes link back to where they came from.</p>
+    <div class="pk-controls">
+      <div class="pk-seg" role="group" aria-label="Order">
+        <button type="button" data-sort="popular" aria-pressed="true">Popular this week</button>
+        <button type="button" data-sort="new" aria-pressed="false">New</button>
+      </div>
+      <div class="pk-seg" role="group" aria-label="Tag" data-tags></div>
+    </div>
+    <p class="pk-state" data-state role="status">Loading…</p>
+    <ul class="pk-list" data-list></ul>
+    <p class="pk-meta">Have a program worth sharing? Open the game and press <b>Share</b> above the editor, or run <code>tendril packet publish my.sprout --name "My farm"</code>. <a href="/play/">Play in the browser</a></p>
+  </section>
+</Base>
+
+<script>
+  import { initList, packetsCss } from '../../scripts/packets';
+  const style = document.createElement('style');
+  style.textContent = packetsCss;
+  document.head.append(style);
+  const root = document.querySelector<HTMLElement>('[data-pk]');
+  if (root) void initList(root);
+</script>

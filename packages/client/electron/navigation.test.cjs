@@ -135,7 +135,7 @@ test('the API origin is defined once and the renderer default matches it', () =>
 
 test('site links: only fixed public pages and the GitHub releases page open externally', () => {
   const site = 'https://tendril.hokora.xyz';
-  for (const url of [`${site}/`, `${site}/docs/`, `${site}/docs/cli/`, `${site}/leaderboard/`, `${site}/season-1/`, `${site}/download/`, `${site}/r/abc_DEF-123`,
+  for (const url of [`${site}/`, `${site}/docs/`, `${site}/docs/cli/`, `${site}/leaderboard/`, `${site}/season-1/`, `${site}/download/`, `${site}/r/abc_DEF-123`, `${site}/packets/`, `${site}/packets/abcDEF12_-x`,
     'https://github.com/codehamster69/tendril/releases', 'https://github.com/codehamster69/tendril/releases/latest', 'https://github.com/codehamster69/tendril/releases/tag/v0.1.2']) {
     assert.equal(isAllowedSiteURL(url, site), true, url);
   }
