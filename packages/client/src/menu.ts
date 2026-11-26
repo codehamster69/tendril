@@ -6,7 +6,8 @@ import type { GameLoop } from './game-loop';
 import { utcToday } from './arena';
 import { el } from './palette';
 import { dailyStreak, streakText } from './streak';
-import { buildSettingsPanel } from './settings-panel';
+import { buildSettingsPanel, KEYS } from './settings-panel';
+import { mountTryIt } from './try-it';
 
 export type ModeKey = 'live' | 'sandbox' | 'campaign' | 'daily' | 'season';
 export interface PanelHost { open(title: string, nodes: HTMLElement[], opts?: { onOpen?: () => void; onClose?: () => void; wide?: boolean }): void; readonly isOpen: boolean }
@@ -21,11 +22,12 @@ export interface MenuApi {
   setEntryAction(id: string, run: (() => void) | null, hint?: string): void;
 }
 
-const MODES: { id: ModeKey; label: string; href: string; hint: string }[] = [
-  { id: 'daily', label: 'Daily', href: '?mode=daily', hint: "Today's farm, same seed for everyone" },
-  { id: 'season', label: 'Season', href: '?mode=challenge&id=week', hint: 'The weekly season' },
-  { id: 'live', label: 'Endless', href: '?mode=live', hint: 'Your farm, always growing' },
-  { id: 'sandbox', label: 'Sandbox', href: '?mode=sandbox', hint: 'Experiment freely' },
+// `what` is the plain-words promise under each entry: how long it takes, who else plays it, whether it is ranked.
+const MODES: { id: ModeKey; label: string; href: string; hint: string; what: string }[] = [
+  { id: 'daily', label: 'Daily', href: '?mode=daily', hint: "Today's farm, same seed for everyone", what: '10 minutes, the same farm for everyone, ranked.' },
+  { id: 'season', label: 'Season', href: '?mode=challenge&id=week', hint: 'The weekly season', what: 'One farm for the whole week. Best score wins a medal.' },
+  { id: 'live', label: 'Endless', href: '?mode=live', hint: 'Your farm, always growing', what: 'Your own farm that never ends. Verified when you sign in.' },
+  { id: 'sandbox', label: 'Sandbox', href: '?mode=sandbox', hint: 'Experiment freely', what: 'Free play. Nothing is ranked, so try anything.' },
 ];
 
 const byId = (id: string): HTMLElement | null => document.getElementById(id);
@@ -44,15 +46,15 @@ export function mountMenu(ctx: MenuContext): MenuApi {
   const status = new Map<string, HTMLElement>();
 
   const note = (id: string, small: string): void => { const s = status.get(id); if (s) s.textContent = small; };
-  const card = (id: string, label: string, hint: string, tag: 'button' | 'a' = 'button', extra: Record<string, string> = {}): HTMLButtonElement | HTMLAnchorElement => {
+  const card = (id: string, label: string, hint: string, tag: 'button' | 'a' = 'button', extra: Record<string, string> = {}, what = ''): HTMLButtonElement | HTMLAnchorElement => {
     const small = el('small', { text: hint });
-    const node = el(tag, { class: 'hk-button menu-entry', 'data-entry': id, ...(tag === 'button' ? { type: 'button' } : {}), ...extra }, el('b', { text: label }), small) as HTMLButtonElement | HTMLAnchorElement;
+    const node = el(tag, { class: 'hk-button menu-entry', 'data-entry': id, ...(tag === 'button' ? { type: 'button' } : {}), ...extra }, el('b', { text: label }), ...(what ? [el('small', { class: 'menu-what', text: what })] : []), small) as HTMLButtonElement | HTMLAnchorElement;
     status.set(id, small);
     entryEls.set(id, node);
     return node;
   };
-  const action = (id: string, label: string, hint: string, run: (() => void) | null): HTMLButtonElement => {
-    const b = card(id, label, hint) as HTMLButtonElement;
+  const action = (id: string, label: string, hint: string, run: (() => void) | null, what = ''): HTMLButtonElement => {
+    const b = card(id, label, hint, 'button', {}, what) as HTMLButtonElement;
     actions.set(id, run);
     b.disabled = !run;
     b.addEventListener('click', () => { const fn = actions.get(id); if (!fn) return; close(false); fn(); });
@@ -65,13 +67,13 @@ export function mountMenu(ctx: MenuContext): MenuApi {
   cont.addEventListener('click', () => close());
   const modeGrid = el('div', { class: 'menu-entries menu-modes' });
   for (const m of MODES) {
-    const a = card(m.id, m.label, m.hint, 'a', { href: m.href }) as HTMLAnchorElement;
+    const a = card(m.id, m.label, m.hint, 'a', { href: m.href }, m.what) as HTMLAnchorElement;
     if (m.id === current) a.setAttribute('aria-current', 'page');
     modeGrid.append(a);
   }
-  modeGrid.append(card('campaign', 'Lessons', 'Learn one recipe at a time', 'a', { href: '?mode=campaign', ...(current === 'campaign' ? { 'aria-current': 'page' } : {}) }));
-  modeGrid.append(action('duels', 'Duels', 'Join a friend’s duel link', () => byId('btn-join-duel')?.click()));
-  modeGrid.append(action('catalogue', 'Seed catalogue', 'Research crops, buildings, tools', () => window.dispatchEvent(new CustomEvent('tendril:open-catalogue'))));
+  modeGrid.append(card('campaign', 'Lessons', 'Learn one recipe at a time', 'a', { href: '?mode=campaign', ...(current === 'campaign' ? { 'aria-current': 'page' } : {}) }, 'Short guided goals that teach Sprout from nothing.'));
+  modeGrid.append(action('duels', 'Duels', 'Join a friend’s duel link', () => byId('btn-join-duel')?.click(), 'Race a friend on the same farm. No account needed.'));
+  modeGrid.append(action('catalogue', 'Seed catalogue', 'Research crops, buildings, tools', () => window.dispatchEvent(new CustomEvent('tendril:open-catalogue')), 'Everything you can unlock, and what it does.'));
   const profileOk = (): boolean => !!byId('rating-chip');
   modeGrid.append(action('profile', 'Profile', 'Your rating and last result', () => byId('rating-chip')?.click()));
   note(current, { live: ctx.ranked ? 'Playing now · server-verified' : 'Playing now · on this device', sandbox: 'Playing now', campaign: 'Playing now', daily: 'Playing now', season: 'Playing now' }[current]);
@@ -87,16 +89,24 @@ export function mountMenu(ctx: MenuContext): MenuApi {
   tool('debugger', 'Debugger', 'Variables and breakpoints', () => ctx.openDebugger());
   tool('reference', 'Reference', 'Every Sprout command', () => q('#btn-reference')?.click());
   tool('account', 'Account', 'Sign in or out', () => byId('btn-account')?.click());
+  const keysList = el('dl', { class: 'set-keys' });
+  for (const [k, what] of KEYS) keysList.append(el('dt', {}, el('kbd', { text: k })), el('dd', { text: what }));
+  // Panels move existing nodes in and out, so the list needs a home to return to.
+  const keysPanel = el('div', { class: 'keys-panel', hidden: '' }, keysList);
+  document.body.append(keysPanel);
+  const showKeys = (): void => panels.open('Keyboard shortcuts', [keysPanel]);
+  tool('shortcuts', 'Shortcuts', 'Every key, press ? any time', showKeys);
   tool('settings', 'Settings', 'Sound, graphics, motion, code, keys', () => showSettings());
   if (isDesktop) tool('quit', 'Quit', 'Close Tendril', () => (window as unknown as { tendrilDesktop?: { quit?(): void } }).tendrilDesktop?.quit?.());
 
+  const tryIt = mountTryIt({ current });
   const links = el('div', { class: 'menu-links' });
   const topActions = q('.top-actions');
   if (topActions) links.append(topActions);
 
   const streakEl = el('span', { id: 'menu-streak' });
   const main = el('div', { class: 'menu-view', 'data-view': 'main' },
-    el('p', { class: 'menu-label' }, 'Play', streakEl), el('div', { class: 'menu-entries' }, cont), modeGrid,
+    el('p', { class: 'menu-label' }, 'Play', streakEl), el('div', { class: 'menu-entries' }, cont), modeGrid, tryIt.node,
     el('p', { class: 'menu-label', text: 'Farm and tools' }), toolsGrid, links);
 
   // ---- settings view ----
@@ -171,6 +181,9 @@ export function mountMenu(ctx: MenuContext): MenuApi {
 
   // Esc everywhere. Capture phase, so the code editor cannot swallow it; skipped when a dialog or panel is on top.
   window.addEventListener('keydown', (e) => {
+    if (e.key === '?' && !e.ctrlKey && !e.metaKey && !e.altKey && !e.defaultPrevented && !somethingElseOpen() && !/^(INPUT|TEXTAREA|SELECT)$/.test((e.target as HTMLElement | null)?.tagName ?? '') && !(e.target as HTMLElement | null)?.closest?.('.cm-editor')) {
+      e.preventDefault(); close(false); actions.get('shortcuts')?.(); return;
+    }
     if (e.key !== 'Escape' || e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey) return;
     if (!overlay.hidden) { e.preventDefault(); e.stopPropagation(); if (!settingsView.hidden) showView('main'); else close(); return; }
     if (somethingElseOpen() || q('#start-card:not([hidden])')) return; // the start card takes Esc itself: it closes without starting the day

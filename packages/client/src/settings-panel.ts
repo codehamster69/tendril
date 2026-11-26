@@ -3,7 +3,8 @@ import { el } from './palette';
 import { FONT_MAX, FONT_MIN, getSettings, updateSettings } from './settings';
 import type { MotionPref, Quality } from './settings';
 
-const KEYS: [string, string][] = [
+export const KEYS: [string, string][] = [
+  ['?', 'Show these shortcuts'],
   ['Esc', 'Open or close the menu'],
   ['Enter', 'Start the day (on the start card)'],
   ['Space', 'Run or pause'],
@@ -12,6 +13,10 @@ const KEYS: [string, string][] = [
   ['F9', 'Set a breakpoint on this line'],
   ['F10', 'Step one line'],
   ['Arrow keys', 'Move between tiles on the farm'],
+  ['W A S D', 'Pan the camera'],
+  ['Q E', 'Turn the camera'],
+  ['F', 'Follow a bot'],
+  ['Home', 'Back to the whole farm'],
 ];
 
 const row = (label: string, control: HTMLElement, hint?: string): HTMLElement =>

@@ -5,6 +5,7 @@ import { hiddenSql } from './moderation.ts';
 import type { ChallengeRow } from './arena.ts';
 import { PLACEMENT_EVENTS, tierOf } from '@tendril/rating/src/index.ts';
 import { ratingSummary } from './ratings.ts';
+import { packetsOf } from './packets.ts';
 import { HttpError } from './validation.ts';
 
 /** B5: player pages, streaks, follows and the README badge. Self-contained; routes are wired in app.ts. */
@@ -211,7 +212,7 @@ export async function playerPage(db: Db, login: string, viewerId: string | undef
   return {
     login: p.login, displayName: p.displayName, avatarUrl: p.avatarUrl,
     streak: { current: streaks.current, best: streaks.best, lastDay: streaks.lastDay },
-    medals, topPercent, rating, pinned, days,
+    medals, topPercent, rating, pinned, days, packets: await packetsOf(db, p.id, now),
     followers: counts!.followers, following: counts!.following,
     viewer: viewerId ? { isSelf: viewerId === p.id, following } : null,
     // Sealed runs expose only the summary (no replay is linked from here); the mosaic is the same one the board shows.

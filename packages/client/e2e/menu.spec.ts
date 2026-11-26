@@ -131,3 +131,23 @@ test('editor font size resizes the code', async ({ page }) => {
   await page.locator('#set-font').dispatchEvent('change');
   await expect.poll(size).toBe('18px');
 });
+
+test('a first visit lands on the start card; "?" lists the shortcuts; Things to try can be hidden', async ({ page }) => {
+  await page.goto('/');
+  await expect(page.locator('#splash')).toHaveCount(0, { timeout: 60_000 });
+  await expect(page.locator('#start-card')).toBeVisible();
+  await expect(page.locator('#mode-label')).toContainText(/daily|practice/i);
+  await page.keyboard.press('Escape'); // closes the card without starting the day
+  await expect(page.locator('#start-card')).toBeHidden();
+  await page.keyboard.press('?');
+  await expect(page.locator('#panel-overlay .keys-panel')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await page.click('#btn-menu');
+  const tryIt = page.locator('#menu-overlay .try-it');
+  await expect(tryIt.locator('.menu-entry')).toHaveCount(3);
+  await tryIt.getByRole('button', { name: 'Hide' }).click();
+  await expect(tryIt).toBeHidden();
+  await page.reload(); // second visit: no more first-visit redirect, and the list stays hidden
+  await expect(page.locator('#splash')).toHaveCount(0, { timeout: 60_000 });
+  await expect(page.locator('#mode-label')).toContainText(/Local live/);
+});

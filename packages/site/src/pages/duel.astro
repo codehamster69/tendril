@@ -1,4 +1,5 @@
 ---
+import NextStep from '../components/NextStep.astro';
 import Base from '../layouts/Base.astro';
 ---
 <Base title="Duel" description="A friend challenged you to a Tendril farm. Play the same seed, no account needed, and race their ghost.">
@@ -25,6 +26,7 @@ import Base from '../layouts/Base.astro';
       <p class="dim" data-count></p>
     </div>
   </section>
+  <NextStep text="Done racing? Try today's farm, or learn the language behind it." links={[{ href: '/play/?mode=daily', label: "Play today's farm", primary: true }, { href: '/docs/sprout/', label: 'Learn Sprout' }]} />
 </Base>
 
 <script>
