@@ -19,7 +19,7 @@ export const GROUPS: SiteGroup[] = [
     { href: '/docs/how-to-play/', title: 'How the farm works', hint: 'Crops, bots and money' },
   ] },
   { title: 'Community', links: [
-    { href: '/docs/models/', title: 'Bench', hint: 'Humans against AI models' },
+    { href: '/bench/', title: 'Bench', hint: 'Humans against AI models' },
     { href: '/gallery/', title: 'Gallery', hint: 'Farms and pictures players made', when: '/gallery/' },
     { href: '/seeds/', title: 'Seed packets', hint: 'Programs to copy and remix', when: '/seeds/' },
     { href: '/season-1/', title: 'Season 1', hint: 'The weekly season' },
