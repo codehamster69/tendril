@@ -184,6 +184,12 @@ Live goal progress comes from the sim worker (`tendril:goal`), with `World.brief
 - **Decision:** buyable land shows survey stakes, a string line and carrot flags, plus a price board on the outer edge nearest the camera. Bots get a colour band at the hull waist and a trail capped at 2.5 tiles.
 - **Why:** the approved farm design replaces the glowing teal frontier with physical markers and makes bots readable at a glance.
 - **Consequences:** client only. The price is `plotPrice(count)` from sim, read-only, so no protocol change. Golden hashes and replays unchanged.
+## D-H1 (2026-11-24) Beat the machine: the daily's model entry becomes a visible target (H1)
+- **Decision:** the robot entry (`tendril-models`, from model-runs.yml) is shown to players. Start card: "<Model> scored N on the visible farm. Beat it." or, before 00:40 UTC, "The machine plays at <local time>"; goal HUD: a tick on the progress bar at its score (the bar runs to par, or to its score when higher) plus a "Gemini 400" line; result card and share text: "Beat Gemini by 14%" / "Gemini won by 6%", marked "on the visible farm" and provisional while hidden farms are unscored. New read-only `GET /api/bench?days=` (default 14, max 30; best human vs best run of each model per daily, plus a tally of closed days where both bests are final), cached 300 s at the edge. Site page `/bench/` reads it. model-runs.yml reads the repo variable `MODEL_RUNNER_MODELS` (provider:model pairs) and plays every pair whose provider key secret exists.
+- **Why:** a score to beat gives a daily a reason to be replayed and shared, and costs nothing: the entry already exists. Everything is read-only and fails soft, so it needs no one after merging.
+- **Consequences:** the board read for the start card is a plain `GET /challenges/:id/board?author=model&limit=5` (cached 10 min in sessionStorage; it never blocks Start; a failure shows nothing). The board keeps one row per player, so several models running under the single `tendril-models` user show there as its best entry; `/bench` reads entries directly and lists each model. No rule or setup version changed: no epoch needed.
+
+
 ## D-H7 Welcome back card from the catch-up log (2026-11-24)
 The away card counts sales and bot activity from the action log that catch-up already produces, instead of a second replay or new sim counters. Rules and goldens are untouched. Streak comes from the existing player page API; no email or push (they would need accounts or keys). Details in `brain/notes/H7.md`.
 

@@ -35,6 +35,9 @@
 @keyframes rs-stamp { from { transform: scale(2.4) rotate(-14deg); opacity: 0; } to { transform: none; opacity: 1; } }
 html[data-motion="reduced"] .rs-card { transition: none; transform: none; opacity: 1; }
 html[data-motion="reduced"] .rs-layer::before, html[data-motion="reduced"] .rs-stamp { animation: none !important; }
+.rs-machine { margin: 0; font: 600 .95rem var(--hk-display); }
+.rs-machine[data-won="true"] { color: var(--hk-leaf); }
+.rs-machine:empty { display: none; }
 .rs-rank:empty, .rs-rating:empty, .rs-note:empty { display: none; }
 
 /* daily briefs (K6): what the hidden farms add to the score */
