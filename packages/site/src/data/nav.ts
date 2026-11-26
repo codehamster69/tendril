@@ -30,6 +30,7 @@ export const DOCS_NAV: NavGroup[] = [
       { href: '/docs/rules/', title: 'Rules and moderation' },
       { href: '/docs/cli/', title: 'Play from the terminal' },
       { href: '/docs/models/', title: 'Humans vs models' },
+      { href: '/docs/packets/', title: 'Seed packets' },
       { href: '/docs/badge/', title: 'README badge and streaks' },
       { href: '/docs/faq/', title: 'FAQ' },
     ],

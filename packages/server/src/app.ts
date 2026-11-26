@@ -13,6 +13,7 @@ import { handleDailyPages } from './daily-pages.ts';
 import { createGuard, dropReplaysOutsideTop, pruneOncePerDay, rateScale, refreshGuard, prune, syncScale, withCacheHeaders } from './housekeeping.ts';
 import type { SourceVerifier } from './verify-client.ts';
 import { reportProgram } from './moderation.ts';
+import { listPackets, packetInput, packetPage, packetTag, plantPacket, publishPacket, reportPacket } from './packets.ts';
 import { challengeSalt, createBriefCloser } from './brief.ts';
 import { createRater, decorateBoard, disciplineParam, latestChange, ratingBoard, ratingModels } from './ratings.ts';
 import { migrate } from './migrations.ts';
@@ -378,6 +379,35 @@ function createInnerApp(options: AppOptions): (request: Request) => Promise<Resp
           rejectQuery(url);
           objectWithKeys(await readJson(request), []);
           return json(await acceptDuel(db, await loadChallenge(db, ref!, now(), options.verifySource, options.setupVersion, salt), identity.userId, now()));
+        }
+      }
+      // ---- H8 seed packets: public reads are CDN-cached; sharing, planting and reporting need a session ----
+      if (route === '/packets' && method === 'GET') {
+        rejectQuery(url, ['sort', 'tag', 'limit']);
+        const sort = url.searchParams.get('sort') ?? 'popular';
+        if (sort !== 'popular' && sort !== 'new') throw new HttpError(400, 'Invalid sort');
+        return json(await listPackets(db, sort, packetTag(url.searchParams.get('tag')), limitParam(url), now()));
+      }
+      if (route === '/packets' && method === 'POST') {
+        const identity = await requireUser();
+        await reserveAttempt(db, identity.userId, 'packet', now(), undefined, scale);
+        rejectQuery(url);
+        const input = packetInput(await readJson(request));
+        return json(await publishPacket(db, identity.userId, input, now()), 201);
+      }
+      const packetRoute = /^\/packets\/([^/]+?)(?:\/(plant|report))?$/.exec(route);
+      if (packetRoute) {
+        const [, id, action] = packetRoute;
+        if (!action && method === 'GET') {
+          rejectQuery(url);
+          return json(await packetPage(db, id!, now()));
+        }
+        if (action && method === 'POST') {
+          const identity = await requireUser();
+          await reserveAttempt(db, identity.userId, action === 'plant' ? 'follow' : 'report', now(), undefined, scale);
+          rejectQuery(url);
+          objectWithKeys(await readJson(request), []);
+          return json(action === 'plant' ? await plantPacket(db, identity.userId, id!, now()) : await reportPacket(db, identity.userId, id!, now()));
         }
       }
       // ---- players: profile, follows, README badge (B5) ----

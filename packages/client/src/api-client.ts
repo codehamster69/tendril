@@ -61,6 +61,12 @@ export interface LatestRating {
   challengeId: string; kind: 'daily' | 'season'; closesAt: number;
   overall: RatingChange | null; speed: RatingChange | null; brevity: RatingChange | null;
 }
+export interface PacketSummary {
+  id: string; name: string; note: string; tags: string[]; origin: string; plants: number; plantsThisWeek: number; parentId: string | null; createdAt: number;
+  author: { login: string; displayName: string; avatarUrl: string | null };
+}
+export interface PacketPage extends PacketSummary { source: string }
+
 export class ApiError extends Error {
   constructor(readonly status: number, message: string) { super(message); this.name = 'ApiError'; }
 }
@@ -128,6 +134,12 @@ export class FarmApi {
   submitEntry(id: string, body: { rulesVersion: number; actions: LogEntry[]; source?: string; sourcePublic?: boolean; authorKind?: 'human' | 'model'; model?: string }): Promise<EntryResult> {
     return this.request(`/challenges/${encodeURIComponent(id)}/entries`, 'POST', body);
   }
+  packets(sort: 'popular' | 'new', limit = 12): Promise<{ sort: string; packets: PacketSummary[] }> { return this.request(`/packets?sort=${sort}&limit=${limit}`); }
+  packet(id: string): Promise<PacketPage> { return this.request(`/packets/${encodeURIComponent(id)}`); }
+  sharePacket(body: { name: string; note?: string; tags?: string[]; source: string; parentId?: string | null; origin: 'endless' | 'sandbox' }): Promise<{ id: string; parentId: string | null }> {
+    return this.request('/packets', 'POST', body);
+  }
+  plantPacket(id: string): Promise<{ planted: true; plants: number }> { return this.request(`/packets/${encodeURIComponent(id)}/plant`, 'POST', {}); }
   /** Newest rated contest for the signed-in player; `latest` is null before the first rated close. */
   ratingLatest(): Promise<{ latest: LatestRating | null }> { return this.request('/ratings/me/latest'); }
   daily(): Promise<{ date: string; seed: number; ticks: number; rulesVersion: number }> { return this.request('/daily'); }
