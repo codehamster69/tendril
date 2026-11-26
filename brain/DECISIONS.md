@@ -170,6 +170,11 @@ Live goal progress comes from the sim worker (`tendril:goal`), with `World.brief
 - **Why:** the choice is stored on the row when it is first created, so the switch changes nothing already running. `CHALLENGE_SALT` is set in Vercel; without it a brief day answers 503 instead of opening.
 - **Consequences:** server tests that use a real date pin `setupVersion` to the old version where they test the pre-brief world. To roll back, set `BRIEF_EPOCH` back to a far date; rows already created as briefs keep working.
 
+## D-H2 (2026-11-24) Live code: edits equip while the farm runs (H2)
+- **Decision:** while a farm runs, an edit that parses and changes more than comments or spacing is compiled onto the bots 600 ms after typing stops; the farm is kept and bots restart from the top. Setting "Apply code as I type" (default on). Code that does not parse never reaches the worker; the last working program keeps running with one chip and one console line.
+- **Why:** hot reload makes trying ideas free, and a typo costs nothing. Parsing on the main thread avoids halting and saving the worker on every half-typed line.
+- **Consequences:** on a non-practice challenge, code swapped after tick 0 makes the run unverifiable as one program, so the result card says so and offers "Re-run my final code from the start". No rule, server or epoch change. Specs that edit a running farm and expect no effect must turn the setting off.
+
 ## D-H6 (2026-11-24) Navigation and first look
 - **Decision:** one site nav list (`packages/site/src/data/sitenav.ts`): Play, Today, Leaderboard, Learn, Community. Entries with `when` (Gallery, Seed packets) appear only once their page exists. A first-ever visit to the game with no `?mode=` opens today's farm and its start card; the Endless first-run tour now starts the first time a player picks Endless. The menu gives each mode a plain-words promise, `?` opens a shortcuts panel, and a dismissable "Things to try" list (`packages/client/src/try-it.ts`) points at unused features.
 - **Why:** Rohan asked for everything to be understandable at first look and easy to explore. A new player used to land on an empty Endless farm.

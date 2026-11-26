@@ -100,7 +100,7 @@ test('run recompiles edits at the current farm and snapshot events match the sea
   expect(Number(tick)).toBeGreaterThan(100);
   expect(await page.evaluate(() => window.tendril!.loop.snapshot()!.tick)).toBe(Number(tick));
   await expect(page.locator('body')).toHaveAttribute('data-snapshot-tick', tick!);
-  await expect(page.locator('#console')).toContainText('farm kept');
+  await expect(page.locator('#equip-chip')).toContainText(/Equipped at tick \d/);
 });
 
 test('syntax and runtime errors show useful console text and the correct Sprout line', async ({ page }) => {

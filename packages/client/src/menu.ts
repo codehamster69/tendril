@@ -96,7 +96,7 @@ export function mountMenu(ctx: MenuContext): MenuApi {
   document.body.append(keysPanel);
   const showKeys = (): void => panels.open('Keyboard shortcuts', [keysPanel]);
   tool('shortcuts', 'Shortcuts', 'Every key, press ? any time', showKeys);
-  tool('settings', 'Settings', 'Sound, graphics, motion, keys', () => showSettings());
+  tool('settings', 'Settings', 'Sound, graphics, motion, code, keys', () => showSettings());
   if (isDesktop) tool('quit', 'Quit', 'Close Tendril', () => (window as unknown as { tendrilDesktop?: { quit?(): void } }).tendrilDesktop?.quit?.());
 
   const tryIt = mountTryIt({ current });
