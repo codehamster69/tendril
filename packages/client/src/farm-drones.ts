@@ -17,6 +17,8 @@ export const TRAIL_POINTS = 44;
 /** Height of the hull centre above the tile surface. Carried-item markers stack above this. */
 export const DRONE_HOVER = 0.75;
 const TRAIL_STEP = 0.12;
+/** The step trail is a faint line of the last few tiles, never the long vine it used to be. */
+export const TRAIL_MAX_TILES = 2.5;
 const TRAIL_Y = 0.07;
 const SNAP_DISTANCE = 12;
 
@@ -128,6 +130,7 @@ interface Drone {
   rot: THREE.Group | null;
   beam: THREE.Mesh;
   halo: THREE.Sprite;
+  band: THREE.Mesh;
   blob: THREE.Mesh;
   trail: THREE.Mesh;
   tPos: Float32Array;
@@ -163,6 +166,8 @@ export class FarmDrones {
   private bladeGeo = new THREE.SphereGeometry(1, 8, 4).scale(0.24, 0.012, 0.07);
   private beamGeo = new THREE.ConeGeometry(0.16, 0.9, 12, 1, true).translate(0, -0.45, 0);
   private blobGeo = new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2);
+  /** Colour band round the hull at its waist: the bot's own colour, brighter at night. */
+  private bandGeo = new THREE.TorusGeometry(0.185, 0.022, 6, 28).rotateX(Math.PI / 2);
   private hullMat = new THREE.MeshStandardMaterial({ color: 0xf2ecdc, roughness: 0.45 });
   private bladeMat = new THREE.MeshStandardMaterial({ color: 0x6fcf86, roughness: 0.6 });
   private blobMat = new THREE.MeshBasicMaterial({ map: this.blobTex, transparent: true, depthWrite: false, opacity: 0.7 });
@@ -264,17 +269,19 @@ export class FarmDrones {
       d.beam.visible = d.beamLevel > 0.02;
       d.halo.material.opacity = 0.55 * Math.min(1.4, glow) + 0.2;
       d.halo.scale.setScalar((0.8 + 0.15 * glow) * 1);
+      // Band: steady in daylight, lit up at night (the same glow value that drives the lamp halo).
+      (d.band.material as THREE.MeshBasicMaterial).opacity = 0.7 + 0.3 * Math.min(1, glow);
 
       // Long in distance (not in points), shorter, thinner and dimmer as playback speeds up; none at extreme pace.
       const fade = trailFade(this.tickDelta);
       const show = this.trails && !reduced && fade > 0;
       if (show) {
         d.histN = pushTrail(d.hist, d.histN, d.x, d.z);
-        d.histN = trimTrail(d.hist, d.histN, trailLength(this.tickDelta) * Math.max(1, sc * 0.7));
+        d.histN = trimTrail(d.hist, d.histN, Math.min(TRAIL_MAX_TILES, trailLength(this.tickDelta)) * Math.max(1, sc * 0.7));
       } else d.histN = 0;
       d.trail.visible = show && d.histN > 2;
       if (d.trail.visible) {
-        fillRibbon(d.tPos, d.tCol, d.hist, d.histN, TRAIL_POINTS, 0.045 * Math.max(1, sc * 0.7) * (0.4 + 0.6 * fade), d.rgb, (0.9 + 0.4 * glow) * fade, d.x, d.z);
+        fillRibbon(d.tPos, d.tCol, d.hist, d.histN, TRAIL_POINTS, 0.045 * Math.max(1, sc * 0.7) * (0.4 + 0.6 * fade), d.rgb, (0.45 + 0.2 * glow) * fade, d.x, d.z);
         (d.trail.geometry.getAttribute('position') as THREE.BufferAttribute).needsUpdate = true;
         (d.trail.geometry.getAttribute('color') as THREE.BufferAttribute).needsUpdate = true;
       }
@@ -325,7 +332,7 @@ export class FarmDrones {
     this.scene.remove(this.root, this.ring, this.marks);
     this.marks.geometry.dispose(); (this.marks.material as THREE.Material).dispose(); this.marks.dispose();
     this.ring.geometry.dispose(); (this.ring.material as THREE.Material).dispose();
-    for (const g of [this.hullGeo, this.coreGeo, this.bladeGeo, this.beamGeo, this.blobGeo]) g.dispose();
+    for (const g of [this.hullGeo, this.coreGeo, this.bladeGeo, this.beamGeo, this.blobGeo, this.bandGeo]) g.dispose();
     for (const m of [this.hullMat, this.bladeMat, this.blobMat]) m.dispose();
     this.blobTex.dispose(); this.glowTex.dispose();
     if (this.ownsFx) this.fx.dispose();
@@ -355,8 +362,10 @@ export class FarmDrones {
     const beam = new THREE.Mesh(this.beamGeo, beamMat);
     beam.position.y = -0.05;
     beam.visible = false;
-    const own: THREE.Material[] = [haloMat, beamMat];
-    body.add(halo, beam);
+    const bandMat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.8, depthWrite: false });
+    const band = new THREE.Mesh(this.bandGeo, bandMat);
+    const own: THREE.Material[] = [haloMat, beamMat, bandMat];
+    body.add(halo, beam, band);
     group.add(body);
 
     const blob = new THREE.Mesh(this.blobGeo, this.blobMat);
@@ -378,7 +387,7 @@ export class FarmDrones {
 
     this.root.add(group, blob, trail);
     const d: Drone = {
-      id, group, body, rot: null, beam, halo, blob, trail, tPos, tCol, rgb, own,
+      id, group, body, rot: null, beam, halo, band, blob, trail, tPos, tCol, rgb, own,
       hist: new Float32Array(TRAIL_POINTS * 2), histN: 0,
       x: 0, z: 0, tx: 0, tz: 0, vx: 0, vz: 0, yaw: 0, op: null, beamLevel: 0, catchUp: 1, coreMat: null,
     };
@@ -388,7 +397,7 @@ export class FarmDrones {
 
   /** (Re)build the drone's solid parts: GLB when loaded, procedural lantern drone otherwise. */
   private buildBody(d: Drone, color: number): void {
-    for (const child of [...d.body.children]) if (child !== d.halo && child !== d.beam) d.body.remove(child);
+    for (const child of [...d.body.children]) if (child !== d.halo && child !== d.beam && child !== d.band) d.body.remove(child);
     d.rot = null;
     if (d.coreMat) { d.own.splice(d.own.indexOf(d.coreMat), 1); d.coreMat.dispose(); d.coreMat = null; }
     const glb = this.glbModel;
