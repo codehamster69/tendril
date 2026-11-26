@@ -1,49 +1,48 @@
-/* Details on the island: tile tooltip, lens legend, contract cards, stock chips. Tokens and classes come from hud-kit.css. */
-.tile-tip { position: fixed; z-index: 40; left: 0; top: 0; max-width: 16rem; padding: var(--hk-s2) var(--hk-s3); pointer-events: none; font: 400 .8rem/1.35 var(--hk-body); }
+/* Details on the island: tile tooltip, lens legend, contract cards, stock cells. Tokens: style.css. Components: hud-kit.css. */
+.tile-tip { position: fixed; z-index: 40; left: 0; top: 0; max-width: 16rem; padding: var(--hk-s2) var(--hk-s3); pointer-events: none; font: 400 .8rem/1.35 var(--f-body); }
 .tile-tip[hidden] { display: none; }
-.tile-tip h3 { margin: 0 0 var(--hk-s1); font: 700 .95rem var(--hk-display); }
+.tile-tip h3 { margin: 0 0 var(--hk-s1); font: 700 1.1rem/1 var(--f-label); letter-spacing: .04em; text-transform: uppercase; }
 .tile-tip dl { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 2px var(--hk-s3); }
-.tile-tip dt { color: var(--hk-dim); }
-.tile-tip dd { margin: 0; font: 600 .8rem var(--hk-mono); text-align: right; font-variant-numeric: tabular-nums; }
-.tile-tip .tip-hint { margin: var(--hk-s2) 0 var(--hk-s1); color: var(--hk-dim); }
-.tile-tip code { display: block; font: 600 .75rem var(--hk-mono); color: var(--hk-lantern); }
-.tile-pin { pointer-events: auto; padding-right: 2.2rem; border-color: var(--hk-lantern); }
-.tile-pin .tip-close { position: absolute; top: var(--hk-s1); right: var(--hk-s1); padding: .1rem .5rem; }
+.tile-tip dt { color: var(--chaff); }
+.tile-tip dd { margin: 0; font: 600 .8rem var(--f-code); text-align: right; font-variant-numeric: tabular-nums; }
+.tile-tip .tip-hint { margin: var(--hk-s2) 0 var(--hk-s1); color: var(--chaff); }
+.tile-tip code { display: block; font: 600 .75rem var(--f-code); color: var(--carrot); }
+.tile-pin { pointer-events: auto; padding-right: 2.2rem; border-color: var(--carrot); }
+.tile-pin .tip-close { position: absolute; top: var(--hk-s1); right: var(--hk-s1); padding: .1rem .5rem; min-height: 0; }
 
-.lens-legend { position: absolute; left: 14px; bottom: 132px; z-index: 4; gap: var(--hk-s2); }
+.lens-legend { position: absolute; left: 14px; bottom: 132px; z-index: 4; gap: var(--hk-s2); background: var(--soil); border: 1px solid var(--loam); border-radius: var(--r); }
 .lens-legend[hidden] { display: none; }
-.lens-legend .lens-end { color: var(--hk-dim); font: 500 .75rem var(--hk-body); }
-.lens-legend .lens-bar { width: 5rem; height: .5rem; border-radius: var(--hk-r-pill); }
+.lens-legend .lens-end { color: var(--chaff); font: 500 .75rem var(--f-body); }
+.lens-legend .lens-bar { width: 5rem; height: .5rem; }
 
-.order-cards { position: absolute; left: 14px; top: var(--tools-bottom, 128px); z-index: 4; width: 13.5rem; display: flex; flex-direction: column; gap: var(--hk-s2); pointer-events: none; perspective: 600px; }
-.order-card { padding: var(--hk-s2) var(--hk-s3); pointer-events: auto; transform-origin: left center; }
-.order-card .oc-top { display: flex; align-items: center; gap: var(--hk-s2); font: 600 .8rem var(--hk-body); }
+.order-cards { position: absolute; left: 14px; top: var(--tools-bottom, 128px); z-index: 4; width: 13.5rem; display: flex; flex-direction: column; gap: var(--hk-s2); pointer-events: none; }
+.order-card { padding: var(--hk-s2) var(--hk-s3); pointer-events: auto; }
+.order-card .oc-top { display: flex; align-items: center; gap: var(--hk-s2); font: 600 .8rem var(--f-body); }
 .order-card .oc-dot { width: .7rem; height: .7rem; border-radius: 50%; flex: none; }
 .order-card .oc-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.order-card b { font: 600 .8rem var(--hk-mono); }
-.order-card .oc-reward { color: var(--hk-lantern); font: 600 .8rem var(--hk-mono); }
-.order-card .oc-track { display: block; height: .3rem; margin-top: var(--hk-s2); border-radius: var(--hk-r-pill); background: rgba(244, 234, 216, .14); overflow: hidden; }
-.order-card .oc-fill { display: block; height: 100%; width: 0; background: var(--hk-leaf); transition: width .3s ease; }
-.order-card.ready { border-color: var(--hk-leaf); }
-.order-card .oc-day { position: relative; display: block; height: .5rem; margin-top: var(--hk-s1); border-bottom: 1px solid var(--hk-line); }
+.order-card b { font: 600 .8rem var(--f-code); }
+.order-card .oc-reward { color: var(--carrot); font: 600 .8rem var(--f-code); }
+.order-card .oc-track { display: block; height: 4px; margin-top: var(--hk-s2); background: var(--meter-bg); overflow: hidden; }
+.order-card .oc-fill { display: block; height: 100%; width: 0; background: var(--sprout); transition: width .3s ease; }
+.order-card.ready { border-color: var(--sprout); }
+.order-card .oc-day { position: relative; display: block; height: .5rem; margin-top: var(--hk-s1); border-bottom: 1px solid var(--loam); }
 .order-card .oc-now, .order-card .oc-due { position: absolute; bottom: -3px; width: 6px; height: 6px; margin-left: -3px; border-radius: 50%; }
-.order-card .oc-now { background: var(--hk-text); }
-.order-card .oc-due { background: var(--hk-lantern); }
-.order-card.filled { animation: oc-flip .8s ease forwards; }
+.order-card .oc-now { background: var(--straw); }
+.order-card .oc-due { background: var(--carrot); }
+.order-card.filled { animation: oc-gone .4s ease forwards; }
 .order-card.gone { animation: oc-gone .4s ease forwards; }
-@keyframes oc-flip { 0% { transform: rotateX(0); } 40% { transform: rotateX(90deg); } 100% { transform: translateX(-120%) rotateX(90deg); opacity: 0; } }
-@keyframes oc-gone { to { opacity: 0; transform: translateX(-20%); } }
+@keyframes oc-gone { to { opacity: 0; } }
 
-.stock-chips { display: contents; }
-.stock-chip .sc-dot { width: .7rem; height: .7rem; border-radius: 50%; }
-.stock-chip.bump { border-color: var(--hk-lantern); box-shadow: 0 0 0 2px rgba(242, 184, 75, .35), var(--hk-shadow); }
-button.hk-chip { cursor: pointer; color: var(--hk-text); }
-.stock-weather, .stock-next { color: var(--hk-dim); font-weight: 500; }
-.stock-more { position: fixed; z-index: 30; top: 56px; left: 14px; max-width: 22rem; display: flex; flex-wrap: wrap; gap: var(--hk-s2); padding: var(--hk-s2); }
+.stock-chip .sc-dot { width: .7rem; height: .7rem; border-radius: 50%; display: inline-block; margin-right: 5px; vertical-align: -1px; }
+.stock-chip.bump b { color: var(--carrot); }
+button.hk-chip { cursor: pointer; text-align: left; justify-items: start; font: 600 15px/1 var(--f-code); letter-spacing: 0; text-transform: none; color: var(--straw); border-radius: 0; min-height: 0; }
+button.hk-chip::after { border-radius: 0; }
+.stock-weather b, .stock-next b { color: var(--straw); }
+.stock-more { position: fixed; z-index: 30; top: calc(var(--ledger-h) + 6px); left: 14px; max-width: 22rem; display: flex; flex-wrap: wrap; gap: var(--hk-s2); padding: var(--hk-s2); }
 .stock-more[hidden] { display: none; }
 .crew-list { flex-direction: column; align-items: stretch; flex-wrap: nowrap; max-height: 50vh; overflow: auto; }
 .crew-row { display: flex; justify-content: space-between; gap: var(--hk-s3); text-align: left; }
-.crew-row small { color: var(--hk-dim); font: 500 .75rem var(--hk-mono); }
+.crew-row small { color: var(--chaff); font: 500 .75rem var(--f-code); letter-spacing: 0; text-transform: none; }
 
 .game-stage.farm-large #farm-minimap { right: calc(var(--slate-w) + 40px); bottom: 100px; }
 .game-stage.farm-large.slate-hidden #farm-minimap { right: 14px; }

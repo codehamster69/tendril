@@ -12,7 +12,7 @@ import { EQUIP_EVENT, type EquipState } from './live-code';
 
 const FLOAT_MS = 1100;
 const TIP_MS = 6000;
-const COIN_COLOUR = 'var(--hk-lantern)';
+const COIN_COLOUR = 'var(--carrot)';
 
 interface Float { node: HTMLElement; x: number; z: number; born: number; free: boolean }
 

@@ -1,15 +1,15 @@
-/* Live code: the "Equipped" chip beside the editor, the green pulse on applied lines, and the ring a bot shows when it picks up new code. */
-.equip-chip { align-self: center; padding: 1px 9px; border-radius: 999px; font-size: 11.5px; color: #CFEFD6; background: rgba(110, 200, 120, .16); border: 1px solid rgba(110, 200, 120, .4); white-space: nowrap; }
+/* Live code: the "Equipped" chip beside the editor, the pulse on applied lines, and the ring a bot shows when it picks up new code. */
+.equip-chip { align-self: center; padding: 1px 9px; border-radius: var(--r); font: 600 12px/1.4 var(--f-label); letter-spacing: .08em; text-transform: uppercase; color: var(--sprout); border: 1px solid var(--sprout); white-space: nowrap; }
 .equip-chip[hidden] { display: none; }
-.equip-chip[data-state='kept'] { color: #FFD9C6; background: rgba(232, 135, 90, .16); border-color: rgba(232, 135, 90, .5); }
-.equip-chip[data-state='pending'] { color: var(--mist-2, #B5CFCC); background: transparent; border-color: rgba(127, 169, 165, .4); }
+.equip-chip[data-state='kept'] { color: var(--beet); border-color: var(--beet); }
+.equip-chip[data-state='pending'] { color: var(--chaff); border-color: var(--root); }
 .equip-chip[data-fresh='true'] { animation: equip-pop .5s ease-out; }
-@keyframes equip-pop { from { transform: scale(.92); opacity: .4; } }
+@keyframes equip-pop { from { opacity: .4; } }
 
-@keyframes cm-applied { from { background-color: rgba(110, 200, 120, .4); } to { background-color: rgba(110, 200, 120, 0); } }
-html[data-motion='reduced'] .cm-applied-line, html[data-motion='reduced'] .cm-applied-gutter { animation: none; background-color: rgba(110, 200, 120, .22); }
+@keyframes cm-applied { from { background-color: rgba(147, 193, 96, .35); } to { background-color: rgba(147, 193, 96, 0); } }
+html[data-motion='reduced'] .cm-applied-line, html[data-motion='reduced'] .cm-applied-gutter { animation: none; background-color: rgba(147, 193, 96, .2); }
 
 .wf-equip {
   position: absolute; left: 0; top: 0; width: 2.4rem; height: 2.4rem; margin: 0; border-radius: 50%; pointer-events: none;
-  border: 3px solid var(--wf-bot, #6EC878); box-shadow: 0 0 14px var(--wf-bot, #6EC878); opacity: 0; will-change: transform, opacity;
+  border: 2px solid var(--wf-bot, var(--sprout)); opacity: 0; will-change: transform, opacity;
 }

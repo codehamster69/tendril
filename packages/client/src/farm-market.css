@@ -2,33 +2,32 @@
 .farm-market[hidden] { display: none; }
 /* Top-right of the stage: HUD is top-left, minimap bottom-right, caption bottom-left. A pill until a market day starts. */
 .farm-market { position: absolute; right: 10px; top: 10px; width: min(260px, calc(100% - 20px)); z-index: 3;
-  background: color-mix(in srgb, var(--deep) 82%, transparent); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow);
-  -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); color: var(--mist); font-family: var(--sans); font-size: 12px; }
-.farm-market.collapsed { width: auto; max-width: calc(100% - 20px); border-radius: 999px; }
+  background: var(--soil); border: 1px solid var(--root); border-radius: var(--r); color: var(--straw); font-family: var(--f-body); font-size: 12px; }
+.farm-market.collapsed { width: auto; max-width: calc(100% - 20px); }
 .farm-market.collapsed .farm-market-head { padding: 5px 12px; gap: 10px; }
 .farm-market-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; padding: 8px 12px; background: none; border: 0; color: inherit; cursor: pointer; font: inherit; text-align: left; }
-.farm-market-head:focus-visible { outline: 2px solid var(--wheat); outline-offset: -2px; border-radius: var(--radius); }
-.farm-market-title { font: 600 11px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--mist-2); }
-.farm-market-best { font: 600 12px var(--mono); color: var(--wheat); font-variant-numeric: tabular-nums; }
+.farm-market-head:focus-visible { outline: 2px solid var(--carrot); outline-offset: -2px; border-radius: var(--r); }
+.farm-market-title { font: 600 13px var(--f-label); letter-spacing: .09em; text-transform: uppercase; color: var(--chaff); }
+.farm-market-best { font: 600 12px var(--f-code); color: var(--carrot); font-variant-numeric: tabular-nums; }
 .farm-market-body { padding: 0 12px 10px; display: flex; flex-direction: column; gap: 8px; }
 .farm-market.collapsed .farm-market-body { display: none; }
 .farm-market-rows { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
 .farm-market-row { display: grid; grid-template-columns: 10px 58px 1fr 76px; gap: 8px; align-items: center; }
 .farm-market-dot { width: 9px; height: 9px; border-radius: 50%; }
 .farm-market-name { text-transform: capitalize; }
-.farm-market-gauge { position: relative; height: 5px; border-radius: 3px; background: rgba(255,255,255,.1); }
-.farm-market-gauge::after { content: ""; position: absolute; left: 50%; top: -2px; bottom: -2px; width: 1px; background: rgba(255,255,255,.4); }
-.farm-market-gauge b { position: absolute; top: -2px; width: 9px; height: 9px; margin-left: -4px; border-radius: 50%; background: var(--wheat); }
-.farm-market-val { font: 500 12px var(--mono); text-align: right; font-variant-numeric: tabular-nums; }
-.farm-market-val.up { color: var(--sage); }
-.farm-market-val.down { color: var(--rose); }
-.farm-market-share { grid-column: 2 / -1; color: var(--mist-2); font: 11px var(--mono); }
-.farm-market-foot { display: flex; justify-content: space-between; gap: 8px; color: var(--mist-2); font: 11px var(--mono); }
-.farm-market-note { color: var(--mist-2); line-height: 1.4; }
+.farm-market-gauge { position: relative; height: 4px; background: var(--meter-bg); }
+.farm-market-gauge::after { content: ""; position: absolute; left: 50%; top: -2px; bottom: -2px; width: 1px; background: var(--root); }
+.farm-market-gauge b { position: absolute; top: -2px; width: 9px; height: 9px; margin-left: -4px; border-radius: 50%; background: var(--carrot); }
+.farm-market-val { font: 500 12px var(--f-code); text-align: right; font-variant-numeric: tabular-nums; }
+.farm-market-val.up { color: var(--sprout); }
+.farm-market-val.down { color: var(--beet); }
+.farm-market-share { grid-column: 2 / -1; color: var(--chaff); font: 11px var(--f-code); }
+.farm-market-foot { display: flex; justify-content: space-between; gap: 8px; color: var(--chaff); font: 11px var(--f-code); }
+.farm-market-note { color: var(--chaff); line-height: 1.4; }
 @media (max-width: 640px) { .farm-market { top: auto; right: auto; left: 8px; bottom: 74px; width: min(240px, calc(100% - 16px)); } }
 
 .farm-pop-layer { position: absolute; inset: 0; pointer-events: none; overflow: hidden; z-index: 4; }
-.farm-pop { position: absolute; transform: translate(-50%, -50%); font: 600 12px var(--mono); white-space: nowrap; color: var(--wheat); text-shadow: 0 1px 3px #000; animation: farm-pop-rise 1s ease-out forwards; }
-.farm-pop.low { color: var(--sky); }
+.farm-pop { position: absolute; transform: translate(-50%, -50%); font: 600 12px var(--f-code); white-space: nowrap; color: var(--carrot); text-shadow: 0 1px 0 var(--soil), 0 0 3px var(--soil); animation: farm-pop-rise 1s ease-out forwards; }
+.farm-pop.low { color: var(--rain); }
 @keyframes farm-pop-rise { to { transform: translate(-50%, -220%); opacity: 0; } }
 html[data-motion="reduced"] .farm-pop { animation: farm-pop-fade 1s linear forwards; } @keyframes farm-pop-fade { to { opacity: 0; } }

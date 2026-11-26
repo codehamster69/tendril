@@ -52,6 +52,15 @@ export function mountFirstRun({ editor }: { editor: Editor }): void {
     { anchor: '#farm-canvas', title: 'Watch the first harvest', text: 'Your bot tills, plants and waits for the carrot to ripen. This takes a few seconds.' },
     { anchor: '#farm-canvas', title: 'Now it sells', text: 'The bot carries the carrots to the barn. Your first sale ends the tour.' },
   ];
+  // The arrow line: one SVG over the page, from the card to the panel it describes. Redrawn whenever the card is placed.
+  const NS = 'http://www.w3.org/2000/svg';
+  const sv = document.createElementNS(NS, 'svg');
+  sv.id = 'fr-line'; sv.setAttribute('aria-hidden', 'true'); sv.setAttribute('hidden', '');
+  const ln = document.createElementNS(NS, 'line'), ring = document.createElementNS(NS, 'circle'), tip = document.createElementNS(NS, 'circle');
+  ring.setAttribute('r', '9'); tip.setAttribute('r', '3'); tip.setAttribute('class', 'fr-tip');
+  sv.append(ln, ring, tip);
+  document.body.append(sv);
+  const clamp = (v: number, lo: number, hi: number): number => Math.max(lo, Math.min(v, hi));
   const place = (): void => {
     const p = prompts[index];
     const target = p && document.querySelector<HTMLElement>(p.anchor);
@@ -59,11 +68,30 @@ export function mountFirstRun({ editor }: { editor: Editor }): void {
     const r = target.getBoundingClientRect();
     const w = Math.min(320, window.innerWidth - 24);
     card.style.width = `${w}px`;
+    const h = card.offsetHeight;
+    const slate = document.getElementById('side')?.getBoundingClientRect();
+    const freeRight = slate && slate.width > 0 && slate.left < window.innerWidth ? slate.left : window.innerWidth;
+    const onFarm = p.anchor === '#farm-canvas';
+    // The farm is the whole window, so its "panel" is the free area left of the code slate: the card sits above its middle and the line drops to it.
+    const fx = freeRight / 2, fy = (window.innerHeight + 44) / 2;
     const side = p.anchor === '#side';
-    const left = side ? r.left - w - 16 : r.left + r.width / 2 - w / 2;
-    const top = side ? r.top + 90 : p.anchor === '#tp-play' ? r.top - card.offsetHeight - 14 : r.top + 110;
-    card.style.left = `${Math.max(12, Math.min(left, window.innerWidth - w - 12))}px`;
-    card.style.top = `${Math.max(12, Math.min(top, window.innerHeight - card.offsetHeight - 12))}px`;
+    const left = side ? r.left - w - 20 : onFarm ? fx - w / 2 : r.left + r.width / 2 - w / 2;
+    const top = side ? r.top + 150 : p.anchor === '#tp-play' ? r.top - h - 36 : onFarm ? fy - h - 70 : r.top + 110;
+    const cl = Math.max(12, Math.min(left, window.innerWidth - w - 12)), ct = Math.max(52, Math.min(top, window.innerHeight - h - 40));
+    card.style.left = `${cl}px`;
+    card.style.top = `${ct}px`;
+    // Line from the nearest point on the card's edge to the nearest point on the target (or its middle, for the farm).
+    const cx = cl + w / 2, cy = ct + h / 2;
+    const ex = onFarm ? fx : clamp(cx, r.left, r.right), ey = onFarm ? fy : clamp(cy, r.top, r.bottom);
+    const sx = clamp(ex, cl, cl + w), sy = clamp(ey, ct, ct + h);
+    const gap = Math.hypot(ex - sx, ey - sy);
+    sv.toggleAttribute('hidden', gap < 4);
+    ln.setAttribute('x1', String(sx)); ln.setAttribute('y1', String(sy));
+    ln.setAttribute('x2', String(ex)); ln.setAttribute('y2', String(ey));
+    ring.setAttribute('cx', String(ex)); ring.setAttribute('cy', String(ey));
+    tip.setAttribute('cx', String(ex)); tip.setAttribute('cy', String(ey));
+    ring.style.display = onFarm ? '' : 'none';
+    tip.style.display = onFarm ? 'none' : '';
   };
   const show = (i: number): void => {
     index = i;
@@ -88,6 +116,7 @@ export function mountFirstRun({ editor }: { editor: Editor }): void {
     window.removeEventListener('resize', place);
     for (const p of prompts) document.querySelector<HTMLElement>(p.anchor)?.classList.remove('fr-spot');
     card.remove();
+    sv.remove();
   };
   const advance = (from: number): void => { if (!finished && index === from) { if (from >= prompts.length - 1) end(); else show(from + 1); } };
   const onEvents = (event: Event): void => {

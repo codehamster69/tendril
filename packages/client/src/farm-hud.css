@@ -1,39 +1,40 @@
-/* Farm HUD: toolbar (top-left of the stage) and minimap (bottom-right). Island identity: lantern gold + teal, glass panels. */
+/* Farm HUD: toolbar (top-left of the stage) and minimap (bottom-right). Border-first, tokens from style.css. */
 .fh-bar { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
-.fh-group, .fh-seg { display: flex; border: 1px solid var(--line); border-radius: 10px; background: rgba(11,34,38,.82); backdrop-filter: blur(6px); }
-.fh-group { gap: 1px; padding: 2px; height: 34px; }
-.fh-btn, .fh-seg-btn { font: 500 12px/1 var(--sans); color: var(--mist); background: transparent; border: 0; border-radius: 8px; padding: 7px 9px; min-height: 30px; box-shadow: none; cursor: pointer; display: inline-flex; align-items: center; gap: 5px; list-style: none; }
+.fh-group, .fh-seg { display: flex; border: 1px solid var(--root); border-radius: var(--r); background: var(--soil); }
+.fh-group { gap: 0; padding: 0; height: 34px; }
+.fh-btn, .fh-seg-btn { font: 600 13px/1 var(--f-label); letter-spacing: .07em; text-transform: uppercase; color: var(--straw); background: none; border: 0; border-radius: 0; padding: 7px 9px; min-height: 30px; cursor: pointer; display: inline-flex; align-items: center; gap: 5px; list-style: none; }
 .fh-ic { font-size: 14px; line-height: 1; }
-.fh-btn:hover, .fh-seg-btn:hover { background: rgba(213,182,91,.14); }
-.fh-btn[aria-pressed="true"], .fh-seg-btn[aria-pressed="true"] { background: rgba(213,182,91,.22); color: var(--wheat); }
-.fh-btn:focus-visible, .fh-seg-btn:focus-visible, .fh-select:focus-visible, #farm-minimap-canvas:focus-visible { outline: 2px solid var(--wheat); outline-offset: 2px; }
+.fh-btn:hover, .fh-seg-btn:hover { color: var(--carrot); }
+.fh-btn::after, .fh-seg-btn::after { display: none; }
+.fh-btn[aria-pressed="true"], .fh-seg-btn[aria-pressed="true"] { color: var(--carrot); box-shadow: inset 0 -2px 0 var(--carrot); }
+.fh-btn:focus-visible, .fh-seg-btn:focus-visible, .fh-select:focus-visible, #farm-minimap-canvas:focus-visible { outline: 2px solid var(--carrot); outline-offset: 2px; }
 .fh-seg { overflow: hidden; }
-.fh-seg-btn { border-radius: 0; border-right: 1px solid var(--line); }
+.fh-seg-btn { border-right: 1px solid var(--loam); }
 .fh-seg-btn:last-child { border-right: 0; }
-.fh-key { font: 500 10px/1 var(--mono); color: var(--mist-2); border: 1px solid var(--line); border-radius: 4px; padding: 2px 4px; }
-.fh-lbl { font: 500 10px/1 var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--mist-2); }
-#stage-tools #farm-hud .fh-lens { display: flex; gap: 6px; align-items: center; padding: 0 2px 0 9px; height: 34px; border: 1px solid var(--line); border-radius: 10px; background: rgba(11,34,38,.82); backdrop-filter: blur(6px); }
-.fh-select { font: 500 12px var(--sans); color: var(--mist); background: transparent; border: 0; padding: 4px 2px; min-height: 28px; max-width: 110px; }
-.fh-select option { background: var(--ink); color: var(--mist); }
+.fh-key { font: 500 10px/1 var(--f-code); color: var(--chaff); border: 1px solid var(--root); border-radius: var(--r); padding: 2px 4px; }
+.fh-lbl { font: 600 12px/1 var(--f-label); letter-spacing: .1em; text-transform: uppercase; color: var(--chaff); }
+#stage-tools #farm-hud .fh-lens { display: flex; gap: 6px; align-items: center; padding: 0 2px 0 9px; height: 34px; border: 1px solid var(--root); border-radius: var(--r); background: var(--soil); }
+.fh-select { font: 500 12px var(--f-body); color: var(--straw); background: transparent; border: 0; padding: 4px 2px; min-height: 28px; max-width: 110px; }
+.fh-select option { background: var(--soil); color: var(--straw); }
 .fh-more { position: relative; }
-.fh-more > summary { height: 34px; border: 1px solid var(--line); background: rgba(11,34,38,.82); backdrop-filter: blur(6px); border-radius: 10px; }
+.fh-more > summary { height: 34px; border: 1px solid var(--root); background: var(--soil); border-radius: var(--r); }
 .fh-more > summary::-webkit-details-marker { display: none; }
 .fh-light .fh-pop { width: auto; }
-.fh-pop { position: absolute; z-index: 5; top: calc(100% + 6px); left: 0; width: 260px; max-width: calc(100vw - 32px); display: flex; flex-direction: column; gap: 8px; padding: 10px; border: 1px solid var(--line); border-radius: 12px; background: rgba(11,34,38,.94); backdrop-filter: blur(8px); }
-.fh-hints { display: flex; flex-wrap: wrap; gap: 6px; font-size: 11px; color: var(--mist-2); }
+.fh-pop { position: absolute; z-index: 5; top: calc(100% + 6px); left: 0; width: 260px; max-width: calc(100vw - 32px); display: flex; flex-direction: column; gap: 8px; padding: 10px; border: 1px solid var(--root); border-radius: var(--r); background: var(--soil); }
+.fh-hints { display: flex; flex-wrap: wrap; gap: 6px; font-size: 11px; color: var(--chaff); }
 .fh-chip { display: inline-flex; align-items: center; gap: 4px; }
 
-.fh-card { background: rgba(11,34,38,.82); backdrop-filter: blur(8px); border: 1px solid var(--line); border-radius: 12px; }
+.fh-card { background: var(--soil); border: 1px solid var(--root); border-radius: var(--r); }
 #farm-minimap { position: absolute; z-index: 4; right: 10px; bottom: 10px; padding: 6px; display: flex; flex-direction: column; gap: 5px; }
 #farm-minimap > .fh-lbl { display: flex; justify-content: space-between; align-items: center; gap: 10px; min-height: 18px; }
-.fh-mini-toggle { font: 500 10px/1 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--mist-2); background: transparent; border: 0; padding: 3px 4px; border-radius: 6px; cursor: pointer; box-shadow: none; }
-.fh-mini-toggle:hover { color: var(--mist); background: rgba(255,255,255,.06); }
-.fh-mini-info { font: 500 10px/1 var(--mono); letter-spacing: 0; text-transform: none; color: var(--mist); white-space: nowrap; animation: fh-fade 1.8s ease-out forwards; }
+.fh-mini-toggle { font: 600 12px/1 var(--f-label); letter-spacing: .1em; text-transform: uppercase; color: var(--chaff); padding: 3px 4px; min-height: 0; }
+.fh-mini-toggle:hover { color: var(--carrot); }
+.fh-mini-info { font: 500 10px/1 var(--f-code); letter-spacing: 0; text-transform: none; color: var(--straw); white-space: nowrap; animation: fh-fade 1.8s ease-out forwards; }
 .fh-mini-info:empty { display: none; }
 @keyframes fh-fade { 0%, 70% { opacity: 1; } 100% { opacity: 0; } }
-#farm-minimap.collapsed { padding: 2px; border-radius: 999px; }
+#farm-minimap.collapsed { padding: 2px; }
 #farm-minimap.collapsed #farm-minimap-canvas, #farm-minimap.collapsed .fh-mini-info { display: none; }
-#farm-minimap-canvas { width: 144px; height: 144px; display: block; border-radius: 8px; cursor: crosshair; touch-action: none; }
+#farm-minimap-canvas { width: 144px; height: 144px; display: block; cursor: crosshair; touch-action: none; }
 
 @media (max-width: 640px) {
   #farm-minimap { right: 8px; bottom: 8px; }

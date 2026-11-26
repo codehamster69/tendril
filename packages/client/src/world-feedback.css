@@ -2,24 +2,22 @@
 .wf-layer { position: absolute; inset: 0; overflow: hidden; pointer-events: none; z-index: 4; }
 .wf-float {
   position: absolute; left: 0; top: 0; white-space: nowrap; will-change: transform, opacity;
-  font: 700 .95rem/1 var(--hk-mono); color: var(--wf-colour, var(--hk-lantern));
-  text-shadow: 0 1px 0 rgba(0, 0, 0, .75), 0 0 8px rgba(0, 0, 0, .6);
+  font: 700 .95rem/1 var(--f-code); color: var(--wf-colour, var(--carrot));
+  text-shadow: 0 1px 0 var(--soil), 0 0 3px var(--soil);
 }
 .wf-bubble {
   position: absolute; left: 0; top: 0; pointer-events: auto; cursor: pointer;
-  display: grid; place-items: center; min-width: 1.7rem; height: 1.7rem; padding: 0 .35rem;
-  border-radius: var(--hk-r-pill); border: 2px solid var(--wf-bot, var(--hk-lantern));
-  background: var(--hk-glass-strong); color: var(--hk-text); font: 700 .85rem/1 var(--hk-mono);
-  box-shadow: var(--hk-shadow);
+  display: grid; place-items: center; min-width: 1.7rem; height: 1.7rem; padding: 0 .35rem; border: 2px solid var(--wf-bot, var(--carrot));
+  background: var(--soil); color: var(--straw); font: 700 .85rem/1 var(--f-code);
 }
-.wf-bubble[data-kind='error'] { color: var(--hk-bad); }
-.wf-bubble[data-kind='blocked'] { color: var(--hk-lantern); }
+.wf-bubble[data-kind='error'] { color: var(--beet); }
+.wf-bubble[data-kind='blocked'] { color: var(--carrot); }
 .wf-bubble[hidden] { display: none; }
 .wf-tip {
   position: absolute; left: 0; top: 0; max-width: 20rem; padding: var(--hk-s2) var(--hk-s3);
-  font: 500 .85rem/1.35 var(--hk-body); color: var(--hk-text); pointer-events: none;
+  font: 500 .85rem/1.35 var(--f-body); color: var(--straw); pointer-events: none;
 }
 .wf-tip[hidden] { display: none; }
-.hk-chip.wf-pulse { animation: wf-pulse .22s ease-out; }
-@keyframes wf-pulse { 0% { transform: scale(1); } 40% { transform: scale(1.08); } 100% { transform: scale(1); } }
-html[data-motion="reduced"] .hk-chip.wf-pulse { animation: none; }
+.hk-chip.wf-pulse b { animation: wf-pulse .3s ease-out; }
+@keyframes wf-pulse { 0% { color: var(--carrot); } }
+html[data-motion="reduced"] .hk-chip.wf-pulse b { animation: none; }

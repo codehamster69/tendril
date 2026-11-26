@@ -24,6 +24,7 @@ export function mountStockChips(view: FarmView, seed: () => number): void {
     return `${(Math.round(base * m * 100) / 100).toString()}¢ each today (×${m.toFixed(2)})`;
   };
   const plus = el('button', { type: 'button', class: 'hk-chip stock-plus', 'aria-controls': 'stock-more' });
+  const cell = (label: string, value: string): Node[] => [el('small', { text: label }), el('b', { text: value })];
   plus.addEventListener('click', () => { more.hidden = !more.hidden; crewBox.hidden = true; if (latest) render(latest); });
   const crew = el('button', { type: 'button', class: 'hk-chip stock-crew', id: 'chip-crew', 'aria-controls': 'crew-list', title: 'Bots: pick one to look at' });
   crew.addEventListener('click', () => { crewBox.hidden = !crewBox.hidden; more.hidden = true; if (latest) { renderCrew(latest); render(latest); } });
@@ -35,7 +36,7 @@ export function mountStockChips(view: FarmView, seed: () => number): void {
     if (!c) {
       const dot = el('i', { class: 'sc-dot', 'aria-hidden': 'true' }); dot.style.background = ITEM_COLORS[i] ?? '#999';
       const num = el('b');
-      c = { node: el('span', { class: 'hk-chip stock-chip', 'data-item': String(i), tabindex: '0' }, dot, num), num };
+      c = { node: el('span', { class: 'hk-chip stock-chip', 'data-item': String(i), tabindex: '0' }, el('small', {}, dot, cap(itemName(i))), num), num };
       chips.set(i, c);
     }
     c.num.textContent = n.toLocaleString();
@@ -64,17 +65,17 @@ export function mountStockChips(view: FarmView, seed: () => number): void {
     const kids: HTMLElement[] = held.slice(0, SHOWN).map((i) => chip(i, s.stock[i]!, now));
     if (held.length > SHOWN) {
       const rest = held.slice(SHOWN);
-      plus.textContent = `+${rest.length}`;
+      plus.replaceChildren(...cell('More', `+${rest.length}`));
       plus.setAttribute('aria-label', `${rest.length} more items`);
       plus.setAttribute('aria-expanded', String(!more.hidden));
       setKids(more, rest.map((i) => chip(i, s.stock[i]!, now)));
       kids.push(plus);
     } else more.hidden = true;
-    crew.textContent = `Crew ${s.bots.length}`;
+    crew.replaceChildren(...cell('Crew', String(s.bots.length)));
     crew.setAttribute('aria-expanded', String(!crewBox.hidden));
     kids.push(crew);
-    if (weatherText) { weather.textContent = weatherText; kids.push(weather); }
-    next.textContent = `Plot ${s.plotCost.toLocaleString()} · Bot ${s.botCost.toLocaleString()}`;
+    if (weatherText) { weather.replaceChildren(...cell('Weather', weatherText)); kids.push(weather); }
+    next.replaceChildren(...cell('Next plot · bot', `${s.plotCost.toLocaleString()} · ${s.botCost.toLocaleString()}`));
     kids.push(next);
     setKids(host, kids);
     if (!crewBox.hidden) renderCrew(s);
@@ -95,13 +96,13 @@ export function mountStockChips(view: FarmView, seed: () => number): void {
     if (!scratch || scratchSeed !== seed()) { scratch = createWorld({ id: 'forecast', seed: seed() }); scratchSeed = seed(); }
     scratch.tick = s.tick;
     const next = forecast(scratch, 2000).filter((g) => g.end > s.tick).sort((a, b) => a.start - b.start)[0];
-    weatherText = !next ? (s.weather === 'clear' ? '☀ clear' : '') : next.start <= s.tick ? `${next.kind === 'frost' ? '❄ frost' : '☂ rain'} now` : `${next.kind === 'frost' ? '❄' : '☂'} ${next.kind} in ${next.start - s.tick}t`;
+    weatherText = !next ? (s.weather === 'clear' ? 'clear' : '') : next.start <= s.tick ? `${next.kind} now` : `${next.kind} in ${next.start - s.tick}t`;
   };
 
   const mount = (): void => {
     if (host.isConnected) return;
     const hud = document.getElementById('game-hud');
-    (hud ?? document.body).append(host);
+    ((document.getElementById('ledger-cells') ?? hud) ?? document.body).append(host);
     document.body.append(more, crewBox);
   };
   window.addEventListener('tendril:snapshot', (e) => {

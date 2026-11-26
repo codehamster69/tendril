@@ -24,7 +24,7 @@ export function rateLine(c: { kind: string; number: number | null }, signedIn: b
     : 'Not on course to be rated: par was not reached. A run below par is never rated, so it costs you nothing.';
 }
 
-const tierVar = (key: string): string => `var(--tier-${key}, var(--wheat))`;
+const tierVar = (key: string): string => `var(--tier-${key}, var(--carrot))`;
 const fmt = (n: number): string => n.toLocaleString('en-US');
 
 export function mountRating(api: FarmApi): void {
