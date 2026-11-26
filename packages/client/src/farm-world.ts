@@ -8,6 +8,7 @@ import { dropDistances, dropUnit, type DropCell, type DropDistances } from './dr
 import type { Bounds } from './farm-scenery.ts';
 import { motionQuery } from './settings.ts';
 import { groundModels, soilTint, type GroundModels } from './farm-ground.ts';
+import { Wear } from './farm-wear.ts';
 
 /**
  * The view-window renderer. Tiles live in a sparse store of 32x32 chunks (nothing exists for land nobody owns).
@@ -95,13 +96,19 @@ const sameTile = (a: SnapshotTile, b: SnapshotTile): boolean =>
   a.fatigue === b.fatigue && a.building === b.building && a.honey === b.honey;
 const ripe = (t: SnapshotTile): boolean => t.crop >= 1 && t.crop < CROPS.length && Math.trunc(t.stage) >= 3;
 const isPath = (t: SnapshotTile): boolean => t.x === 0 && t.y === 0;
+/** Tile model: the barn path, a tilled bed, bare dirt where bots have worn the meadow through, or meadow. */
+function terrainOf(t: SnapshotTile, wear: Wear): 'tile_path' | 'tile_soil' | 'tile_grass' {
+  return isPath(t) ? 'tile_path' : t.tilled ? 'tile_soil' : wear.level(t.x, t.y) === 2 ? 'tile_path' : 'tile_grass';
+}
 
 interface Chunk { cx: number; cy: number; tiles: Map<string, SnapshotTile> }
 interface Batch { model: AssetModel; name: string | null; meshes: THREE.InstancedMesh[]; capacity: number; count: number; owned: THREE.Material[] }
 interface BatchOptions { name: string | null; cast: boolean; receive: boolean; sway?: boolean }
 
 /** Grass clumps on an untilled tile: patches of tall meadow (1 to 3, from a slow hash noise) at Close zoom, one at Field zoom. */
-function bladeCount(t: SnapshotTile, close: boolean): number {
+function bladeCount(t: SnapshotTile, close: boolean, wear = 0): number {
+  if (wear >= 2) return 0;
+  if (wear === 1) return 1;
   if (!close) return 1;
   const patch = (hash(t.x >> 1, t.y >> 1, 90) + hash(t.x, t.y, 91)) / 2;
   return patch > 0.6 ? 4 : patch > 0.36 ? 3 : 2;
@@ -155,6 +162,8 @@ export class FarmWorld {
   private color = new THREE.Color();
   private color2 = new THREE.Color();
   private white = new THREE.Color(1, 1, 1);
+  /** Worn paths: bots walking over untilled tiles (client only). */
+  readonly wear = new Wear();
   // Own models for the helpers that are not GLBs.
   private cellModel: AssetModel; private padModel: AssetModel; private ground: GroundModels;
   /** Diagnostics for the renderer tests and data attributes. */
@@ -188,6 +197,15 @@ export class FarmWorld {
   private chunkAt(x: number, y: number): Chunk | undefined { return this.chunks.get(`${Math.floor(x / CHUNK)},${Math.floor(y / CHUNK)}`); }
 
   tileAt(x: number, y: number): SnapshotTile | undefined { return this.chunkAt(x, y)?.tiles.get(`${x},${y}`); }
+
+  /** The owned land for the island body: every stored tile is owned land. */
+  ownership(): { count: number; each(cb: (x: number, y: number) => void): void; has(x: number, y: number): boolean } {
+    return {
+      count: this.count,
+      each: (cb) => { for (const chunk of this.chunks.values()) for (const t of chunk.tiles.values()) cb(t.x, t.y); },
+      has: (x, y) => this.tileAt(x, y) !== undefined,
+    };
+  }
 
   forEachChunk(fn: (cx: number, cy: number, tiles: ReadonlyMap<string, SnapshotTile>) => void): void {
     for (const chunk of this.chunks.values()) fn(chunk.cx, chunk.cy, chunk.tiles);
@@ -417,12 +435,12 @@ transformed.z += cos(uTime * 1.3 + swayPhase) * 0.04 * position.y * uSway;
     const addN = (name: string, n: number): void => { if (n > 0) need.set(name, (need.get(name) ?? 0) + n); };
     const add = (name: string): void => addN(name, 1);
     for (const t of vis) {
-      add(isPath(t) ? 'tile_path' : t.tilled ? 'tile_soil' : 'tile_grass');
+      add(terrainOf(t, this.wear));
       if (t.crop >= 1 && t.crop < CROPS.length) add(CROP_NAMES[t.crop][THREE.MathUtils.clamp(Math.trunc(t.stage), 0, 3)]);
       const building = BUILDING_MODELS[t.building];
       if (building) add(building);
       if (t.building === 1 && t.honey > 0) add('item_honey');
-      if (!isPath(t)) { if (t.tilled) { if (close && hash(t.x, t.y, 21) < 0.55) add('~clod'); } else addN('~blade', bladeCount(t, close)); }
+      if (!isPath(t)) { if (t.tilled) { if (close && hash(t.x, t.y, 21) < 0.55) add('~clod'); } else addN('~blade', bladeCount(t, close, this.wear.level(t.x, t.y))); }
       if (mult && ripe(t)) add('~pad');
     }
     const barn = this.tileAt(0, 0) && vis.some(isPath) ? 1 : 0;
@@ -446,10 +464,10 @@ transformed.z += cos(uTime * 1.3 + swayPhase) * 0.04 * position.y * uSway;
     for (const t of vis) {
       const ripeNow = ripe(t);
       const dimmed = mult ? (ripeNow ? 1 : 0.55) : 1;
-      const terrain = isPath(t) ? 'tile_path' : t.tilled ? 'tile_soil' : 'tile_grass';
+      const terrain = terrainOf(t, this.wear);
       // Moisture is an integer percentage (0..100). Soil pales when dry and darkens when wet; meadow only varies a little.
       if (t.tilled && !isPath(t)) soilTint(unit(t.moisture), c).multiplyScalar(dimmed);
-      else if (isPath(t)) c.setScalar((1 - 0.32 * unit(t.moisture)) * dimmed);
+      else if (terrain === 'tile_path') { if (isPath(t)) c.setScalar((1 - 0.32 * unit(t.moisture)) * dimmed); else c.setRGB(0.74, 0.62, 0.5).multiplyScalar((1 - 0.25 * unit(t.moisture)) * dimmed); } // worn dirt is darker and warmer than the barn path
       else c.setScalar((1 - 0.18 * unit(t.moisture)) * dimmed); // meadow only darkens a little when wet; its patches come from world-space noise, so no grid shows
       if (this.debug.tileColors.length < 16) this.debug.tileColors.push({ x: t.x, y: t.y, color: c.getHexString() });
       this.place(batch(terrain), t.x, 0, t.y, 0, 1, 1, 1, c);
@@ -470,7 +488,7 @@ transformed.z += cos(uTime * 1.3 + swayPhase) * 0.04 * position.y * uSway;
         if (t.tilled) {
           if (close && hash(t.x, t.y, 21) < 0.55) this.place(batch('~clod'), t.x, 0, t.y, hash(t.x, t.y, 22) * 6, 1, 1, 1, c);
         } else {
-          const n = bladeCount(t, close);
+          const n = bladeCount(t, close, this.wear.level(t.x, t.y));
           for (let k = 0; k < n; k++) {
             const s = 0.85 + hash(t.x, t.y, 30 + k) * 0.5;
             // Clump colour: a little lighter or darker per clump; straw-tipped where the patch noise runs high.
@@ -525,7 +543,7 @@ transformed.z += cos(uTime * 1.3 + swayPhase) * 0.04 * position.y * uSway;
       if (!t) continue;
       const ci = k % cols, cj = (k - ci) / cols;
       const i = win.i0 + ci * stride, j = win.j0 + cj * stride;
-      if (stride === 1 && isPath(t)) c.copy(PATH);
+      if (stride === 1 && (isPath(t) || (!t.tilled && this.wear.level(t.x, t.y) === 2))) c.copy(PATH);
       else if (t.tilled) c.copy(SOIL).lerp(WET, unit(t.moisture) * 0.7);
       else c.copy(GRASS);
       c.multiplyScalar(0.93 + hash(i, j, 4) * 0.12);
