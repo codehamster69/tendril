@@ -15,6 +15,8 @@ export const startSignIn = (): void => signInStarter();
 /** `implicit`: opened because the player is signed in, not because they asked; a stale sign-in then falls back quietly. */
 /** Farm rests: more than this behind the clock and the server pauses the farm's clock at the cap (server REST_CAP_MS). */
 const REST_CAP_MS = 6 * 3_600_000;
+/** Milliseconds the server rested this farm when it opened (0: none). Read once by the welcome-back card. */
+export let restedAway = 0;
 
 /** If the farm is further behind than the cap, ask the server to rest the excess; says so in a toast. Offline or failing: carry on unrested. */
 async function wakeIfBehind(api: FarmApi, farm: FarmResponse): Promise<FarmResponse> {
@@ -38,6 +40,7 @@ async function wakeIfBehind(api: FarmApi, farm: FarmResponse): Promise<FarmRespo
       // Boot takes longer than a toast lives: say it once the splash has gone (and the farm has drawn).
       const say = (): void => { if (document.getElementById('splash')) setTimeout(say, 250); else toast('Your farm rested', `It rested for ${hours} ${hours === 1 ? 'hour' : 'hours'} while you were away. It ran for the first 6 hours.`); };
       window.addEventListener('tendril:snapshot', say, { once: true });
+      restedAway = woken.restedNowMs;
     }
     return woken;
   } catch { return farm; }

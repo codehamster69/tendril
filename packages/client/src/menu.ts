@@ -6,6 +6,7 @@ import type { GameLoop } from './game-loop';
 import { utcToday } from './arena';
 import { el } from './palette';
 import type { PanelId } from './workbench-layout';
+import { dailyStreak, streakText } from './streak';
 
 export type ModeKey = 'live' | 'sandbox' | 'campaign' | 'daily' | 'season';
 export interface PanelHost { open(title: string, nodes: HTMLElement[], opts?: { onOpen?: () => void; onClose?: () => void; wide?: boolean }): void; readonly isOpen: boolean }
@@ -90,8 +91,9 @@ export function mountMenu(ctx: MenuContext): MenuApi {
   const topActions = q('.top-actions');
   if (topActions) links.append(topActions);
 
+  const streakEl = el('span', { id: 'menu-streak' });
   const main = el('div', { class: 'menu-view', 'data-view': 'main' },
-    el('p', { class: 'menu-label', text: 'Play' }), el('div', { class: 'menu-entries' }, cont), modeGrid,
+    el('p', { class: 'menu-label' }, 'Play', streakEl), el('div', { class: 'menu-entries' }, cont), modeGrid,
     el('p', { class: 'menu-label', text: 'Farm and tools' }), toolsGrid, links);
 
   const closeBtn = el('button', { class: 'hk-button', type: 'button', text: 'Close', title: 'Close (Esc)' });
@@ -124,6 +126,7 @@ export function mountMenu(ctx: MenuContext): MenuApi {
       }).catch(() => { if (id !== current) note(id, 'Needs a connection'); });
     };
     show('daily', `d-${utcToday()}`);
+    void dailyStreak(api).then((n) => { if (n !== null) streakEl.textContent = ` · ${streakText(n)}`; });
     show('season', 'week');
     if (current !== 'live') note('live', ctx.ranked ? 'Server-verified' : 'Saved on this device');
   };
