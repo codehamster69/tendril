@@ -93,11 +93,17 @@ function applyBriefSetup(w: World, setup: Setup): void {
 }
 
 function checkedGoal(g: Goal): Goal {
-  const kinds = ['wealth', 'festival', 'specialist', 'orders', 'inherited'];
+  const kinds = ['wealth', 'festival', 'specialist', 'orders', 'inherited', 'picture'];
   if (typeof g !== 'object' || g === null || !kinds.includes(g.kind) || !Number.isSafeInteger(g.budget) || g.budget < 1) throw new Error('bad setup goal');
   if (g.quotas !== undefined && (!Array.isArray(g.quotas) || g.quotas.length !== ITEM_COUNT || !g.quotas.every((q) => Number.isSafeInteger(q) && q >= 0))) throw new Error('bad setup goal');
   const item = (v: number | undefined): boolean => v === undefined || (Number.isSafeInteger(v) && v >= 1 && v <= MAX_PRICED_ITEM);
   if (!item(g.favoured) || !item(g.shunned)) throw new Error('bad setup goal');
+  if ((g.kind === 'picture') !== (g.picture !== undefined)) throw new Error('bad setup goal');
+  const p = g.picture;
+  if (p !== undefined) {
+    const sized = typeof p === 'object' && p !== null && Number.isSafeInteger(p.w) && Number.isSafeInteger(p.h) && p.w >= 1 && p.h >= 1 && p.w <= 32 && p.h <= 32;
+    if (!sized || typeof p.id !== 'string' || typeof p.title !== 'string' || typeof p.cells !== 'string' || p.cells.length !== p.w * p.h || !/^[0-8]+$/.test(p.cells)) throw new Error('bad setup goal');
+  }
   return g;
 }
 
