@@ -90,7 +90,7 @@ function isAllowedExternalURL(destination, apiOrigin) {
 }
 
 // Pages the app may open in the system browser: the site's public pages and this project's GitHub releases.
-const SITE_PATHS = [/^\/$/, /^\/(?:docs|leaderboard|season-1|download|blog)\/(?:[a-z0-9-]+\/)*$/, /^\/r\/[A-Za-z0-9_-]{1,64}$/];
+const SITE_PATHS = [/^\/$/, /^\/(?:docs|leaderboard|season-1|download|blog)\/(?:[a-z0-9-]+\/)*$/, /^\/r\/[A-Za-z0-9_-]{1,64}$/, /^\/packets\/(?:[A-Za-z0-9_-]{1,32}\/?)?$/];
 const GITHUB_RELEASES = /^\/codehamster69\/tendril\/releases(?:\/(?:latest|tag\/v[0-9][A-Za-z0-9.-]{0,30}))?$/;
 
 /** Fixed, query-free https pages on the site origin, or the project's GitHub releases page. Nothing else. */

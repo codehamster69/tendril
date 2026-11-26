@@ -50,6 +50,11 @@
           <p class="cap">"Played like" is the rating this result would be normal for. A run below par keeps the streak and is not rated.</p>
         </section>
 
+        <section data-sec="packets" hidden>
+          <div class="pf-head"><h2>Seed packets</h2><span class="cap" data-packets-cap></span></div>
+          <ul class="pf-packets" data-packets></ul>
+        </section>
+
         <section data-sec="pinned" hidden>
           <div class="pf-head"><h2>Pinned programs</h2><span class="cap" data-pin-cap></span></div>
           <div class="pf-pins" data-pins></div>
@@ -182,6 +187,9 @@
 .pf-farms figure { margin: 0; }
 .pf-farms figcaption { font-size: 0.8rem; color: var(--dim); margin-top: 0.3rem; max-width: 7.5rem; }
 
+.pf-packets { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.5rem; }
+.pf-packets li { display: flex; justify-content: space-between; gap: 1rem; border: 1px solid var(--line); border-radius: 8px; padding: 0.5rem 0.8rem; }
+.pf-packets .cap { white-space: nowrap; }
 .pf-pins { display: grid; gap: 1.2rem; }
 .pf-pin { display: grid; gap: 0.4rem; min-width: 0; }
 .pf-pin pre { margin: 0; background: var(--code-bg); border: 1px solid var(--line); border-radius: 8px; padding: 0.9rem 1rem; overflow-x: auto; font: 0.82rem/1.55 var(--mono); max-height: 22rem; }

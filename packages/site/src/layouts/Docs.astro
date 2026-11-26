@@ -7,6 +7,7 @@ const headings = (Astro.props.headings ?? []).filter((h) => h.depth === 2);
 const path = Astro.url.pathname.endsWith('/') ? Astro.url.pathname : `${Astro.url.pathname}/`;
 const i = FLAT_NAV.findIndex((n) => n.href === path);
 const prev = i > 0 ? FLAT_NAV[i - 1] : undefined;
+const group = DOCS_NAV.find((g) => g.items.some((n) => n.href === path));
 const next = i >= 0 && i < FLAT_NAV.length - 1 ? FLAT_NAV[i + 1] : undefined;
 ---
 <Base title={fm.title} description={fm.description}>
@@ -29,6 +30,11 @@ const next = i >= 0 && i < FLAT_NAV.length - 1 ? FLAT_NAV[i + 1] : undefined;
       </details>
     </aside>
     <article class="prose">
+      <nav class="crumbs" aria-label="Breadcrumb">
+        <a href="/">Home</a><span aria-hidden="true">›</span><a href="/docs/">Docs</a>
+        {group && path !== '/docs/' && <><span aria-hidden="true">›</span><span>{group.title}</span></>}
+        {path !== '/docs/' && <><span aria-hidden="true">›</span><span aria-current="page">{fm.title}</span></>}
+      </nav>
       <h1>{fm.title}</h1>
       {fm.description && <p class="lede">{fm.description}</p>}
       <slot />
@@ -51,6 +57,9 @@ const next = i >= 0 && i < FLAT_NAV.length - 1 ? FLAT_NAV[i + 1] : undefined;
   if (d && matchMedia('(max-width: 860px)').matches) d.open = false;
 </script>
 <style>
+  .crumbs { display: flex; flex-wrap: wrap; gap: 0.4rem; align-items: center; font-size: 0.9rem; color: var(--dim); margin-bottom: 0.5rem; }
+  .crumbs a { color: var(--dim); }
+  .crumbs [aria-current] { color: var(--ink); }
   .docs { display: grid; grid-template-columns: 14rem minmax(0, 1fr) 12rem; gap: 3rem; padding-top: 2.5rem; }
   .side nav, .toc { position: sticky; top: 5.5rem; }
   .side-toggle summary { display: none; }
