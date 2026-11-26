@@ -542,14 +542,14 @@ import Base from '../layouts/Base.astro';
   .page { padding-top: clamp(2.5rem, 6vw, 4.5rem); max-width: 52rem; }
   .page .lede { font-size: 1.2rem; color: var(--dim); margin: 1rem 0 2rem; }
   .tabs { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 1rem; }
-  .tabs button { background: none; border: 1.5px solid var(--line); color: var(--ink); border-radius: 999px; padding: 0.45rem 1rem; font: 600 0.98rem var(--display); cursor: pointer; }
-  .tabs button[aria-selected='true'] { background: var(--ink); border-color: var(--ink); color: var(--paper); }
+  .tabs button { background: none; border: 0; border-bottom: 2px solid transparent; color: var(--dim); border-radius: 0; padding: 0.4rem 0.2rem; margin-right: 1rem; font: 600 1.05rem var(--display); text-transform: uppercase; letter-spacing: 0.08em; cursor: pointer; }
+  .tabs button[aria-selected='true'] { color: var(--ink); border-bottom-color: var(--carrot); }
   .controls { display: flex; flex-wrap: wrap; gap: 0.75rem 1.25rem; margin-bottom: 1.25rem; }
   .seg { display: inline-flex; border: 1.5px solid var(--line); border-radius: 8px; overflow: hidden; }
   .seg[hidden] { display: none; }
   .seg button { background: none; border: 0; color: var(--ink); padding: 0.35rem 0.8rem; font: 600 0.92rem var(--display); cursor: pointer; }
   .seg button + button { border-left: 1.5px solid var(--line); }
-  .seg button[aria-pressed='true'] { background: var(--leaf); color: var(--leaf-ink); }
+  .seg button[aria-pressed='true'] { color: var(--ink); text-decoration: underline; text-decoration-color: var(--carrot); text-decoration-thickness: 2px; text-underline-offset: 0.3em; }
   .about { color: var(--dim); margin: 0 0 1rem; }
   td.rank, th.rank { width: 4.5rem; }
   .num { text-align: right; padding-right: 0; }

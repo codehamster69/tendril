@@ -169,3 +169,8 @@ Live goal progress comes from the sim worker (`tendril:goal`), with `World.brief
 - **Decision:** `BRIEF_EPOCH` is `2026-11-18` (Rohan set the launch date to today, 18 Nov his time). Dailies dated on or after it, and seasons starting on or after it, draw a brief (setup version 2). Earlier rows and every row already stored keep their version.
 - **Why:** the choice is stored on the row when it is first created, so the switch changes nothing already running. `CHALLENGE_SALT` is set in Vercel; without it a brief day answers 503 instead of opening.
 - **Consequences:** server tests that use a real date pin `setupVersion` to the old version where they test the pre-brief world. To roll back, set `BRIEF_EPOCH` back to a far date; rows already created as briefs keep working.
+
+## D-W5 (2026-11-26) Site uses the workbench palette, text buttons, a cropped replay hero
+- **Decision:** `packages/site` takes the workbench tokens (soil base, straw text, carrot accent) and Barlow Condensed for headings and labels. Buttons are text with an animated carrot border; primary actions are underlined. The home hero is the replay clip cropped to remove its dev footer. The three-card and four-step rows are removed.
+- **Why:** Rohan asked to remove the generated look; the site should match the game, and the dev footer in the old clip showed localhost.
+- **Consequences:** the light theme uses a straw base with some light-only values chosen for contrast. OG social cards still use the old font until a Barlow TTF is added.

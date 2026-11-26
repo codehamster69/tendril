@@ -143,7 +143,7 @@
 .pf-tip { position: absolute; pointer-events: none; background: var(--ink); color: var(--paper); font-size: 0.8rem; padding: 0.35rem 0.55rem; border-radius: 4px; white-space: nowrap; transform: translate(-50%, -130%); z-index: 1; }
 .pf-seg { display: inline-flex; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
 .pf-seg button { font: inherit; font-size: 0.85rem; background: none; color: var(--dim); border: 0; padding: 0.4rem 0.8rem; cursor: pointer; }
-.pf-seg button[aria-pressed="true"] { background: var(--ink); color: var(--paper); }
+.pf-seg button[aria-pressed="true"] { color: var(--ink); text-decoration: underline; text-decoration-color: var(--carrot); text-decoration-thickness: 2px; text-underline-offset: 0.3em; }
 .pf-seg button:disabled { opacity: 0.55; cursor: default; }
 
 .pf-disc { display: grid; gap: 0.7rem; }
@@ -176,7 +176,7 @@
 .pf-ladder { display: grid; gap: 2px; }
 .pf-ladder div { display: flex; justify-content: space-between; gap: 0.5rem; padding: 0.3rem 0.6rem; border-left: 4px solid currentColor; font-weight: 600; font-size: 0.9rem; }
 .pf-ladder span { color: var(--dim); font-weight: 400; font-family: var(--mono); font-size: 0.8rem; white-space: nowrap; }
-.pf-ladder .me { background: var(--panel); }
+.pf-ladder .me { box-shadow: inset 2px 0 0 var(--carrot); }
 
 .pf-farms { display: flex; gap: 1rem; flex-wrap: wrap; }
 .pf-farms figure { margin: 0; }
