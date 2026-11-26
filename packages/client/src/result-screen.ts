@@ -19,6 +19,7 @@ import { copyText, shareText, signed, topShare } from './share';
 import type { ProgramStatus } from './publish';
 import { el, toast } from './palette';
 import { motionQuery } from './settings';
+import { getRival, resultLine } from './machine';
 
 const fmt = (n: number): string => n.toLocaleString('en-US');
 
@@ -74,17 +75,19 @@ export function mountResultScreen({ loop, api, challenge: c, view }: ResultDeps)
   let skip: (() => void) | null = null; // set while the ending animation plays
   let cancelTimers: (() => void) | null = null;
   let savedPreset: LightPreset | null = null;
+  let repaint: (() => void) | null = null; // set while a card is up: the machine's score can arrive after it
   let run = 0; // bumped on every new ending and every close, so late answers are ignored
 
   function closeScreen(restore: boolean): void {
     run++;
     cancelTimers?.(); cancelTimers = null; skip = null;
-    layer?.remove(); layer = null; card = null;
+    layer?.remove(); layer = null; card = null; repaint = null;
     reopen?.remove(); reopen = null;
     if (restore && savedPreset) view.setLight(savedPreset);
     if (restore) savedPreset = null;
   }
 
+  window.addEventListener('tendril:rival', () => repaint?.());
   window.addEventListener('tendril:scenario-end', (e) => { void ending((e as CustomEvent<{ snapshot: Snapshot }>).detail.snapshot); });
 
   window.addEventListener('keydown', (e) => {
@@ -145,6 +148,7 @@ export function mountResultScreen({ loop, api, challenge: c, view }: ResultDeps)
     const kind = local.goal?.kind;
     const netWorth = local.goal ? local.score : local.netWorth ?? snapshot.netWorth; // "score" below: net worth on a classic day, the goal's score on a brief
     const practice = !!c.practice;
+    const edited = !practice && loop.editedMidRun; // the code changed while the day was running
     const missed = belowPar(c, local.parTick);
 
     layer = el('div', { class: 'rs-layer', 'data-phase': 'dusk' });
@@ -170,10 +174,14 @@ export function mountResultScreen({ loop, api, challenge: c, view }: ResultDeps)
     const finalBox = el('div', { class: 'rs-final', 'aria-live': 'polite' });
     const medalList = el('ol', { class: 'rs-medals', 'aria-label': 'Medals' });
     const rankLine = el('p', { class: 'rs-rank', 'aria-live': 'polite' });
+    const machineLine = el('p', { class: 'rs-machine', 'aria-live': 'polite' });
     const ratingLine = el('p', { class: 'rs-muted rs-rating' });
     const bestEl = el('p', { class: 'rs-best', text: bestLine(prevBest, netWorth, practice ? null : c.best, kind) });
     const hint = missed ? el('p', { class: 'rs-hint', role: 'note' }, el('b', { text: 'One thing to look at. ' }), hintFor(trail, c.ticks, netWorth, c.par, kind)) : null;
     const noteEl = el('p', { class: 'rs-muted rs-note', 'aria-live': 'polite' });
+    const editedEl = edited ? el('p', { class: 'rs-hint rs-edited', role: 'note' }, el('b', { text: 'You changed your code during this run. ' }), 'The score counts, but no single program played it from the start, so it cannot earn Brevity or a rating. Re-run your final code from the start to get a rated score.') : null;
+    const rerunBtn = edited ? el('button', { class: 'hk-button hk-primary rs-rerun', type: 'button', text: 'Re-run my final code from the start' }) : null;
+    rerunBtn?.addEventListener('click', () => { closeScreen(true); void loop.reset().then(() => { loop.run(); document.getElementById('tp-play')?.focus(); }); });
 
     const shareBtn = el('button', { class: 'hk-button rs-share', type: 'button', text: 'Share' });
     const replay = el('a', { class: 'hk-button rs-replay', target: '_blank', rel: 'noopener', text: 'Watch replay' });
@@ -186,7 +194,7 @@ export function mountResultScreen({ loop, api, challenge: c, view }: ResultDeps)
     const duel = createDuelPanel(api, c, () => actions);
     const duelBox = el('details', { class: 'rs-duel' }, el('summary', { text: 'Challenge a friend' }), duel.el);
     const more = kind ? [anotherBtn] : [];
-    const buttons = el('div', { class: 'rs-buttons' }, ...(practice ? [tryBtn, ...more, nextBtn] : missed ? [tryBtn, ...more, shareBtn, replay, nextBtn] : [shareBtn, replay, tryBtn, ...more, nextBtn]));
+    const buttons = el('div', { class: 'rs-buttons' }, ...(rerunBtn ? [rerunBtn] : []), ...(practice ? [tryBtn, ...more, nextBtn] : missed ? [tryBtn, ...more, shareBtn, replay, nextBtn] : [shareBtn, replay, tryBtn, ...more, nextBtn]));
 
     const paint = (): void => {
       const s = server;
@@ -203,6 +211,10 @@ export function mountResultScreen({ loop, api, challenge: c, view }: ResultDeps)
         li.setAttribute('aria-label', `${m.name} medal: ${m.state === 'earned' ? 'earned' : m.state === 'missed' ? 'not earned' : m.state}. ${m.line}${m.rank ? `. Rank ${m.rank}` : ''}`);
       });
       rankLine.textContent = s?.percentile != null ? `Rank ${rankText(s.ranks.wealth, s.total) ?? '—'} · top ${topShare(s.percentile)}%` : submitting ? 'Waiting for the server…' : '';
+      const rv = practice ? null : getRival();
+      const vs = rv?.kind === 'rival' ? resultLine(rv.rival, { score: shown, finalScore: s && s.finalScore != null && s.provisional !== true ? s.finalScore : null }, c.hiddenFarms ?? 0) : null;
+      machineLine.textContent = vs ? `${vs.text}${vs.provisional ? '. Provisional until the day closes.' : ''}` : '';
+      machineLine.dataset.won = String(vs?.won ?? 'tie');
       const rated = practice ? null : kind ? briefRateLine(signedIn, parTick) : rateLine(c, signedIn, parTick);
       ratingLine.textContent = rated ?? '';
       const fin = kind && !practice ? finalView({ kind, hiddenFarms: c.hiddenFarms ?? 0, closesAt: c.closesAt, now: Date.now(), entry: s, visible: netWorth }) : null;
@@ -212,7 +224,7 @@ export function mountResultScreen({ loop, api, challenge: c, view }: ResultDeps)
       noteEl.textContent = note;
       signInBtn.hidden = signedIn || practice;
       shareBtn.hidden = practice;
-      const text = shareText({ number: c.kind === 'season' ? null : c.number !== null && c.number > 0 ? c.number : null, label: c.kind === 'season' && c.number !== null && c.number > 0 ? `Season #${c.number}` : c.id, netWorth: s?.netWorth ?? netWorth, parTick, par: c.par, percentile: s?.percentile ?? null, mosaic: s?.mosaic ?? local.mosaic, entryId: s?.entryId ?? null, tokens: s?.tokens ?? null });
+      const text = shareText({ number: c.kind === 'season' ? null : c.number !== null && c.number > 0 ? c.number : null, label: c.kind === 'season' && c.number !== null && c.number > 0 ? `Season #${c.number}` : c.id, netWorth: s?.netWorth ?? netWorth, parTick, par: c.par, percentile: s?.percentile ?? null, mosaic: s?.mosaic ?? local.mosaic, entryId: s?.entryId ?? null, tokens: s?.tokens ?? null, machine: vs?.text ?? null });
       shareBtn.onclick = async () => { const ok = await copyText(text); toast(ok ? 'Result copied' : 'Could not copy', ok ? 'Paste it anywhere.' : text); };
       if (s?.entryId) { replay.href = `replay.html?e=${encodeURIComponent(s.entryId)}`; replay.hidden = false; } else replay.hidden = true;
       duel.update({ signedIn, netWorth: s?.netWorth ?? netWorth, entry: s });
@@ -223,9 +235,10 @@ export function mountResultScreen({ loop, api, challenge: c, view }: ResultDeps)
         el('span', { class: 'rs-stamp', 'aria-hidden': 'true', text: name[0]! }), el('span', { class: 'rs-medal-body' }, el('b', { text: name }), el('small', { class: 'rs-medal-line' })), el('span', { class: 'rs-medal-rank' })));
     }
     paint();
+    repaint = paint;
 
     card = el('section', { class: 'hk-card rs-card', 'data-missed': String(missed), role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'rs-title' },
-      title, coinsLine, finalBox, ...(hint ? [hint] : []), medalList, rankLine, bestEl, ratingLine, buttons, signInBtn, noteEl, duelBox);
+      title, coinsLine, finalBox, ...(editedEl ? [editedEl] : []), ...(hint ? [hint] : []), medalList, rankLine, machineLine, bestEl, ratingLine, buttons, signInBtn, noteEl, duelBox);
     card.addEventListener('keydown', (e) => { if (e.key === 'Tab') trapTab(e, card!); });
     layer.append(card);
     layer.dataset.phase = 'card';
@@ -266,7 +279,7 @@ export function mountResultScreen({ loop, api, challenge: c, view }: ResultDeps)
       server = entry; program = entry.program; submitting = false;
       note = entry.improved ? 'Verified by the server.' : 'Verified. Your earlier run is still your best.';
       if (entry.program === 'verified') note += ` Your program is ${fmt(entry.tokens ?? 0)} tokens.`;
-      else if (entry.program === 'mismatch') note += ' Your program does not match this run (edited mid-run?), so it has no Brevity entry.';
+      else if (entry.program === 'mismatch') note += edited ? ' Your program does not match this run, so it has no Brevity entry.' : ' Your program does not match this run (edited mid-run?), so it has no Brevity entry.';
       else if (entry.program === 'unavailable') note += ' The program check is busy; your score counted without Brevity.';
     } catch (e) {
       if (mine !== run) return;

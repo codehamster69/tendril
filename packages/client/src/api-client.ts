@@ -44,6 +44,8 @@ export interface EntryResult {
   /** Briefs: the visible farm's score, the final score over all farms (null until the hidden farms are scored) and whether it is still provisional. */
   score?: number | null; finalScore?: number | null; finalParTick?: number | null; provisional?: boolean;
 }
+/** The few board fields the client reads (the machine rival). `score` is the visible farm's goal score on a brief day; `finalScore` is set once the hidden farms are scored. */
+export interface BoardEntry { rank: number; login: string; value: number; authorKind: 'human' | 'model'; model: string | null; score?: number | null; finalScore?: number | null; provisional?: boolean }
 export interface DuelPage {
   id: string; seed: number; ticks: number; par: number | null; rulesVersion: number; createdAt: number;
   challenger: { login: string; displayName: string; avatarUrl: string | null } | null;
@@ -59,6 +61,12 @@ export interface LatestRating {
   challengeId: string; kind: 'daily' | 'season'; closesAt: number;
   overall: RatingChange | null; speed: RatingChange | null; brevity: RatingChange | null;
 }
+export interface PacketSummary {
+  id: string; name: string; note: string; tags: string[]; origin: string; plants: number; plantsThisWeek: number; parentId: string | null; createdAt: number;
+  author: { login: string; displayName: string; avatarUrl: string | null };
+}
+export interface PacketPage extends PacketSummary { source: string }
+
 export class ApiError extends Error {
   constructor(readonly status: number, message: string) { super(message); this.name = 'ApiError'; }
 }
@@ -95,6 +103,8 @@ export class FarmApi {
   }
 
   me(): Promise<{ profile: Profile }> { return this.request('/me'); }
+  /** A player page: only the streak is used here (consecutive UTC days of daily challenges). */
+  player(login: string): Promise<{ streak: { current: number; best: number; lastDay: string | null } }> { return this.request(`/players/${encodeURIComponent(login)}`); }
   logout(): Promise<void> { return this.request('/auth/logout', 'POST', {}); }
   pollDesktop(nonce: string): Promise<{ token: string; profile: Profile }> { return this.request('/auth/desktop/poll', 'POST', { nonce }); }
   login(displayName: string): Promise<{ token: string; profile: { id: string; displayName: string } }> {
@@ -112,6 +122,10 @@ export class FarmApi {
   }
   replay(id: string, fromTick = 0): Promise<ReplayResponse> { return this.request(`/farms/${encodeURIComponent(id)}/replay?fromTick=${fromTick}&limit=1`); }
   challenge(id: string): Promise<ChallengeInfo> { return this.request(`/challenges/${encodeURIComponent(id)}`); }
+  /** The top entries of one author kind, for the machine rival. Never blocks play: callers ignore failures. */
+  challengeBoard(id: string, author: 'human' | 'model', limit = 5): Promise<{ entries: BoardEntry[] }> {
+    return this.request(`/challenges/${encodeURIComponent(id)}/board?author=${author}&limit=${limit}`);
+  }
   createDuel(body: { seed: number; ticks: number; from?: string }): Promise<{ challengeId: string }> { return this.request('/duels', 'POST', body); }
   duel(id: string): Promise<DuelPage> { return this.request(`/duels/${encodeURIComponent(id)}`); }
   acceptDuel(id: string): Promise<{ accepted: true; changed: boolean; challenger: { login: string; displayName: string } }> {
@@ -120,6 +134,12 @@ export class FarmApi {
   submitEntry(id: string, body: { rulesVersion: number; actions: LogEntry[]; source?: string; sourcePublic?: boolean; authorKind?: 'human' | 'model'; model?: string }): Promise<EntryResult> {
     return this.request(`/challenges/${encodeURIComponent(id)}/entries`, 'POST', body);
   }
+  packets(sort: 'popular' | 'new', limit = 12): Promise<{ sort: string; packets: PacketSummary[] }> { return this.request(`/packets?sort=${sort}&limit=${limit}`); }
+  packet(id: string): Promise<PacketPage> { return this.request(`/packets/${encodeURIComponent(id)}`); }
+  sharePacket(body: { name: string; note?: string; tags?: string[]; source: string; parentId?: string | null; origin: 'endless' | 'sandbox' }): Promise<{ id: string; parentId: string | null }> {
+    return this.request('/packets', 'POST', body);
+  }
+  plantPacket(id: string): Promise<{ planted: true; plants: number }> { return this.request(`/packets/${encodeURIComponent(id)}/plant`, 'POST', {}); }
   /** Newest rated contest for the signed-in player; `latest` is null before the first rated close. */
   ratingLatest(): Promise<{ latest: LatestRating | null }> { return this.request('/ratings/me/latest'); }
   daily(): Promise<{ date: string; seed: number; ticks: number; rulesVersion: number }> { return this.request('/daily'); }

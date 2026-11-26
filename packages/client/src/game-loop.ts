@@ -2,6 +2,8 @@ import type { Snapshot } from './sim-types';
 import { targetTick, TICKS_PER_SECOND } from './clock';
 import { LEAN_BEHIND_TICKS, type CatchUp, type RealSim } from './real-sim';
 import type { BotDebug, Diagnostic, Scenario, SimError } from './sim-protocol';
+import { compile as parseSprout } from '@tendril/lang/src/index.ts';
+import { changedLines, isMeaningfulChange, type EquipState } from './live-code';
 
 const MAX_TICKS_PER_FRAME = 2000;
 /** "41% · about 2 min left", from the catch-up's own numbers. */
@@ -47,6 +49,10 @@ export class GameLoop {
   private compileFailed = false;
   private scriptErrored = false;
   private hasProgram = false;
+  /** New code that replaced a running program after tick 0 on this farm. A rated entry from such a run has no single program. */
+  private midRunEdits = 0;
+  /** True while the editor holds code that does not parse and the farm still runs the last good program. */
+  private liveBroken = false;
   private breakpoints: number[] = [];
   private ended = false;
   private error: string | null = null;
@@ -93,6 +99,8 @@ export class GameLoop {
   get busy(): boolean { return this.actionBusy || this.changing; }
   /** The program the farm runs now (null before the first program loads). */
   get runningSource(): string | null { return this.hasProgram ? this.compiled : null; }
+  /** True when the code was swapped after the run began, or the editor no longer holds the code that ran: the run is not one program from tick 0. */
+  get editedMidRun(): boolean { return this.midRunEdits > 0 || (this.hasProgram && this.current() !== this.compiled); }
 
   private current(): string { return this.sourceProvider ? this.sourceProvider() : this.source; }
   private stale(): boolean { return this.current() !== this.compiled || this.compileFailed || this.scriptErrored; }
@@ -149,6 +157,34 @@ export class GameLoop {
     return this.sim.diagnostics;
   }
 
+  /**
+   * Live code: the editor settled while the farm runs. A meaningful, parsing change goes onto the bots at once and the farm carries on;
+   * code that does not parse never reaches the worker, so the last working program keeps running. Returns 'busy' when the loop was in the
+   * middle of something and the caller should ask again shortly.
+   */
+  applyLive(source: string): 'done' | 'busy' {
+    if (!this.running || !this.loaded || this.ended || this.sim.persistenceError) return 'done';
+    if (this.changing || this.actionBusy) return 'busy';
+    if (!isMeaningfulChange(this.compiled, source)) return 'done';
+    const features = this.sim.scenario.features;
+    const { program, diagnostics } = parseSprout(source, { features: features ? new Set(features) : undefined });
+    const errors = diagnostics.filter((d) => d.severity === 'error');
+    if (!program || errors.length) {
+      emit('diagnostics', diagnostics);
+      const first = errors[0];
+      if (!this.liveBroken) this.notice('info', 'Still running your last working code. Fix the marked line and it applies by itself.', first ? { line: first.line } : {});
+      this.liveBroken = true;
+      emit('equip', { kind: 'kept', line: first?.line ?? null, message: first?.message ?? 'This code does not parse yet.' } satisfies EquipState);
+      return 'done';
+    }
+    this.action(async () => {
+      const version = ++this.intent;
+      await this.compile(source);
+      if (version === this.intent) this.resume();
+    });
+    return 'done';
+  }
+
   setBreakpoints(lines: number[]): Promise<void> {
     this.breakpoints = [...lines];
     return this.loaded ? this.sim.setBreakpoints(this.breakpoints).catch(() => {}) : Promise.resolve();
@@ -160,6 +196,7 @@ export class GameLoop {
   private async compile(source: string): Promise<void> {
     const wasRunning = this.running;
     const external = this.external(source); // Read before any await: the player may keep typing while the worker halts.
+    const before = this.hasProgram ? this.compiled : null;
     await this.halt();
     this.changing = true;
     this.error = null;
@@ -172,7 +209,10 @@ export class GameLoop {
         this.compiled = source;
         this.scriptErrored = false;
         this.hasProgram = true;
-        this.notice('info', `Program loaded at tick ${this.snapshot()?.tick ?? 0} · every bot restarts from the top · farm kept.`);
+        this.liveBroken = false;
+        const tick = this.snapshot()?.tick ?? 0;
+        if (before !== null && before !== source && tick > 0 && this.sim.mode !== 'live') this.midRunEdits++;
+        emit('equip', { kind: 'equipped', tick, lines: before === null ? [] : changedLines(before, source) } satisfies EquipState);
       } else if (wasRunning && this.hasProgram) {
         this.notice('info', 'Your previous program is still running. Fix the marked lines to apply your changes.');
       }
@@ -250,6 +290,8 @@ export class GameLoop {
       this.loaded = true;
       this.rendered = null;
       this.notice('clear', '');
+      this.midRunEdits = 0;
+      this.liveBroken = false;
       this.afterCompile();
       this.notice('info', 'Fresh farm ready. Press Run when you are.', { tick: 0 });
       this.render();

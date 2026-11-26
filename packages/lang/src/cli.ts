@@ -3,7 +3,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { createWorld, hashWorld, netWorth, replayChunk, BASE_RULES_VERSION } from '@tendril/sim/src/index.ts';
 import type { LogEntry } from '@tendril/sim/src/index.ts';
 import { createRun } from './index.ts';
-import { login, me, parseSubmitOptions, play, submit } from './arena-cli.ts';
+import { login, me, packets, parsePublishOptions, parseSubmitOptions, plantPacket, play, publishPacket, submit } from './arena-cli.ts';
 const raw = process.argv.slice(2);
 // `--practice` and `--farm <seed>` apply to daily and challenge; they are taken out so positional arguments keep their places.
 const farmAt = raw.indexOf('--farm');
@@ -12,11 +12,18 @@ const [command, file, ...options] = raw.filter((a, i) => a !== '--practice' && !
 try {
   if (command === 'login') await login();
   else if (command === 'me') await me();
+  else if (command === 'packets') await packets(file);
+  else if (command === 'packet') {
+    const [target, ...rest] = options;
+    if (file === 'publish') await publishPacket(target, parsePublishOptions(rest));
+    else if (file === 'plant') await plantPacket(target, rest[0]);
+    else throw new Error('Usage: tendril packet publish file.sprout --name "Name" | tendril packet plant <id> [file.sprout] | tendril packets');
+  }
   else if (command === 'submit') await submit(parseSubmitOptions([file, ...options].filter((a): a is string => a !== undefined)));
   else if (command === 'daily') await play('today', file, playOptions);
   else if (command === 'challenge') { if (!file) throw new Error('Usage: tendril challenge <id> [file.sprout]'); await play(file, options[0], playOptions); }
   else {
-  if (!file || !['run', 'replay'].includes(command ?? '')) throw new Error('Usage: tendril run file.sprout --seed 42 --ticks 3000 [--log file.json] | replay file.json | login | me | daily [file] [--practice] [--farm <seed>] | challenge <id> [file] [--practice] [--farm <seed>] | submit [--publish] [--model <name>]');
+  if (!file || !['run', 'replay'].includes(command ?? '')) throw new Error('Usage: tendril run file.sprout --seed 42 --ticks 3000 [--log file.json] | replay file.json | login | me | packets | packet publish|plant | daily [file] [--practice] [--farm <seed>] | challenge <id> [file] [--practice] [--farm <seed>] | submit [--publish] [--model <name>]');
   const option = (name: string, fallback: string): string => { const i = options.indexOf(name); return i < 0 ? fallback : options[i + 1] ?? fallback; };
   if (command === 'run') {
     const seed = Number(option('--seed', '42')), ticks = Number(option('--ticks', '3000'));

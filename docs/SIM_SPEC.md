@@ -507,3 +507,41 @@ A brief is only played if its reference program (one per goal, `packages/lang/ex
 
 ### 6.7 What is not here
 Seeds and salt (K3), the par calculation (K3, from the K2 reference programs), ratings (K4), the Sprout calls (K5), the client and site (K6, K7). Nothing reads `BRIEF_EPOCH` except `briefActive` and `setupVersionFor`.
+
+## 7. Crop Circles (H3, 2026-11-24): the picture goal, setup version 3
+Some daily briefs show a pixel picture. The player grows it in crops; at the final tick the farm, seen from above, is compared with the picture. Nothing in rules version 5 changes: this is a new goal kind, a new setup version and a new score. Code: `packages/sim/src/pictures.ts` (pool, glyphs, `drawPicture`), `brief.ts` (draw), `arena.ts` (`tileCode`, `pictureCodes`, `pictureScore`, `replayWithGoal`).
+
+### 7.1 Switch and version
+- `SETUP_PICTURE = 3`, `PICTURE_EPOCH = '2099-01-01'` (off). `pictureActive(date)`; `setupVersionFor(date)` returns 3 from the epoch (a far date until the launch decision), else 2 or 1 as before. Version 3 is stored per challenge (`setup_v`) and dispatched by stored data only. `challengeSetup(kind, seed, 3, ...)` works for any date, so tests and the server can use it before the epoch.
+- Version 2 is untouched: `drawBrief(kind, seed)` defaults to version 2 and draws exactly as before (a digest of 4500 setups is pinned in `packages/sim/test/picture.test.ts`). `picture` has weight 0 in `GOAL_WEIGHTS`.
+- Version 3 **dailies** draw the goal out of **19**: wealth 3, festival 3, specialist 3, orders 3, inherited 3, picture 4 (`GOAL_WEIGHTS_V3`), so about one day in five is a picture: often enough to be a known daily event, rare enough that the other goals stay fresh. **Seasons** and duels copied from a season keep the version 2 draw (16, no picture). A duel copied from a daily copies its brief as today.
+- Everything after the goal draw is as in section 6.2 (twist count, twist picks, twist values, then the goal's parameters), with two rules for a picture goal: the `land` and `hive` twists are never drawn (the picture brings its plots; a hive would sit on a pixel), and `plot_cap` is `max(draw 1..3, plots at start)` where the start count includes the picture's plots (the draw is the same, the max is taken once the picture is known). The picture is drawn last, from the same stream.
+
+### 7.2 Palette: what a tile shows from above
+`Picture.cells` has one character per pixel, row by row from the barn tile: `0` untilled grass, `1` tilled soil, `2..7` a ripe crop (code = crop id + 1: carrot, wheat, clover, pumpkin, berry, apple), `8` the barn pixel. That is eight colours (`PICTURE_PALETTE`) plus the barn. `tileCode(world, x, y)` reads a tile (settled copy, no change to the world):
+| Tile | Code |
+|---|---|
+| has a building (hive, composter, silo) | 9: matches no cell |
+| crop 1..6 at stage 3 (ripe) | crop id + 1 |
+| a crop that is not ripe yet, or a tilled tile with no crop (this includes a tender crop killed by frost) | 1 (soil) |
+| anything else (never tilled, cleared, harvested annual) | 0 (grass) |
+| not owned by the farm | no code: never matches |
+A harvested annual (`harvest` un-tills the tile) shows grass again, so a ripe crop must stay in the ground. A harvested perennial (berry, apple) starts growing again and shows soil until ripe. Ripe crops never wither in these rules.
+
+### 7.3 The pool and the fallback (`pictures.ts`)
+- `PICTURES`: 178 original pixel pictures, CC0, stored as strings (`.` grass, `s` soil, `c w l p b a` crops, `B` barn, rows joined by `/`): 111 at 8x8 (animals, fruit, tools, shapes, the letters A C E H K L M O P S T X Z), 41 at 16x8 (words such as "OK" and "HA", a rainbow, a bridge, a sailboat, ...), 26 at 16x16. Titles carry their article ("A fox", "The letter K"). Pool rules, enforced by test: tile (0,0) is the barn pixel and the only one; grass is at most 40% and soil at most 45% of the other pixels (so an empty or an all-tilled farm never scores above 400 or 450); apple is used by about one picture in nine (it is the dearest crop: 900 coins of research and 200 ticks a stage).
+- `proceduralPicture(seed, allowed)`: a four-way symmetric glyph so the pool never runs out. xorshift32 from `(seed ^ 0x6C79F9A1) >>> 0` (0 -> 1), four warm-up steps, each draw `(state >>> 8) % n`. Size draw out of 20: 8x8 below 12, 16x8 below 17, else 16x16. Title draw (six titles: quilt square, woven rug, ...). Then up to 60 tries: palette = grass, soil and 2 or 3 crops chosen from `allowed` (draw `2 + draw(2)`, then each crop by `draw(pool left)`), weights grass 2, soil 2, crops 3; one cell per quarter-picture pixel by a weighted draw; mirror across both axes; barn pixel at (0,0). A try is kept when grass is at most 40%, soil at most 45% and each crop between 8% and 40% of the other pixels; if no try is kept the glyph is diagonal stripes of grass, soil and the first two crops. Id `glyph-<seed as 6 hex digits>`.
+- `drawPicture(draw, lockedCrops)`: one draw out of 5: 0 is a glyph (`proceduralPicture(draw(2^24), crops 1..5 not locked)`), else one more draw picks from the pool pictures that need no locked crop (`lockedCrops` = bit c for each crop c whose research a `research_locked` twist locks). Both paths use exactly two draws.
+- `Goal.picture = { id, w, h, title, cells }` is stored whole on the goal, so a replay never depends on the pool's order or later additions.
+
+### 7.4 Placement and plots
+The picture covers tiles `x in [0, w)`, `y in [0, h)`, row `y`, column `x`: pixel `y * w + x` is tile `(x, y)`. The barn tile (0,0) is the barn pixel (code 8) and always matches. Sizes are 8x8, 16x8 or 16x16, covering one, two or four plots. The plots beyond the barn plot come in `setup.plots` (`picturePlots(w, h)`: `[1,0]`, or `[1,0, 0,1, 1,1]`, each touching an earlier plot), reusing the `land` mechanism of 6.2; they are owned at tick 0, with their soil patches, weather and orders still coming from the world seed. `createWorld` accepts a picture goal only with `1 <= w, h <= 32`, `cells.length = w * h` and characters `0..8`.
+
+### 7.5 Score and par
+`pictureScore(world, picture) = floor(matches * 1000 / (w * h))`, matches being the pixels whose `tileCode` equals the cell (the barn pixel always matches, and counts in `w * h`). 0..1000; a perfect picture is 1000. `replayWithGoal` with a `picture` goal returns this as `score`; `parTick` is the first tick (tick 0, after every action, after every tick) at which the score is at least `par`, "first time at par" as in 6.5, because the score can fall (a harvest un-tills a ripe crop). Internally the replay keeps the score incrementally (one tile after an action, the still-growing pixels each tick, a full scan when a plot is bought or sold); the test compares it with a brute-force scan at every tick. A 3000-tick replay of a 16x16 picture costs about 2 ms more than a plain replay. Hidden farms (6.1) use the same picture with other world seeds, so soil, rain, frost and orders differ. `BRIEF_FLOOR.picture` is 0 until H4 calibrates it from a reference program.
+
+### 7.6 Notice
+`describeBrief`: `The village wants <title with its first letter lower-cased> in the fields by sundown.` ("The village wants a fox in the fields by sundown.", "... the letter K in the fields ..."). Twist labels as before. `GOAL_TITLES.picture` is `Crop circles`.
+
+### 7.7 What is not here
+Sprout calls and the reference program and par (H4), the client and sharing (H5), the gallery (H5b). Nothing reads `PICTURE_EPOCH` except `pictureActive` and `setupVersionFor`.

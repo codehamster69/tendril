@@ -16,6 +16,7 @@ import { mountAccount, connectRanked } from './account';
 import { mountNotice } from './notice';
 import { mountUpdates } from './updates';
 import { isFirstRun, mountFirstRun } from './firstrun';
+import { mountPackets } from './packets';
 import { mountProgression, selectedLesson } from './progression';
 import { mountCatalogue } from './catalogue-view';
 import { mountRating } from './rating';
@@ -23,6 +24,7 @@ import { mountResultScreen } from './result-screen';
 import { briefOf, challengeScenario, loadChallenge, marketOpensIn, mountArena } from './arena';
 import { worldSeedOf } from './challenge-setup';
 import { mountGoalHud } from './goal-hud';
+import { mountRival } from './machine';
 import { FarmApi, signedInHint, wireSiteLinks } from './api-client';
 import { mountJoinDuel } from './join-duel';
 import { mountAutoSync } from './autosync';
@@ -31,16 +33,27 @@ import { el, toast } from './palette';
 import { mountPerfMeter } from './perf-meter';
 import { mountWorldFeedback } from './world-feedback';
 import { mountDryRun } from './dry-run';
+import { mountLiveCode } from './live-code-ui';
+import { mountWelcomeBack } from './welcome-back';
 import { stressConfig, stressParam } from './stress-farm';
 import type { Mode } from './clock';
 import type { Scenario } from './sim-protocol';
 
+/** True once per browser: nothing saved, never visited, not signed in. Storage that cannot be read counts as a returning visit. */
+function isFirstVisit(): boolean {
+  try {
+    if (localStorage.getItem('tendril.visited.v1') || localStorage.getItem('tendril.sprout.v1.live') || signedInHint()) return false;
+    localStorage.setItem('tendril.visited.v1', '1');
+    return true;
+  } catch { return false; }
+}
 initSettings();
 wireSiteLinks();
 mountJoinDuel();
 mountSound();
 const query = new URLSearchParams(location.search);
-const requested = query.get('mode');
+// A first-ever visit with no mode in the link lands on today's farm and its start card, not an empty Endless farm.
+const requested = query.get('mode') ?? (isFirstVisit() ? 'daily' : null);
 // ?mode=challenge&id=<challenge id> plays any challenge; it shares the daily sim mode.
 const stressName = stressParam(query);
 const stress = stressName ? stressConfig(stressName) : null;
@@ -81,6 +94,8 @@ mountIslandHud(view, () => sim.meta.seed, () => scenario.tickLimit ?? null);
 if (challenge) view.setMarket(challenge.market ?? null, { opensInDays: marketOpensIn(challenge) });
 mountProgression({ loop, editor, view, api });
 if (firstRun) mountFirstRun({ editor });
+if (!stress) mountPackets({ editor, api, mode });
+if (challenge) mountRival({ api, challenge }); // before the HUD, the result screen and the start card, which read it
 if (challenge) mountArena({ loop, api, challenge });
 if (challenge) mountResultScreen({ loop, api, challenge, view });
 if (challenge) mountGoalHud({ challenge });
@@ -92,7 +107,9 @@ mountStage({ loop, editor, api, current: isSeason ? 'season' : mode, ranked: sim
 mountStartCard({ loop, skip: !!stress || firstRun, info: challenge ? challengeCardInfo(challenge) : mode === 'campaign' ? { eyebrow: `Lesson · ${lesson.title}`, goal: lesson.goal, par: null, ticks: lesson.tickLimit } : null });
 mountCatalogue({ editor }); // after the stage: it badges the menu button and entry
 mountWorldFeedback({ view, editor });
+mountLiveCode({ loop, editor });
 if (!stress) mountDryRun({ loop, editor }); // after the stage: it adds a button to the transport bar
+if (!stress && sim.ranked) mountWelcomeBack({ sim, api, revealLine: (line) => editor.revealLine(line) });
 if (sim.ranked) mountAutoSync(api, sim, document.getElementById('mode-note'));
 window.addEventListener('tendril:snapshot', (event) => view.update((event as CustomEvent).detail));
 

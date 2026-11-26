@@ -44,6 +44,13 @@ export async function runChecks(deps) {
     add('daily challenge', good, good ? `${date}, rules v${RULES_VERSION}` : `HTTP ${status}, body ${JSON.stringify(body)}`);
   } catch (e) { add('daily challenge', false, String(e)); }
 
+  // 1b. Seed packets (H8): the public list answers. 404 means the build is not deployed yet.
+  try {
+    const { status, body } = await getJson(fetchFn, `${api}/packets?limit=1`);
+    if (status === 404) add('seed packets', true, 'not deployed yet', true);
+    else add('seed packets', status === 200 && Array.isArray(body?.packets), status === 200 ? `${body?.packets?.length ?? '?'} listed` : `HTTP ${status}`);
+  } catch (e) { add('seed packets', false, String(e)); }
+
   // 2. Home page and web game load (the game is built to /play/).
   for (const [name, path] of [['home page', '/'], ['web game', '/play/']]) {
     try {
@@ -99,6 +106,13 @@ export async function runChecks(deps) {
     else if (res.status === 200) add('budget guard', true, `mode ${(await res.json()).mode}`);
     else add('budget guard', false, `HTTP ${res.status}`);
   } catch (e) { add('budget guard', false, String(e)); }
+
+  // 6. Humans vs machines data (H1): the read behind /bench/ answers with the expected shape. 404 = not deployed yet.
+  try {
+    const { status, body } = await getJson(fetchFn, `${api}/bench?days=1`);
+    if (status === 404) add('humans vs machines data', true, 'not deployed yet', true);
+    else add('humans vs machines data', status === 200 && !!body && Array.isArray(body.days) && !!body.tally, `HTTP ${status}`);
+  } catch (e) { add('humans vs machines data', false, String(e)); }
 
   if (simulateFailure) add('simulated failure', false, 'HEALTH_SIMULATE_FAILURE is set');
   return results;
