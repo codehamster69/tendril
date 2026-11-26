@@ -21,13 +21,10 @@ const names = Object.fromEntries(PLATFORMS.map((p) => [p.os, p.name]));
       for (const el of ctas) {
         const names = JSON.parse(el.dataset.names ?? '{}') as Record<string, string>;
         const dl = el.querySelector<HTMLAnchorElement>('[data-dl]')!;
-        const play = el.querySelector<HTMLAnchorElement>('[data-play]')!;
         dl.href = asset.url;
         dl.firstChild!.textContent = `Download for ${names[os]}`;
         dl.querySelector('[data-sub]')!.textContent = `v${release.version}`;
-        dl.classList.add('primary');
-        play.classList.remove('primary');
-        el.prepend(dl);
+        // Web play stays the first, primary step. The installer is the optional second step, so it keeps the secondary style.
       }
     });
   }
