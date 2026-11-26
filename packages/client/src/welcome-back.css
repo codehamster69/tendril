@@ -1,0 +1,8 @@
+.away-card { position: fixed; z-index: 31; top: 64px; left: 50%; transform: translateX(-50%); width: min(30rem, calc(100vw - 2rem)); padding: .75rem 2.2rem .75rem .9rem; display: grid; gap: .4rem; }
+.away-card h3 { margin: 0; font-size: 1rem; }
+.away-card p { margin: 0; }
+.away-card .away-sum { font-weight: 600; }
+.away-card .away-extra:empty { display: none; }
+.away-card .away-extra, .away-card .away-cap { opacity: .85; font-size: .9rem; }
+.away-card .away-go { margin-left: .25rem; }
+.away-card .away-close { position: absolute; top: .35rem; right: .35rem; }
