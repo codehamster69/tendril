@@ -3,6 +3,7 @@ import '../styles/global.css';
 interface Props { title?: string; description?: string }
 const { title, description = 'Tendril is an endless farming game you play by writing Sprout, a plain-English programming language. Script your bots, grow your land without limit, and climb a leaderboard that replays every move.' } = Astro.props;
 const fullTitle = title ? `${title} | Tendril` : 'Tendril: a farm you grow by writing code';
+import { TOP, GROUPS, visible } from '../data/sitenav';
 const path = Astro.url.pathname;
 const here = (p: string) => (p === '/' ? path === '/' : path.startsWith(p));
 // Social card drawn at build time by scripts/og.mjs (keep this path rule in step with ogPath() there).
@@ -43,20 +44,28 @@ const ogImage = new URL(`/og/${/^\/404/.test(path) ? 'index' : path.replace(/^\/
           <span>Tendril</span>
         </a>
         <nav aria-label="Main">
-          <a href="/docs/" aria-current={here('/docs') && !here('/docs/reference') ? 'page' : undefined}>Docs</a>
-          <a href="/docs/reference/" aria-current={here('/docs/reference') ? 'page' : undefined}>Reference</a>
-          <a href="/leaderboard/" aria-current={here('/leaderboard') ? 'page' : undefined}>Leaderboard</a>
-          <a href="/season-1/" aria-current={here('/season-1') ? 'page' : undefined}>Season 1</a>
-          <a data-me href={signIn}>Sign in</a>
+          {TOP.map((l) => <a class="top-link" href={l.href} aria-current={here(l.href.split('?')[0]) && !l.href.includes('?') ? 'page' : undefined}>{l.title}</a>)}
+          {GROUPS.map((g) => (
+            <details class="drop">
+              <summary aria-current={visible(g.links).some((l) => here(l.href)) ? 'true' : undefined}>{g.title}</summary>
+              <div class="drop-panel">
+                {visible(g.links).map((l) => (
+                  <a href={l.href} aria-current={here(l.href) ? 'page' : undefined}><b>{l.title}</b>{l.hint && <small>{l.hint}</small>}</a>
+                ))}
+              </div>
+            </details>
+          ))}
+          <a class="top-link" data-me href={signIn}>Sign in</a>
           <details class="menu">
             <summary>Menu</summary>
             <div class="menu-panel">
-              <a href="/docs/" aria-current={here('/docs') && !here('/docs/reference') ? 'page' : undefined}>Docs</a>
-              <a href="/docs/reference/" aria-current={here('/docs/reference') ? 'page' : undefined}>Reference</a>
-              <a href="/leaderboard/" aria-current={here('/leaderboard') ? 'page' : undefined}>Leaderboard</a>
-              <a href="/season-1/" aria-current={here('/season-1') ? 'page' : undefined}>Season 1</a>
-              <a href="/docs/models/">AI models</a>
-              <a href="/play/">Play in browser</a>
+              {TOP.map((l) => <a href={l.href}>{l.title}</a>)}
+              {GROUPS.map((g) => (
+                <>
+                  <p class="menu-group">{g.title}</p>
+                  {visible(g.links).map((l) => <a href={l.href} aria-current={here(l.href) ? 'page' : undefined}>{l.title}</a>)}
+                </>
+              ))}
               <a data-me href={signIn}>Sign in</a>
             </div>
           </details>
@@ -83,15 +92,7 @@ const ogImage = new URL(`/og/${/^\/404/.test(path) ? 'index' : path.replace(/^\/
       <div class="wrap foot">
         <p>Tendril is a farming game you play by writing code. Your programs run on your machine; the server only checks the moves.</p>
         <nav aria-label="Footer">
-          <a href="/docs/">Getting started</a>
-          <a href="/docs/how-to-play/">How the farm works</a>
-          <a href="/docs/reference/">Sprout reference</a>
-          <a href="/leaderboard/">Leaderboard</a>
-          <a href="/season-1/">Season 1</a>
-          <a href="/bench/">Humans vs machines</a>
-          <a href="/play/">Play in browser</a>
-          <a href="/docs/leaderboard/">Fair play</a>
-          <a href="/download/">Download</a>
+          {[...TOP, ...GROUPS.flatMap((g) => visible(g.links)), { href: '/docs/leaderboard/', title: 'Fair play' }, { href: '/download/', title: 'Download' }].map((l) => <a href={l.href}>{l.title}</a>)}
         </nav>
       </div>
     </footer>
@@ -104,8 +105,18 @@ const ogImage = new URL(`/og/${/^\/404/.test(path) ? 'index' : path.replace(/^\/
   .bar { display: flex; align-items: center; justify-content: space-between; height: 4rem; gap: 1rem; }
   .brand { display: flex; align-items: center; gap: 0.55rem; color: var(--ink); text-decoration: none; font: 700 1.35rem var(--display); letter-spacing: -0.02em; }
   .site-head nav { display: flex; align-items: center; gap: clamp(0.75rem, 3vw, 1.75rem); }
-  .site-head nav a:not(.btn) { color: var(--ink); text-decoration: none; font-weight: 700; font-size: 0.98rem; }
-  .site-head nav a[aria-current='page'] { color: var(--leaf); }
+  .site-head nav a:not(.btn), .site-head nav .drop > summary { color: var(--ink); text-decoration: none; font-weight: 700; font-size: 0.98rem; }
+  .site-head nav a[aria-current='page'], .site-head nav .drop > summary[aria-current] { color: var(--leaf); }
+  .site-head nav .drop > summary { cursor: pointer; list-style: none; font-weight: 700; font-size: 0.98rem; }
+  .drop { position: relative; }
+  .drop > summary::-webkit-details-marker { display: none; }
+  .drop > summary::after { content: ' ▾'; font-size: 0.8em; }
+  .drop[open] > summary::after { content: ' ▴'; }
+  .drop-panel { position: absolute; left: -0.5rem; top: calc(100% + 0.6rem); min-width: 16rem; display: grid; background: var(--paper); border: 1px solid var(--line); border-radius: 12px; padding: 0.4rem; box-shadow: 0 8px 24px rgb(0 0 0 / 0.12); }
+  .site-head nav .drop-panel a:not(.btn) { display: grid; padding: 0.5rem 0.75rem; border-radius: 8px; }
+  .drop-panel small { color: var(--dim); font-weight: 400; font-size: 0.85rem; }
+  .site-head nav .drop-panel a:hover { background: color-mix(in srgb, var(--leaf) 10%, transparent); }
+  .menu-group { margin: 0.5rem 0.75rem 0.1rem; font: 600 0.8rem var(--display); color: var(--dim); text-transform: none; }
   .site-head nav a:not(.btn):hover { color: var(--leaf); }
   .btn.small { padding: 0.45rem 0.95rem; font-size: 0.95rem; }
   .site-foot { border-top: 1px solid var(--line); margin-top: 6rem; padding-block: 2.5rem 3rem; color: var(--dim); font-size: 0.95rem; }
@@ -118,19 +129,18 @@ const ogImage = new URL(`/og/${/^\/404/.test(path) ? 'index' : path.replace(/^\/
   .menu summary::-webkit-details-marker { display: none; }
   .menu summary::after { content: ' ▾'; }
   .menu[open] summary::after { content: ' ▴'; }
-  .menu-panel { position: absolute; right: 0; top: calc(100% + 0.5rem); min-width: 12rem; display: grid; background: var(--paper); border: 1px solid var(--line); border-radius: 12px; padding: 0.4rem; box-shadow: 0 8px 24px rgb(0 0 0 / 0.12); }
+  .menu-panel { position: absolute; right: 0; top: calc(100% + 0.5rem); min-width: 12rem; max-height: 75vh; overflow: auto; display: grid; background: var(--paper); border: 1px solid var(--line); border-radius: 12px; padding: 0.4rem; box-shadow: 0 8px 24px rgb(0 0 0 / 0.12); }
   .site-head nav .menu-panel a:not(.btn) { padding: 0.6rem 0.75rem; border-radius: 8px; }
   .site-head nav .menu-panel a:hover { background: color-mix(in srgb, var(--leaf) 10%, transparent); }
   @media (max-width: 640px) {
-    .site-head nav > a:not(.btn) { display: none; }
+    .site-head nav > a:not(.btn), .site-head nav > .drop { display: none; }
     .menu { display: block; }
   }
 </style>
 <script>
   // The phone menu is a plain <details>; close it on Escape or a click elsewhere.
-  const menu = document.querySelector<HTMLDetailsElement>('.site-head .menu');
-  if (menu) {
-    document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && menu.open) { menu.open = false; menu.querySelector('summary')?.focus(); } });
-    document.addEventListener('click', (e) => { if (menu.open && !menu.contains(e.target as Node)) menu.open = false; });
-  }
+  const menus = [...document.querySelectorAll<HTMLDetailsElement>('.site-head .menu, .site-head .drop')];
+  document.addEventListener('keydown', (e) => { if (e.key !== 'Escape') return; const m = menus.find((d) => d.open); if (m) { m.open = false; m.querySelector('summary')?.focus(); } });
+  document.addEventListener('click', (e) => { for (const m of menus) if (m.open && !m.contains(e.target as Node)) m.open = false; });
+  for (const m of menus) m.addEventListener('toggle', () => { if (m.open) for (const o of menus) if (o !== m) o.open = false; });
 </script>
