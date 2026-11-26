@@ -1,0 +1,18 @@
+.ed-settings-btn { white-space: nowrap; font: 600 12px/1 "Barlow Condensed", "Arial Narrow", sans-serif; letter-spacing: .08em; text-transform: uppercase; color: inherit; background: none; border: 1px solid transparent; border-radius: 3px; padding: 5px 8px; cursor: pointer; transition: border-color .15s ease-out; }
+.ed-settings-btn:hover, .ed-settings-btn:focus-visible { border-color: currentColor; outline: none; }
+.ed-settings-btn[aria-expanded="true"] { box-shadow: inset 0 -2px 0 #f08a3a; }
+.ed-has-settings { align-items: center; }
+.ed-settings { position: absolute; z-index: 30; width: 260px; display: grid; gap: 10px; padding: 12px 14px; background: #18130e; color: #ece2d0; border: 1px solid #5c4835; border-radius: 3px; font: 13px/1.3 "Atkinson Hyperlegible", system-ui, sans-serif; }
+.ed-settings[hidden] { display: none; }
+.ed-settings.ed-above-footer { right: 8px; bottom: 34px; }
+.ed-settings.ed-corner { right: 8px; bottom: 34px; }
+.ed-corner-btn { position: absolute; right: 8px; bottom: 6px; z-index: 5; color: #a99881; background: #18130e; }
+.ed-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.ed-row.ed-end { justify-content: flex-end; }
+.ed-row label { color: #a99881; }
+.ed-row select, .ed-row input[type="range"] { font: inherit; color: #ece2d0; background: #18130e; border: 1px solid #5c4835; border-radius: 3px; padding: 4px 6px; }
+.ed-row input[type="range"] { padding: 0; width: 110px; accent-color: #f08a3a; }
+.ed-row input[type="checkbox"] { accent-color: #f08a3a; width: 16px; height: 16px; }
+.ed-row select:focus-visible, .ed-row input:focus-visible { outline: 2px solid #f08a3a; outline-offset: 1px; }
+.ed-row output { font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 12px; min-width: 44px; text-align: right; }
+@media (prefers-reduced-motion: reduce) { .ed-settings-btn { transition: none; } }
