@@ -3,11 +3,16 @@ import { ITEM_COUNT, SEASON_TICKS, DAILY_TICKS, UNLOCKS } from './rules.ts';
 import type { Goal, GoalKind, Setup } from './types.ts';
 import { rand } from './weather.ts';
 import { utcDay } from './date.ts';
+import { drawPicture, picturePlots } from './pictures.ts';
 
 /** Dailies dated on or after this, and seasons starting on or after it, use briefs. Live from 2026-11-18 (Rohan set the launch date). */
 export const BRIEF_EPOCH = '2026-11-18';
 /** Setup version stored on brief challenges (`setup_v = 2`). */
 export const SETUP_BRIEF = 2;
+/** Setup version 3 (Crop Circles): dailies may draw a picture goal. Stored per challenge like version 2; a v2 draw is never touched. */
+export const SETUP_PICTURE = 3;
+/** Dailies dated on or after this use setup version 3. Ships off (SIM_SPEC 7.1): a far-future date until Rohan's launch decision. */
+export const PICTURE_EPOCH = '2099-01-01';
 /** Hidden sibling farms per challenge kind. */
 export const HIDDEN_FARMS = { daily: 2, season: 4, duel: 0 } as const;
 /** Own salt for the brief draw (the modifier draw of setup version 1 uses 0xC0DE5EED). */
@@ -21,10 +26,12 @@ export type BriefKind = 'daily' | 'season' | 'duel';
 
 /** Catalogue order; also the order twist values are drawn in. */
 export const TWIST_KEYS: readonly TwistKey[] = ['land', 'poor_soil', 'dry_soil', 'drought', 'hard_frost', 'bot_cap', 'plot_cap', 'research_given', 'research_locked', 'stock', 'hive'];
-export const GOAL_KINDS: readonly GoalKind[] = ['wealth', 'festival', 'specialist', 'orders', 'inherited'];
-export const GOAL_TITLES: Record<GoalKind, string> = { wealth: 'Wealth', festival: 'Harvest festival', specialist: 'Specialist prices', orders: 'Orders only', inherited: 'Inherited farm' };
-/** Goal draw: out of 16, wealth 4 and the other four 3 each. */
-export const GOAL_WEIGHTS: Record<GoalKind, number> = { wealth: 4, festival: 3, specialist: 3, orders: 3, inherited: 3 };
+export const GOAL_KINDS: readonly GoalKind[] = ['wealth', 'festival', 'specialist', 'orders', 'inherited', 'picture'];
+export const GOAL_TITLES: Record<GoalKind, string> = { wealth: 'Wealth', festival: 'Harvest festival', specialist: 'Specialist prices', orders: 'Orders only', inherited: 'Inherited farm', picture: 'Crop circles' };
+/** Goal draw of setup version 2: out of 16, wealth 4 and the other four 3 each; `picture` is never drawn (weight 0). */
+export const GOAL_WEIGHTS: Record<GoalKind, number> = { wealth: 4, festival: 3, specialist: 3, orders: 3, inherited: 3, picture: 0 };
+/** Goal draw of setup version 3 dailies: out of 19, `picture` 4 (about one day in five) and the five others 3 each. Seasons keep the version 2 table. */
+export const GOAL_WEIGHTS_V3: Record<GoalKind, number> = { wealth: 3, festival: 3, specialist: 3, orders: 3, inherited: 3, picture: 4 };
 /** Dailies draw 0, 1, 1 or 2 twists; seasons always 2. */
 export const DAILY_TWIST_COUNTS = [0, 1, 1, 2] as const;
 export const SEASON_TWISTS = 2;
@@ -43,6 +50,12 @@ export const INHERITED_UNLOCKS = 0b111, INHERITED_COINS = 30;
 export function briefActive(date: string): boolean {
   utcDay(date);
   return date >= BRIEF_EPOCH;
+}
+
+/** True when a daily dated `date` uses setup version 3 (`PICTURE_EPOCH`). */
+export function pictureActive(date: string): boolean {
+  utcDay(date);
+  return date >= PICTURE_EPOCH;
 }
 
 const CLASHES: readonly (readonly [TwistKey, TwistKey])[] = [['drought', 'dry_soil'], ['drought', 'hard_frost']];
@@ -64,7 +77,7 @@ export interface DrawnBrief {
  * Draw order (xorshift32 from `seed ^ BRIEF_SALT`, each draw `(state >>> 8) % n`): goal (16), twist count (4), twist picks (11 each,
  * rejected picks still consume a draw), twist values in catalogue order, then the goal's own parameters.
  */
-export function drawBrief(kind: BriefKind, seed: number, source: 'daily' | 'season' = 'daily'): DrawnBrief {
+export function drawBrief(kind: BriefKind, seed: number, source: 'daily' | 'season' = 'daily', version: number = SETUP_BRIEF): DrawnBrief {
   if (!Number.isSafeInteger(seed)) throw new Error('seed must be a safe integer');
   const season = kind === 'season' || (kind === 'duel' && source === 'season');
   const ticks = season ? SEASON_TICKS : DAILY_TICKS;
@@ -73,13 +86,15 @@ export function drawBrief(kind: BriefKind, seed: number, source: 'daily' | 'seas
   const draw = (n: number): number => { s = rand(s); return (s >>> 8) % n; };
 
   // 1. goal
-  let g = draw(16), goalKind: GoalKind = 'wealth';
-  for (const k of GOAL_KINDS) { if (g < GOAL_WEIGHTS[k]) { goalKind = k; break; } g -= GOAL_WEIGHTS[k]; }
+  // Version 3 dailies draw out of 19 with the picture goal in; everything else (version 2, every season) draws exactly as before.
+  const weights = version === SETUP_PICTURE && !season ? GOAL_WEIGHTS_V3 : GOAL_WEIGHTS;
+  let g = draw(version === SETUP_PICTURE && !season ? 19 : 16), goalKind: GoalKind = 'wealth';
+  for (const k of GOAL_KINDS) { if (g < weights[k]) { goalKind = k; break; } g -= weights[k]; }
 
   // 2. twists: how many, then which (no repeats, no clashes, `land` never on an inherited farm)
   const count = season ? SEASON_TWISTS : DAILY_TWIST_COUNTS[draw(DAILY_TWIST_COUNTS.length)]!;
   const keys: TwistKey[] = [];
-  const fits = (k: TwistKey): boolean => !keys.includes(k) && !keys.some((x) => clashes(x, k)) && !(goalKind === 'inherited' && k === 'land');
+  const fits = (k: TwistKey): boolean => !keys.includes(k) && !keys.some((x) => clashes(x, k)) && !(goalKind === 'inherited' && k === 'land') && !(goalKind === 'picture' && (k === 'land' || k === 'hive'));
   for (let tries = 0; keys.length < count && tries < 40; tries++) { const k = TWIST_KEYS[draw(TWIST_KEYS.length)]!; if (fits(k)) keys.push(k); }
   for (const k of TWIST_KEYS) if (keys.length < count && fits(k)) keys.push(k); // never reached in practice; keeps the count exact
   keys.sort((a, b) => TWIST_KEYS.indexOf(a) - TWIST_KEYS.indexOf(b));
@@ -87,7 +102,7 @@ export function drawBrief(kind: BriefKind, seed: number, source: 'daily' | 'seas
   // 3. twist values and their setup fields
   const setup: Setup = {};
   const twists: Twist[] = [];
-  let startPlots = 1 + (goalKind === 'inherited' ? 1 : 0), given = 0, locked = 0, hive = false, givenBit = -1;
+  let startPlots = 1 + (goalKind === 'inherited' ? 1 : 0), given = 0, locked = 0, hive = false, givenBit = -1, capDraw = 0;
   for (const key of keys) {
     switch (key) {
       case 'land': {
@@ -102,7 +117,11 @@ export function drawBrief(kind: BriefKind, seed: number, source: 'daily' | 'seas
       case 'drought': setup.weatherBias = 2; twists.push({ key }); break;
       case 'hard_frost': setup.weatherBias = -2; twists.push({ key }); break;
       case 'bot_cap': { const v = 1 + draw(3); setup.maxBots = v; twists.push({ key, value: v }); break; }
-      case 'plot_cap': { const v = Math.max(1 + draw(3), startPlots); setup.maxPlots = v; twists.push({ key, value: v }); break; }
+      case 'plot_cap': {
+        capDraw = 1 + draw(3);
+        const v = Math.max(capDraw, startPlots); // a picture goal raises it once the picture is known (below)
+        setup.maxPlots = v; twists.push({ key, value: v }); break;
+      }
       case 'research_given': { givenBit = GIVEN_BITS[draw(GIVEN_BITS.length)]!; given |= 1 << givenBit; twists.push({ key, value: givenBit }); break; }
       case 'research_locked': { const pool = LOCKED_BITS.filter((b) => b !== givenBit); const bit = pool[draw(pool.length)]!; locked |= 1 << bit; twists.push({ key, value: bit }); break; }
       case 'stock': { const item = 1 + draw(5), units = [20, 40, 60][draw(3)]!; const st = new Array<number>(ITEM_COUNT).fill(0); st[item] = units; setup.stock = st; twists.push({ key, value: units, item }); break; }
@@ -140,6 +159,16 @@ export function drawBrief(kind: BriefKind, seed: number, source: 'daily' | 'seas
     priceMult[goal.favoured] = FAVOURED_PERMILLE; priceMult[goal.shunned] = SHUNNED_PERMILLE;
   } else if (goalKind === 'orders') {
     setup.orderBoost = 1;
+  } else if (goalKind === 'picture') {
+    let lockedCrops = 0;
+    for (let c = 1; c <= 6; c++) if (itemLocked(c)) lockedCrops |= 1 << c;
+    const pic = drawPicture(draw, lockedCrops);
+    goal.picture = pic;
+    const extra = picturePlots(pic.w, pic.h);
+    if (extra.length) setup.plots = extra;
+    startPlots += extra.length / 2;
+    const cap = twists.find((t) => t.key === 'plot_cap');
+    if (cap) { cap.value = Math.max(capDraw, startPlots); setup.maxPlots = cap.value; }
   } else if (goalKind === 'inherited') {
     setup.inherited = 1;
     setup.unlocks = (setup.unlocks ?? 1) | INHERITED_UNLOCKS;
@@ -170,6 +199,11 @@ export function describeBrief(b: Brief, kind: BriefKind): { notice: string; labe
     case 'specialist':
       notice = `The market is mad for ${PLURAL[g.favoured ?? 1]!} today and will not pay for ${PLURAL[g.shunned ?? 1]!}.`;
       break;
+    case 'picture': {
+      const t = g.picture?.title ?? 'a picture';
+      notice = `The village wants ${t.charAt(0).toLowerCase()}${t.slice(1)} in the fields ${when}.`;
+      break;
+    }
     case 'orders':
       notice = `The merchants are posting big orders. Only the coins from deliveries count ${when}.`;
       break;
@@ -206,8 +240,9 @@ export function describeBrief(b: Brief, kind: BriefKind): { notice: string; labe
  */
 export const MAX_REROLLS = 8;
 export const BRIEF_FLOOR: Record<'daily' | 'season', Record<GoalKind, number>> = {
-  daily: { wealth: 300, festival: 250, specialist: 250, orders: 250, inherited: 600 },
-  season: { wealth: 500, festival: 250, specialist: 800, orders: 500, inherited: 2000 },
+  // picture: 0 until H4 calibrates it from the picture reference program (a floor of 0 never rerolls).
+  daily: { wealth: 300, festival: 250, specialist: 250, orders: 250, inherited: 600, picture: 0 },
+  season: { wealth: 500, festival: 250, specialist: 800, orders: 500, inherited: 2000, picture: 0 },
 };
 /** Floor for a goal of a challenge kind (a duel copies its source's brief and is never rerolled). */
 export const briefFloor = (kind: 'daily' | 'season', goal: GoalKind): number => BRIEF_FLOOR[kind][goal];
@@ -226,11 +261,11 @@ export function rerollSeed(seed: number, n: number): number {
  * returns its score; the first try at or above the goal's floor wins, otherwise the best of the 9 tries (the earliest on a tie).
  * The result is stored as the challenge's seed, so players and hidden farms never see the rejected ones.
  */
-export function pickBrief(kind: 'daily' | 'season', seed: number, reference: (seed: number, brief: Brief) => number): { seed: number; tries: number; score: number; brief: Brief } {
+export function pickBrief(kind: 'daily' | 'season', seed: number, reference: (seed: number, brief: Brief) => number, version: number = SETUP_BRIEF): { seed: number; tries: number; score: number; brief: Brief } {
   let best: { seed: number; tries: number; score: number; brief: Brief } | null = null;
   for (let n = 0; n <= MAX_REROLLS; n++) {
     const s = rerollSeed(seed, n);
-    const brief = drawBrief(kind, s).brief;
+    const brief = drawBrief(kind, s, 'daily', version).brief;
     const score = reference(s, brief);
     if (score >= briefFloor(kind, brief.goal.kind)) return { seed: s, tries: n + 1, score, brief };
     if (!best || score > best.score) best = { seed: s, tries: n + 1, score, brief };
