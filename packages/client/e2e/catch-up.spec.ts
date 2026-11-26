@@ -41,7 +41,7 @@ const tickOf = (page: Page): Promise<number> => page.evaluate(() => window.tendr
 test('a farm 500,000 ticks (14 hours) behind catches up without freezing the page, and a reload resumes it', async ({ page }) => {
   test.setTimeout(10 * 60_000);
   await offsetClock(page);
-  await page.goto('/');
+  await page.goto('/?mode=live');
   await ready(page);
   await page.evaluate((src) => window.tendril!.loop.setSource(src), grower);
   await page.evaluate(() => window.tendril!.loop.run());

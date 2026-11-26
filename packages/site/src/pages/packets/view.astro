@@ -1,0 +1,34 @@
+---
+import Base from '../../layouts/Base.astro';
+---
+<Base title="Seed packet" description="A program a Tendril player shared. Plant it in the game, read the code, see its remixes and its best verified result.">
+  <section class="wrap pk-page" data-pk>
+    <p class="pk-meta"><a href="/packets/">All seed packets</a></p>
+    <p class="pk-state" data-state role="status">Loading…</p>
+    <div data-packet hidden>
+      <h1 data-name></h1>
+      <p class="pk-meta" data-by></p>
+      <p class="pk-note" data-note></p>
+      <p class="pk-tags" data-tags></p>
+      <div class="pk-actions">
+        <a class="btn primary" data-plant href="/play/?mode=sandbox">Plant it in the game</a>
+        <button class="btn" type="button" data-copy>Copy code</button>
+      </div>
+      <p class="pk-dim">In the terminal: <code class="pk-cli" data-cli></code></p>
+      <section class="pk-section" aria-labelledby="best-h"><h2 id="best-h">Best result</h2><p data-best></p></section>
+      <div class="pk-code-head"><h2>The program</h2><span class="pk-dim" data-lines></span></div>
+      <pre class="pk-code" tabindex="0" aria-label="Program code"><code data-code></code></pre>
+      <section class="pk-section" aria-labelledby="fam-h"><h2 id="fam-h">Family tree</h2><div data-family></div></section>
+      <p class="pk-dim pk-section">Planted it, changed it? Share your version from the game and it is listed here as a remix. <button class="btn" type="button" data-report>Report this packet</button> <span data-report-msg role="status"></span></p>
+    </div>
+  </section>
+</Base>
+
+<script>
+  import { initPage, packetsCss } from '../../scripts/packets';
+  const style = document.createElement('style');
+  style.textContent = packetsCss;
+  document.head.append(style);
+  const root = document.querySelector<HTMLElement>('[data-pk]');
+  if (root) void initPage(root);
+</script>

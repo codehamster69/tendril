@@ -1,0 +1,14 @@
+---
+// The closing nudge at the bottom of a page: one sentence and one or two obvious places to go.
+interface Props { text: string; links: { href: string; label: string; primary?: boolean }[] }
+const { text, links } = Astro.props;
+---
+<aside class="next-step wrap" aria-label="What next">
+  <p>{text}</p>
+  <div>{links.map((l) => <a class={l.primary ? 'btn primary' : 'btn'} href={l.href}>{l.label}</a>)}</div>
+</aside>
+<style>
+  .next-step { margin-top: 3.5rem; padding-block: 1.5rem; border-top: 1px solid var(--line); display: flex; flex-wrap: wrap; gap: 1rem 2rem; align-items: center; justify-content: space-between; }
+  .next-step p { margin: 0; font: 600 1.15rem var(--display); max-width: 32rem; }
+  .next-step div { display: flex; flex-wrap: wrap; gap: 0.6rem; }
+</style>

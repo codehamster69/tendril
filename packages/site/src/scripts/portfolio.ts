@@ -27,6 +27,8 @@ export interface Profile {
   login: string; displayName?: string; avatarUrl?: string; streak?: { current: number; best: number; lastDay: string | null };
   medals?: Partial<Record<'wealth' | 'speed' | 'brevity', number>>; topPercent?: number | null; viewer?: { isSelf: boolean; following: boolean } | null;
   followers?: number; following?: number; recent?: Recent[];
+  /** Seed packets this player shared (H8), newest first, and the players who planted them. */
+  packets?: { list: { id: string; name: string; plants: number; parentId: string | null; createdAt: number }[]; totalPlants: number };
   rating?: Partial<Record<Disc, Rating | null>>;
   /** Up to three published programs the owner pinned (public ones only). Always present from the server. */
   pinned?: PinRef[];
@@ -253,6 +255,23 @@ function render(root: HTMLElement, p: Profile) {
 
   setupFollow(root, p);
   void drawPins(root, pins, canPin);
+  drawPackets(root, p.packets);
+}
+
+// Seed packets (H8): what this player shared and how many players planted it.
+function drawPackets(root: HTMLElement, packets: Profile['packets']) {
+  const sec = q(root, '[data-sec="packets"]'), box = q(root, '[data-packets]'), cap = q(root, '[data-packets-cap]');
+  const list = packets?.list ?? [];
+  sec.hidden = list.length === 0;
+  box.replaceChildren();
+  if (list.length === 0) return;
+  cap.textContent = `${fmt.format(packets!.totalPlants)} ${packets!.totalPlants === 1 ? 'plant' : 'plants'} in all`;
+  for (const x of list) {
+    const li = el('li');
+    const a = el('a', undefined, x.name); a.href = `/packets/${encodeURIComponent(x.id)}`;
+    li.append(a, el('span', 'cap', `${fmt.format(x.plants)} ${x.plants === 1 ? 'plant' : 'plants'}${x.parentId ? ' · remix' : ''}`));
+    box.append(li);
+  }
 }
 
 function drawChart(root: HTMLElement, r: Rating | null, disc: Disc, numbers: Map<string, number | null>) {

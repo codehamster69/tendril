@@ -8,6 +8,7 @@ import { botColour } from './bot-colours';
 import { ITEM_COLORS, el } from './palette';
 import { BUBBLE_ICON, MAX_FLOATS, bubbleFor, floatCurve, itemGains, pickBubbles, planFloats, type BubbleKind, type FeedbackEvent, type FloatSpec } from './feedback-core';
 import { motionQuery } from './settings';
+import { EQUIP_EVENT, type EquipState } from './live-code';
 
 const FLOAT_MS = 1100;
 const TIP_MS = 6000;
@@ -109,6 +110,20 @@ export function mountWorldFeedback(o: { view: FarmView; editor: Editor }): void 
     if (bubbles.size) kick();
   };
 
+  // ---- rings: each bot flashes once when it picks up new code
+  const EQUIP_MS = 800, MAX_RINGS = 32;
+  const rings: { node: HTMLElement; bot: number; born: number }[] = [];
+  const equip = (now: number): void => {
+    const count = Math.min(MAX_RINGS, last?.bots.length ?? 0);
+    for (let bot = 0; bot < count; bot++) {
+      const node = el('span', { class: 'wf-equip', 'aria-hidden': 'true' });
+      node.style.setProperty('--wf-bot', botColour(bot));
+      layer.append(node);
+      rings.push({ node, bot, born: now });
+    }
+    if (count) kick();
+  };
+
   // ---- frame: reproject everything that floats over the world
   let raf = 0;
   const frame = (now: number): void => {
@@ -124,6 +139,17 @@ export function mountWorldFeedback(o: { view: FarmView; editor: Editor }): void 
       if (!p?.visible) { f.node.style.opacity = '0'; live++; continue; }
       f.node.style.transform = `translate(${p.x.toFixed(1)}px, ${(p.y - rise).toFixed(1)}px) translate(-50%, -100%)`;
       f.node.style.opacity = opacity.toFixed(2);
+      live++;
+    }
+    for (let i = rings.length - 1; i >= 0; i--) {
+      const r = rings[i]!;
+      const k = (now - r.born) / EQUIP_MS;
+      const at = k < 1 ? view.botPosition(r.bot) : null;
+      const p = at ? view.project(at.x, at.z, 0.4) : null;
+      if (!p?.visible) { if (k >= 1) { r.node.remove(); rings.splice(i, 1); } else { r.node.style.opacity = '0'; live++; } continue; }
+      const grow = calm ? 1 : 0.5 + 1.1 * k;
+      r.node.style.transform = `translate(${p.x.toFixed(1)}px, ${p.y.toFixed(1)}px) translate(-50%, -50%) scale(${grow.toFixed(2)})`;
+      r.node.style.opacity = (0.9 * (1 - k)).toFixed(2);
       live++;
     }
     for (const [bot, b] of bubbles) {
@@ -166,6 +192,10 @@ export function mountWorldFeedback(o: { view: FarmView; editor: Editor }): void 
     const now = performance.now();
     for (const s of specs) spawn(s, now);
     if (specs.length) kick();
+  });
+  window.addEventListener(EQUIP_EVENT, (e) => {
+    const s = (e as CustomEvent<EquipState>).detail;
+    if (s.kind === 'equipped' && s.lines.length && !document.hidden) equip(performance.now());
   });
   window.addEventListener('tendril:debug', (e) => {
     debug = (e as CustomEvent<{ bots: BotDebug[] }>).detail.bots;
