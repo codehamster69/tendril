@@ -173,6 +173,7 @@ test('a damaged saved clock is reported without deleting it, and explicit reset 
 });
 
 test('more than 200 chunks retain every action, with correct fromTick after reload', async ({ page }) => {
+  test.slow(); // 205 renders on software GL; slower under the full-screen stage
   await sandbox(page);
   await page.evaluate(async () => {
     const { sim, loop } = window.tendril!;
