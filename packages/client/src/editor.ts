@@ -1,17 +1,16 @@
 import { boot } from './boot';
-import { EditorState, RangeSetBuilder, StateEffect, StateField, Prec, type Extension } from '@codemirror/state';
+import { Compartment, EditorState, RangeSetBuilder, StateEffect, StateField, Prec, type Extension } from '@codemirror/state';
 import {
   EditorView, Decoration, GutterMarker, gutter, lineNumbers, keymap, drawSelection, highlightActiveLine, highlightActiveLineGutter,
-  hoverTooltip, gutterLineClass, type DecorationSet,
+  hoverTooltip, gutterLineClass, WidgetType, rectangularSelection, crosshairCursor, type DecorationSet,
 } from '@codemirror/view';
-import { defaultKeymap, history, historyKeymap, indentWithTab, insertNewlineAndIndent } from '@codemirror/commands';
+import { addCursorAbove, addCursorBelow, defaultKeymap, history, historyKeymap, indentWithTab, insertNewlineAndIndent } from '@codemirror/commands';
 import {
-  StreamLanguage, HighlightStyle, syntaxHighlighting, bracketMatching, indentService, indentUnit, type StringStream,
+  StreamLanguage, bracketMatching, indentService, indentUnit, foldGutter, foldKeymap, foldService, type StringStream,
 } from '@codemirror/language';
 import { autocompletion, closeBrackets, closeBracketsKeymap, completionKeymap, snippetCompletion, type Completion, type CompletionContext } from '@codemirror/autocomplete';
 import { setDiagnostics, type Diagnostic as CmDiagnostic } from '@codemirror/lint';
-import { search, searchKeymap, highlightSelectionMatches } from '@codemirror/search';
-import { tags as t } from '@lezer/highlight';
+import { search, searchKeymap, highlightSelectionMatches, selectNextOccurrence } from '@codemirror/search';
 import { API, CONSTANTS, KEYWORDS } from '@tendril/lang/src/index.ts';
 import type { BotDebug, Diagnostic, ScriptError } from '@tendril/lang/src/index.ts';
 
@@ -22,6 +21,12 @@ import compost from '../../lang/examples/compost.sprout?raw';
 import orders from '../../lang/examples/orders.sprout?raw';
 import daily from '../../lang/examples/daily.sprout?raw';
 import { BOT_PALETTE, botColour } from './bot-colours';
+import { editorTheme } from './editor-theme';
+import { loadPrefs, savePrefs, type EditorPrefs } from './editor-prefs';
+import { RunTicks, hotLines, type LogRow } from './editor-ticks';
+import { suggestFix, userNames } from './editor-fix';
+import { inlineValues } from './editor-inline';
+import { mountEditorSettings } from './editor-settings';
 
 export const EXAMPLES: Record<string, { title: string; source: string }> = {
   starter: { title: 'Carrot snake · starter', source: starter },
@@ -62,17 +67,8 @@ const sproutLanguage = StreamLanguage.define<null>({
   tokenTable: {},
 });
 
-const highlight = HighlightStyle.define([
-  { tag: t.comment, color: '#86B3A4', fontStyle: 'italic' },
-  { tag: t.keyword, color: '#FFC65A', fontWeight: 'bold' },
-  { tag: t.string, color: '#9BE8CC' },
-  { tag: t.number, color: '#F29A5C' },
-  { tag: t.atom, color: '#F2A97E' },
-  { tag: t.standard(t.variableName), color: '#7FD9E6' },
-  { tag: t.variableName, color: '#DCEBEC' },
-]);
-
-const INDENT = '    ';
+let indentWidth = 4;
+const indentText = (): string => ' '.repeat(indentWidth);
 const OPENS_BLOCK = /:\s*(#.*)?$/;
 /** Indent one level after a line ending in `:`, keep the previous indent otherwise, and pull `else`/`elif` back out. */
 const sproutIndent = indentService.of((ctx, pos) => {
@@ -82,8 +78,8 @@ const sproutIndent = indentService.of((ctx, pos) => {
   while (prev.number > 1 && !prev.text.trim()) prev = ctx.state.doc.line(prev.number - 1);
   const base = /^\s*/.exec(prev.text)![0].length;
   const after = ctx.state.doc.sliceString(pos, line.to);
-  let n = OPENS_BLOCK.test(prev.text) ? base + INDENT.length : base;
-  if (/^\s*(else|elif)\b/.test(after)) n = Math.max(0, n - INDENT.length);
+  let n = OPENS_BLOCK.test(prev.text) ? base + indentWidth : base;
+  if (/^\s*(else|elif)\b/.test(after)) n = Math.max(0, n - indentWidth);
   return n;
 });
 
@@ -105,12 +101,15 @@ function docNode(signature: string, ticks: number | 'n', doc: string, example: s
   const root = document.createElement('div');
   root.className = 'cm-sprout-doc';
   const sig = document.createElement('strong');
-  sig.textContent = `${signature} · ${cost(ticks)}`;
+  sig.textContent = signature;
   const text = document.createElement('p');
   text.textContent = doc;
+  const price = document.createElement('span');
+  price.className = 'cm-doc-cost';
+  price.textContent = `Costs ${cost(ticks)}`;
   const code = document.createElement('pre');
   code.textContent = example;
-  root.append(sig, text, code);
+  root.append(sig, text, price, code);
   return root;
 }
 
@@ -151,6 +150,8 @@ export interface Editor {
   onBreakpointsChange(cb: (lines: number[]) => void): void;
   showBotLines(debug: BotDebug[], paused?: { bot: number; line: number } | null, colorOf?: BotColorFn): void;
   showHeat(heat: [number, number][]): void;
+  /** Feed the run's action log and line heat; the tick column shows what each line spent. `null` clears it. */
+  showRunLog(log: readonly LogRow[] | null, heat?: readonly (readonly [number, number])[]): void;
   setFeatures(features: ReadonlySet<string> | null): void;
   /** Move the cursor to a line and scroll it into view. `focus: false` leaves keyboard focus where it was. */
   revealLine(line: number, opts?: { focus?: boolean }): void;
@@ -209,7 +210,7 @@ const heatMarks = StateField.define<MarkSpec[]>({
   update: (v, tr) => { for (const e of tr.effects) if (e.is(setHeatMarks)) return e.value; return v; },
 });
 
-const botLineDecorations = EditorView.decorations.compute([botMarks], (state): DecorationSet => {
+const botLineDecorations = EditorView.decorations.compute(['doc', botMarks], (state): DecorationSet => {
   const b = new RangeSetBuilder<Decoration>();
   const marks = [...state.field(botMarks)].filter((m) => m.line <= state.doc.lines).sort((x, y) => x.line - y.line);
   for (const m of marks) {
@@ -266,55 +267,156 @@ const markGutter = gutter({
   initialSpacer: () => new BarMarker('cm-bot-marker', 'transparent', ''),
 });
 
-const theme = EditorView.theme({
-  '&': { height: '100%', backgroundColor: '#0D2A2F', color: '#E2EFEE', fontSize: '13.5px' },
-  '&.cm-focused': { outline: 'none' },
-  '.cm-scroller': { fontFamily: 'ui-monospace, "SF Mono", SFMono-Regular, Menlo, monospace', lineHeight: '21px', overflow: 'auto' },
-  '.cm-content': { padding: '14px 0 12px', caretColor: '#FFC65A' },
-  '.cm-line': { padding: '0 14px 0 6px' },
-  '.cm-cursor, .cm-dropCursor': { borderLeftColor: '#FFC65A' },
-  '&.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground, .cm-selectionBackground, ::selection': { backgroundColor: '#2B6460' },
-  '.cm-activeLine': { backgroundColor: '#143C41' },
-  '.cm-gutters': { backgroundColor: '#0D2A2F', color: '#7FA9A5', border: 'none' },
-  '.cm-activeLineGutter': { backgroundColor: '#143C41', color: '#FFC65A' },
-  '.cm-lineNumbers .cm-gutterElement': { padding: '0 6px 0 8px', cursor: 'pointer' },
-  '.cm-bp-gutter .cm-gutterElement': { width: '20px', cursor: 'pointer' },
-  '.cm-bp-dot': { display: 'block', width: '10px', height: '10px', margin: '5.5px 0 0 5px', borderRadius: '50%', background: '#E8875A', boxShadow: '0 0 0 2px rgba(232,135,90,.25)' },
-  '.cm-mark-gutter': { width: '14px' },
-  '.cm-bot-marker': { display: 'block', width: '4px', height: '21px', marginLeft: '3px', borderRadius: '2px', background: 'var(--mark)' },
-  '.cm-heat': { display: 'block', width: '3px', height: '21px', marginLeft: '9px', borderRadius: '2px', background: 'var(--mark)' },
-  '.cm-bot-line': { background: 'color-mix(in srgb, var(--mark) 9%, transparent)' },
-  '.cm-bot-line.cm-bot-selected': { background: 'color-mix(in srgb, var(--mark) 24%, transparent)', boxShadow: 'inset 3px 0 0 var(--mark)' },
-  '.cm-bot-marker-selected': { width: '6px', marginLeft: '2px' },
-  '.cm-mark-gutter .cm-bot-marker': { cursor: 'pointer' },
-  '.cm-applied-line': { animation: 'cm-applied 1.1s ease-out' },
-  '.cm-applied-gutter': { animation: 'cm-applied 1.1s ease-out' },
-  '.cm-bot-line.cm-bot-paused': { background: 'rgba(255,198,90,.22)' },
-  '.cm-matchingBracket': { backgroundColor: 'rgba(255,198,90,.2)', outline: '1px solid rgba(255,198,90,.45)' },
-  '.cm-selectionMatch': { backgroundColor: 'rgba(127,217,230,.18)' },
-  '.cm-searchMatch': { backgroundColor: 'rgba(255,198,90,.25)' },
-  '.cm-searchMatch.cm-searchMatch-selected': { backgroundColor: 'rgba(255,198,90,.5)' },
-  '.cm-tooltip': { background: '#0A2226', border: '1px solid rgba(127,169,165,.35)', borderRadius: '8px', color: '#E2EFEE', overflow: 'hidden' },
-  '.cm-tooltip.cm-tooltip-autocomplete > ul': { fontFamily: 'inherit' },
-  '.cm-tooltip-autocomplete ul li[aria-selected]': { background: '#2B6460', color: '#fff' },
-  '.cm-completionDetail': { color: '#7FA9A5', marginLeft: '1em' },
-  '.cm-completionInfo': { padding: '6px 10px', maxWidth: '340px' },
-  '.cm-sprout-doc': { padding: '6px 10px', maxWidth: '340px', fontFamily: 'inherit' },
-  '.cm-sprout-doc p': { margin: '4px 0', whiteSpace: 'normal' },
-  '.cm-sprout-doc pre': { margin: '4px 0 0', padding: '4px 6px', background: '#0D2A2F', borderRadius: '4px', whiteSpace: 'pre-wrap' },
-  '.cm-diagnostic': { padding: '3px 8px' },
-  '.cm-diagnostic-error': { borderLeft: '3px solid #E8875A' },
-  '.cm-diagnostic-warning': { borderLeft: '3px solid #FFC65A' },
-  '.cm-lintRange-error': { backgroundImage: 'none', textDecoration: 'underline wavy #E8875A', textUnderlineOffset: '3px' },
-  '.cm-lintRange-warning': { backgroundImage: 'none', textDecoration: 'underline wavy #FFC65A', textUnderlineOffset: '3px' },
-  '.cm-panels': { background: '#0A2226', color: '#E2EFEE', borderColor: 'rgba(127,169,165,.35)' },
-  '.cm-panels input, .cm-panels button': { background: '#0D2A2F', color: '#E2EFEE', border: '1px solid rgba(127,169,165,.4)', borderRadius: '4px', padding: '2px 6px' },
-  '.cm-panels label': { color: '#7FA9A5' },
-}, { dark: true });
+// ---- tick column ------------------------------------------------------------------------------------------------
+
+/** Ticks per line, keyed by the line's start position so edits move them and a touched line drops its number. */
+type TickItem = { ticks: number; hot: boolean };
+const setTicks = StateEffect.define<Map<number, number> | null>();
+const tickField = StateField.define<Map<number, TickItem>>({
+  create: () => new Map(),
+  update(v, tr) {
+    for (const e of tr.effects) if (e.is(setTicks)) {
+      const out = new Map<number, TickItem>();
+      if (e.value) {
+        const hot = hotLines(e.value);
+        for (const [line, ticks] of e.value) if (line >= 1 && line <= tr.state.doc.lines) out.set(tr.state.doc.line(line).from, { ticks, hot: hot.has(line) });
+      }
+      return out;
+    }
+    if (!tr.docChanged || !v.size) return v;
+    const out = new Map<number, TickItem>();
+    for (const [pos, item] of v) {
+      const old = tr.startState.doc.lineAt(pos);
+      if (tr.changes.touchesRange(old.from, old.to)) continue; // edited: the number no longer describes this line
+      out.set(tr.changes.mapPos(pos, -1), item);
+    }
+    return out;
+  },
+});
+class TickMarker extends GutterMarker {
+  constructor(readonly text: string, readonly hot: boolean) { super(); }
+  override eq(o: TickMarker): boolean { return o.text === this.text && o.hot === this.hot; }
+  override toDOM(): HTMLElement {
+    const el = document.createElement('span');
+    el.textContent = this.text;
+    if (this.hot) el.className = 'cm-tick-hot';
+    el.title = this.hot ? 'One of the costliest lines in the last run' : 'Ticks this line spent in the last run';
+    return el;
+  }
+}
+const tickGutter = gutter({
+  class: 'cm-tick-gutter',
+  lineMarker: (v, block) => { const t = v.state.field(tickField).get(block.from); return t ? new TickMarker(t.ticks.toLocaleString(), t.hot) : null; },
+  lineMarkerChange: (u) => u.docChanged || u.transactions.some((tr) => tr.effects.some((e) => e.is(setTicks))),
+  initialSpacer: () => new TickMarker('0000', false),
+});
+
+// ---- plain-English errors under the line ------------------------------------------------------------------------
+
+type LineMessage = { line: number; message: string; severity: 'error' | 'warning'; fixable: boolean };
+const setLineMessages = StateEffect.define<LineMessage[]>();
+
+class MessageWidget extends WidgetType {
+  constructor(readonly message: string, readonly severity: string, readonly fixable: boolean) { super(); }
+  override eq(o: MessageWidget): boolean { return o.message === this.message && o.severity === this.severity && o.fixable === this.fixable; }
+  override ignoreEvent(): boolean { return false; }
+  override toDOM(view: EditorView): HTMLElement {
+    const box = document.createElement('div');
+    box.className = `cm-err-line${this.severity === 'warning' ? ' cm-err-warning' : ''}`;
+    box.setAttribute('role', 'alert');
+    const text = document.createElement('span');
+    text.className = 'cm-err-text';
+    text.textContent = this.message;
+    box.append(text);
+    if (this.fixable) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'cm-fix-btn';
+      btn.textContent = 'Fix';
+      btn.addEventListener('mousedown', (ev) => ev.preventDefault());
+      btn.addEventListener('click', () => applyFix(view, box, this.message));
+      box.append(btn);
+    }
+    return box;
+  }
+}
+
+const fixFor = (state: EditorState, line: number, message: string) => {
+  const text = state.doc.line(line).text;
+  return suggestFix(message, text, [...API.map((a) => a.name), ...CONSTANTS, ...userNames(state.doc.toString())]);
+};
+
+function applyFix(view: EditorView, dom: HTMLElement, message: string): void {
+  const line = view.state.doc.lineAt(view.posAtDOM(dom));
+  const fix = fixFor(view.state, line.number, message);
+  if (!fix) return;
+  view.dispatch({ changes: { from: line.from + fix.from, to: line.from + fix.to, insert: fix.replacement }, userEvent: 'input.fix' });
+  view.focus();
+}
+
+const lineMessages = StateField.define<DecorationSet>({
+  create: () => Decoration.none,
+  update(v, tr) {
+    for (const e of tr.effects) if (e.is(setLineMessages)) {
+      const sorted = [...e.value].filter((m) => m.line >= 1 && m.line <= tr.state.doc.lines).sort((a, b) => a.line - b.line).slice(0, 20);
+      return Decoration.set(sorted.map((m) => Decoration.widget({ widget: new MessageWidget(m.message, m.severity, m.fixable), block: true, side: 1 }).range(tr.state.doc.line(m.line).to)));
+    }
+    if (!tr.docChanged) return v;
+    // An edited line no longer matches what the compiler said about it; the next Run says it afresh.
+    return v.update({ filter: (from) => { const l = tr.startState.doc.lineAt(from); return !tr.changes.touchesRange(l.from, l.to); } }).map(tr.changes);
+  },
+  provide: (f) => EditorView.decorations.from(f),
+});
+
+// ---- inline values while paused or stepping -------------------------------------------------------------------------
+
+class InlineValue extends WidgetType {
+  constructor(readonly text: string) { super(); }
+  override eq(o: InlineValue): boolean { return o.text === this.text; }
+  override toDOM(): HTMLElement {
+    const el = document.createElement('span');
+    el.className = 'cm-inline-value';
+    el.textContent = this.text;
+    el.setAttribute('aria-hidden', 'true');
+    return el;
+  }
+}
+const setInline = StateEffect.define<Map<number, string>>();
+const inlineField = StateField.define<DecorationSet>({
+  create: () => Decoration.none,
+  update(v, tr) {
+    for (const e of tr.effects) if (e.is(setInline)) {
+      const items = [...e.value].filter(([l]) => l >= 1 && l <= tr.state.doc.lines).sort((a, b) => a[0] - b[0]);
+      return Decoration.set(items.map(([l, text]) => Decoration.widget({ widget: new InlineValue(text), side: 1 }).range(tr.state.doc.line(l).to)));
+    }
+    return tr.docChanged ? Decoration.none : v; // a changed document makes the shown values stale
+  },
+  provide: (f) => EditorView.decorations.from(f),
+});
+
+/** Fold a block that opens with a line ending in `:` down to its last more-indented line. */
+const sproutFold = foldService.of((state, lineStart) => {
+  const line = state.doc.lineAt(lineStart);
+  if (!OPENS_BLOCK.test(line.text)) return null;
+  const base = /^\s*/.exec(line.text)![0].length;
+  let end = -1;
+  for (let n = line.number + 1; n <= state.doc.lines; n++) {
+    const next = state.doc.line(n);
+    if (!next.text.trim()) continue;
+    if (/^\s*/.exec(next.text)![0].length <= base) break;
+    end = next.to;
+  }
+  return end > line.to ? { from: line.to, to: end } : null;
+});
 
 const HEAT_ALPHA = [0.2, 0.35, 0.55, 0.75, 1];
 
 export function createEditor(container: HTMLElement, storageKey: string, fallback = DEFAULT_SCRIPT): Editor {
+  const prefs: EditorPrefs = loadPrefs();
+  indentWidth = prefs.tabWidth;
+  const themeC = new Compartment(), tickC = new Compartment(), tabC = new Compartment();
+  const tabExt = (): Extension => [EditorState.tabSize.of(indentWidth), indentUnit.of(indentText())];
+  const runTicks = new RunTicks();
   const load = (): string => { try { return localStorage.getItem(storageKey) ?? fallback; } catch { return fallback; } };
   let bps = new Set<number>(loadBreakpoints(storageKey + '.bp'));
   const bpListeners: ((lines: number[]) => void)[] = [];
@@ -370,12 +472,14 @@ export function createEditor(container: HTMLElement, storageKey: string, fallbac
   });
 
   const extensions: Extension[] = [
-    theme,
+    themeC.of(editorTheme(prefs.theme)),
     lineNumbers({ domEventHandlers: { mousedown: (v, block) => { toggleBp(lineAt(v, block)); return true; } } }),
-    bpField, bpGutter, appliedLines, botMarks, heatMarks, markGutter, botLineDecorations,
+    bpField, bpGutter, appliedLines, botMarks, heatMarks, markGutter, botLineDecorations, tickField, tickC.of(prefs.tickColumn ? tickGutter : []), lineMessages, inlineField,
+    foldGutter({ openText: '⌄', closedText: '›' }), sproutFold, EditorState.allowMultipleSelections.of(true),
+    EditorView.clickAddsSelectionRange.of((e) => e.altKey), rectangularSelection({ eventFilter: (e) => e.altKey && e.shiftKey }), crosshairCursor({ key: 'Alt' }),
     highlightActiveLineGutter(), highlightActiveLine(), drawSelection(),
-    history(), EditorState.tabSize.of(4), indentUnit.of(INDENT),
-    sproutLanguage, syntaxHighlighting(highlight), sproutIndent, bracketMatching(), closeBrackets(),
+    history(), tabC.of(tabExt()),
+    sproutLanguage, sproutIndent, bracketMatching(), closeBrackets(),
     autocompletion({ override: [sproutCompletions], icons: false }),
     search({ top: true }), highlightSelectionMatches(), hover,
     EditorView.lineWrapping,
@@ -386,7 +490,12 @@ export function createEditor(container: HTMLElement, storageKey: string, fallbac
       { key: 'F9', run: (v) => { toggleBp(v.state.doc.lineAt(v.state.selection.main.head).number); return true; }, preventDefault: true },
       { key: 'Enter', run: insertNewlineAndIndent },
     ])),
-    keymap.of([...closeBracketsKeymap, ...completionKeymap, ...searchKeymap, ...historyKeymap, ...defaultKeymap, indentWithTab]),
+    keymap.of([
+      { key: 'Mod-Alt-ArrowUp', run: addCursorAbove, preventDefault: true },
+      { key: 'Mod-Alt-ArrowDown', run: addCursorBelow, preventDefault: true },
+      { key: 'Mod-d', run: selectNextOccurrence, preventDefault: true },
+    ]),
+    keymap.of([...closeBracketsKeymap, ...completionKeymap, ...foldKeymap, ...searchKeymap, ...historyKeymap, ...defaultKeymap, indentWithTab]),
     EditorView.updateListener.of((u) => {
       if (!u.docChanged) return;
       saveDraft();
@@ -397,6 +506,14 @@ export function createEditor(container: HTMLElement, storageKey: string, fallbac
   boot.done('editor');
   renderBps();
 
+  let inlineKey = '';
+  const showInline = (debug: BotDebug[], paused: { bot: number; line: number } | null): void => {
+    const vars = paused ? debug.find((d) => d.bot === paused.bot)?.vars ?? [] : [];
+    const key = paused ? `${paused.bot}:${paused.line}:${vars.map((v) => `${v.name}=${v.value}`).join('|')}` : '';
+    if (key === inlineKey) return;
+    inlineKey = key;
+    view.dispatch({ effects: setInline.of(paused ? inlineValues(view.state.doc.toString(), vars) : new Map()) });
+  };
   const clampLine = (l: number | undefined): number => Math.min(Math.max(1, l || 1), lineCount());
   let lastDiagnostics: CmDiagnostic[] = [];
   let lastErrors: CmDiagnostic[] = [];
@@ -404,9 +521,14 @@ export function createEditor(container: HTMLElement, storageKey: string, fallbac
     const all = [...lastDiagnostics, ...lastErrors];
     container.dataset.errorLines = all.map((m) => view.state.doc.lineAt(m.from).number).join(',');
     view.dispatch(setDiagnostics(view.state, all));
+    const doc = view.state.doc;
+    view.dispatch({ effects: setLineMessages.of(all.map((m): LineMessage => {
+      const line = doc.lineAt(m.from).number;
+      return { line, message: m.message, severity: m.severity === 'warning' ? 'warning' : 'error', fixable: !!fixFor(view.state, line, m.message) };
+    })) });
   };
 
-  return {
+  const api: Editor = {
     getSource: () => view.state.doc.toString(),
     setSource(text) {
       if (text !== view.state.doc.toString()) view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: text }, selection: { anchor: 0 } });
@@ -435,6 +557,7 @@ export function createEditor(container: HTMLElement, storageKey: string, fallbac
     showBotLines(debug, paused, colorOf = defaultBotColor) {
       lastLines = { debug, paused: paused ?? null, colorOf };
       applyBotMarks();
+      showInline(debug, paused ?? null);
       if (paused) {
         const pos = view.state.doc.line(clampLine(paused.line)).from;
         if (!view.visibleRanges.some((r) => pos >= r.from && pos <= r.to)) view.dispatch({ effects: EditorView.scrollIntoView(pos, { y: 'center' }) });
@@ -446,6 +569,10 @@ export function createEditor(container: HTMLElement, storageKey: string, fallbac
         line: l, cls: 'cm-heat', color: `rgba(217,119,66,${HEAT_ALPHA[Math.min(5, Math.ceil((n / max) * 5)) - 1]})`, tip: `${n.toLocaleString()} steps on this line`,
       }));
       view.dispatch({ effects: setHeatMarks.of(marks) });
+    },
+    showRunLog(log, heat = []) {
+      if (!log) { runTicks.reset(); view.dispatch({ effects: setTicks.of(null) }); return; }
+      view.dispatch({ effects: setTicks.of(runTicks.feed(view.state.doc.toString(), log, heat)) });
     },
     setFeatures(f) { allowedFeatures = f; },
     revealLine(line, opts) {
@@ -466,4 +593,18 @@ export function createEditor(container: HTMLElement, storageKey: string, fallbac
     setSelectedBot(bot) { selectedBot = bot; applyBotMarks(); },
     onBotMarkClick(cb) { markClick.set(view, cb); },
   };
+  mountEditorSettings(container, prefs, (next) => {
+    const wasTabs = prefs.tabWidth;
+    Object.assign(prefs, next);
+    savePrefs(prefs);
+    indentWidth = prefs.tabWidth;
+    view.dispatch({ effects: [
+      themeC.reconfigure(editorTheme(prefs.theme)),
+      tickC.reconfigure(prefs.tickColumn ? tickGutter : []),
+      ...(wasTabs !== prefs.tabWidth ? [tabC.reconfigure(tabExt())] : []),
+    ] });
+    container.dataset.theme = prefs.theme;
+  });
+  container.dataset.theme = prefs.theme;
+  return api;
 }

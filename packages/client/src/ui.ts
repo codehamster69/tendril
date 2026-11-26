@@ -42,8 +42,16 @@ export function mountControls({ loop, editor }: { loop: GameLoop; editor: Editor
     if (!d.some((x) => x.severity === 'error')) editor.setErrors([]);
   });
   listen<ScriptError[]>('errors', (e) => editor.setErrors(e));
-  listen<{ bots: BotDebug[]; paused: { bot: number; line: number } | null }>('debug', ({ bots, paused }) => editor.showBotLines(bots, paused));
-  listen<[number, number][]>('heat', (heat) => editor.showHeat(heat));
+  let lastTickFeed = 0, pausedNow = false;
+  listen<{ bots: BotDebug[]; paused: { bot: number; line: number } | null }>('debug', ({ bots, paused }) => { pausedNow = !!paused; editor.showBotLines(bots, paused); });
+  listen<[number, number][]>('heat', (heat) => {
+    editor.showHeat(heat);
+    // Tick column: reads the whole action log, so while a run is going it refreshes at most once a second.
+    const now = performance.now();
+    if (now - lastTickFeed < 1000 && !pausedNow) return;
+    lastTickFeed = now;
+    editor.showRunLog(loop.logChunks().flatMap((c) => c.actions), heat);
+  });
 
   const hud = { tick: byId('hud-tick'), coins: byId('hud-coins'), net: byId('hud-networth'), weather: byId('hud-weather') };
   listen<Snapshot>('snapshot', (s) => {
