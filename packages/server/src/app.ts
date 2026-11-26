@@ -19,6 +19,7 @@ import { createRater, decorateBoard, disciplineParam, latestChange, ratingBoard,
 import { migrate } from './migrations.ts';
 import type { Migration } from './migrations.ts';
 import { chunkInput, displayName, duelInput, entryIdParam, entryInput, HttpError, objectWithKeys, readJson, rejectQuery, validateActions, uuid } from './validation.ts';
+import { BENCH_DAYS, benchDays } from './bench.ts';
 
 export interface AppOptions {
   db: Db;
@@ -331,6 +332,14 @@ function createInnerApp(options: AppOptions): (request: Request) => Promise<Resp
           const result = await board(db, challenge, { medal: medal as Medal, friends: scope === 'friends', author: (author ?? undefined) as AuthorKind | undefined, limit: limitParam(url), viewerId: viewer, now: now() });
           return json(await decorateBoard(db, challenge, result, now()));
         }
+      }
+      if (route === '/bench' && method === 'GET') {
+        rejectQuery(url, ['days']);
+        const raw = url.searchParams.get('days');
+        const days = raw === null ? BENCH_DAYS : Number(raw);
+        if (!Number.isInteger(days) || days < 1 || days > 30) throw new HttpError(400, 'Invalid days');
+        headers.set('Cache-Control', 'public, max-age=300, s-maxage=300');
+        return json(await benchDays(db, now(), days));
       }
       if (route === '/seasons' && method === 'GET') {
         rejectQuery(url, ['limit']);
