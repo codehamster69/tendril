@@ -44,6 +44,13 @@ export async function runChecks(deps) {
     add('daily challenge', good, good ? `${date}, rules v${RULES_VERSION}` : `HTTP ${status}, body ${JSON.stringify(body)}`);
   } catch (e) { add('daily challenge', false, String(e)); }
 
+  // 1b. Seed packets (H8): the public list answers. 404 means the build is not deployed yet.
+  try {
+    const { status, body } = await getJson(fetchFn, `${api}/packets?limit=1`);
+    if (status === 404) add('seed packets', true, 'not deployed yet', true);
+    else add('seed packets', status === 200 && Array.isArray(body?.packets), status === 200 ? `${body?.packets?.length ?? '?'} listed` : `HTTP ${status}`);
+  } catch (e) { add('seed packets', false, String(e)); }
+
   // 2. Home page and web game load (the game is built to /play/).
   for (const [name, path] of [['home page', '/'], ['web game', '/play/']]) {
     try {

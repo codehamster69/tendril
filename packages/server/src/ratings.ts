@@ -7,6 +7,7 @@ import { DAY_MS } from './game.ts';
 import { isClosed, isSettled, percentileOf } from './arena.ts';
 import type { BoardResult, BoardRow, ChallengeRow, Medal } from './arena.ts';
 import { HttpError } from './validation.ts';
+import { normalizeSource } from './program-hash.ts';
 import { MODEL_KEY_PREFIX, rateGhosts, ratingModels as readModels } from './model-ratings.ts';
 
 /**
@@ -55,27 +56,7 @@ const sha = (s: string): string => createHash('sha256').update(s).digest('hex');
 
 // ---- program similarity ----
 
-/**
- * Canonical form of a Sprout program for the duplicate-source check: comments, blank lines, spacing and indentation width are
- * dropped (nesting depth and every token kept). Names are NOT normalised, so a copy with renamed variables is not caught here
- * (it still runs the same log, which the log-hash check catches). Deliberately a lexer-free approximation: the server never imports the interpreter.
- */
-export function normalizeSource(source: string): string {
-  const out: string[] = [];
-  const indents = [0];
-  const token = /"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|#.*|\d[\d_]*|[A-Za-z_]\w*|==|!=|<=|>=|\+=|-=|\*=|\S/g;
-  for (const raw of source.replace(/\r/g, '').split('\n')) {
-    const line = raw.replace(/\t/g, '    ');
-    const body = line.trim();
-    if (!body || body.startsWith('#')) continue;
-    const space = line.length - line.trimStart().length;
-    while (space < indents[indents.length - 1]!) indents.pop();
-    if (space > indents[indents.length - 1]!) indents.push(space);
-    const tokens = (body.match(token) ?? []).filter((t) => !t.startsWith('#'));
-    out.push(`${indents.length - 1}:${tokens.join(' ')}`);
-  }
-  return out.join('\n');
-}
+export { normalizeSource };
 
 // ---- building a contest's standings ----
 

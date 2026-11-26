@@ -148,6 +148,7 @@ export function mountResultScreen({ loop, api, challenge: c, view }: ResultDeps)
     const kind = local.goal?.kind;
     const netWorth = local.goal ? local.score : local.netWorth ?? snapshot.netWorth; // "score" below: net worth on a classic day, the goal's score on a brief
     const practice = !!c.practice;
+    const edited = !practice && loop.editedMidRun; // the code changed while the day was running
     const missed = belowPar(c, local.parTick);
 
     layer = el('div', { class: 'rs-layer', 'data-phase': 'dusk' });
@@ -178,6 +179,9 @@ export function mountResultScreen({ loop, api, challenge: c, view }: ResultDeps)
     const bestEl = el('p', { class: 'rs-best', text: bestLine(prevBest, netWorth, practice ? null : c.best, kind) });
     const hint = missed ? el('p', { class: 'rs-hint', role: 'note' }, el('b', { text: 'One thing to look at. ' }), hintFor(trail, c.ticks, netWorth, c.par, kind)) : null;
     const noteEl = el('p', { class: 'rs-muted rs-note', 'aria-live': 'polite' });
+    const editedEl = edited ? el('p', { class: 'rs-hint rs-edited', role: 'note' }, el('b', { text: 'You changed your code during this run. ' }), 'The score counts, but no single program played it from the start, so it cannot earn Brevity or a rating. Re-run your final code from the start to get a rated score.') : null;
+    const rerunBtn = edited ? el('button', { class: 'hk-button hk-primary rs-rerun', type: 'button', text: 'Re-run my final code from the start' }) : null;
+    rerunBtn?.addEventListener('click', () => { closeScreen(true); void loop.reset().then(() => { loop.run(); document.getElementById('tp-play')?.focus(); }); });
 
     const shareBtn = el('button', { class: 'hk-button rs-share', type: 'button', text: 'Share' });
     const replay = el('a', { class: 'hk-button rs-replay', target: '_blank', rel: 'noopener', text: 'Watch replay' });
@@ -190,7 +194,7 @@ export function mountResultScreen({ loop, api, challenge: c, view }: ResultDeps)
     const duel = createDuelPanel(api, c, () => actions);
     const duelBox = el('details', { class: 'rs-duel' }, el('summary', { text: 'Challenge a friend' }), duel.el);
     const more = kind ? [anotherBtn] : [];
-    const buttons = el('div', { class: 'rs-buttons' }, ...(practice ? [tryBtn, ...more, nextBtn] : missed ? [tryBtn, ...more, shareBtn, replay, nextBtn] : [shareBtn, replay, tryBtn, ...more, nextBtn]));
+    const buttons = el('div', { class: 'rs-buttons' }, ...(rerunBtn ? [rerunBtn] : []), ...(practice ? [tryBtn, ...more, nextBtn] : missed ? [tryBtn, ...more, shareBtn, replay, nextBtn] : [shareBtn, replay, tryBtn, ...more, nextBtn]));
 
     const paint = (): void => {
       const s = server;
@@ -234,7 +238,7 @@ export function mountResultScreen({ loop, api, challenge: c, view }: ResultDeps)
     repaint = paint;
 
     card = el('section', { class: 'hk-card rs-card', 'data-missed': String(missed), role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'rs-title' },
-      title, coinsLine, finalBox, ...(hint ? [hint] : []), medalList, rankLine, machineLine, bestEl, ratingLine, buttons, signInBtn, noteEl, duelBox);
+      title, coinsLine, finalBox, ...(editedEl ? [editedEl] : []), ...(hint ? [hint] : []), medalList, rankLine, machineLine, bestEl, ratingLine, buttons, signInBtn, noteEl, duelBox);
     card.addEventListener('keydown', (e) => { if (e.key === 'Tab') trapTab(e, card!); });
     layer.append(card);
     layer.dataset.phase = 'card';
@@ -275,7 +279,7 @@ export function mountResultScreen({ loop, api, challenge: c, view }: ResultDeps)
       server = entry; program = entry.program; submitting = false;
       note = entry.improved ? 'Verified by the server.' : 'Verified. Your earlier run is still your best.';
       if (entry.program === 'verified') note += ` Your program is ${fmt(entry.tokens ?? 0)} tokens.`;
-      else if (entry.program === 'mismatch') note += ' Your program does not match this run (edited mid-run?), so it has no Brevity entry.';
+      else if (entry.program === 'mismatch') note += edited ? ' Your program does not match this run, so it has no Brevity entry.' : ' Your program does not match this run (edited mid-run?), so it has no Brevity entry.';
       else if (entry.program === 'unavailable') note += ' The program check is busy; your score counted without Brevity.';
     } catch (e) {
       if (mine !== run) return;

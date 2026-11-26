@@ -33,3 +33,22 @@ export async function reportProgram(db: Db, userId: string, entryId: string, now
   const added = await db.execute('INSERT OR IGNORE INTO reports (entry_id, reporter_id, counted, created_at) VALUES (?, ?, ?, ?)', [entryId, userId, counted, now]);
   return { reported: true, changed: added.rowsAffected > 0, hidden: await isHidden(db, entryId) };
 }
+
+/** Words that never appear in a packet name or note. Small on purpose: reports and auto-hide do the rest. */
+const BLOCKED = /\b(?:nigg\w*|faggot\w*|kike|chink|retard(?:ed)?|tranny|kys)\b/i;
+
+/**
+ * Free text a player wrote for others to read (packet names and notes). Trims, collapses spaces, and refuses control
+ * characters, links, e-mail addresses and the blocked words. Returns the cleaned text; throws a plain 422 reason.
+ */
+export function cleanText(value: unknown, label: string, min: number, max: number): string {
+  if (typeof value !== 'string') throw new HttpError(422, `${label} must be text`);
+  if (/[\p{C}\p{Zl}\p{Zp}]/u.test(value.replace(/[\t\n]/g, ' '))) throw new HttpError(422, `${label} has characters we cannot show`);
+  const text = value.replace(/\s+/g, ' ').trim();
+  const length = [...text].length;
+  if (length < min) throw new HttpError(422, min <= 1 ? `${label} is empty` : `${label} needs at least ${min} characters`);
+  if (length > max) throw new HttpError(422, `${label} can be at most ${max} characters`);
+  if (/(?:https?:\/\/|www\.|\b[a-z0-9-]+\.(?:com|net|org|io|ru|xyz|gg|ly|me)\b|[^\s@]+@[^\s@]+\.[a-z]{2,})/i.test(text)) throw new HttpError(422, `${label} cannot hold links or e-mail addresses`);
+  if (BLOCKED.test(text)) throw new HttpError(422, `${label} has a word we do not allow`);
+  return text;
+}

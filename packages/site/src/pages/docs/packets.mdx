@@ -1,0 +1,38 @@
+---
+layout: ../../layouts/Docs.astro
+title: Seed packets
+description: Share a Sprout program as a seed packet, plant other players' programs, and see how each family of remixes grows.
+---
+
+A **seed packet** is a program a player shared. You can plant one in your editor, run it, change it, and share your own version.
+Remixes link back to the packet they came from, so every packet has a family tree.
+
+## Plant one
+
+In the game, press **Start from a seed packet** above the editor, pick one and press **Plant this**. It loads into the editor.
+If your editor already has code, the game asks first, and `Ctrl+Z` brings your code back.
+On the site, open a packet at [/packets/](/packets/) and press **Plant it in the game**. In the terminal, run `tendril packet plant <id>`.
+
+Planting works in Endless and Sandbox. While a daily or season is open it is switched off, so everyone solves the day on their own.
+
+## Share one
+
+Press **Share** above the editor (Endless or Sandbox), give it a name and a short note, and pick up to three tags.
+The program must compile. You can share up to 10 packets a day. Names and notes cannot hold links, and the same program cannot be shared twice.
+If you planted it from another packet and changed it, it is listed as a remix of that packet automatically.
+
+**A program in play on an open daily or season cannot be shared until that challenge closes.** This keeps the day fair: nobody can
+read a solution that is still being used. Programs from Endless and Sandbox can be shared any time.
+
+## What the packet page shows
+
+- The program, with colours, and a button to copy it.
+- The **family tree** of remixes around it.
+- The **best result**: the best verified score of a published program from a closed daily or season that matches the packet's
+  program (spacing and comments ignored), with a link to its replay.
+
+Your profile lists your packets and how many players planted them.
+
+## Reports
+
+Report a packet that does not belong. Three reports from accounts that are a week old and have a verified run hide it. A hidden packet disappears from the lists, its page and its author's profile. Reports never change anyone's score.
