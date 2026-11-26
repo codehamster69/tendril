@@ -2,6 +2,7 @@ import { DAILY_TICKS } from '@tendril/sim/src/index.ts';
 import { authenticate, clearSessionCookie, devAuthEnabled, devLogin, finishGithub, getProfile, logout, pollDesktop, sessionCookie, startGithub } from './auth.ts';
 import type { Ctx, Env, FetchFn, Identity } from './auth.ts';
 import type { Db } from './db.ts';
+import { dbErrorCode, isTransientDbError } from './db.ts';
 import { acceptDuel, duelCounts, duelPage } from './duels.ts';
 import { board, challengeInfo, createDuel, entryReplay, entrySource, entrySummary, hallOfFame, publishedSources, KIND_LIMITS, legacyLeaderboard, legacySubmit, noteLegacySubmit, refreshLegacyGrace, loadChallenge, marketOf, MAX_SOURCE_BYTES, moveLegacyDaily, stats, submitEntry } from './arena.ts';
 import type { AuthorKind, Medal } from './arena.ts';
@@ -476,7 +477,14 @@ function createInnerApp(options: AppOptions): (request: Request) => Promise<Resp
       throw new HttpError(404, 'Not found');
     } catch (error) {
       if (error instanceof HttpError) return json({ error: error.message }, error.status);
-      console.error('Unhandled server error:', error instanceof Error ? error.name : typeof error); // never log request data
+      const code = dbErrorCode(error);
+      if (code !== undefined && isTransientDbError(error, true)) { // busy only: the statement did not apply, so a retry cannot double-write
+        // Storage stayed busy or unreachable through the retries in db.ts: ask the client to come back shortly.
+        console.error('Transient storage error after retries:', code); // codes only, never request data
+        headers.set('Retry-After', '5');
+        return json({ error: 'Storage is busy. Please try again in a few seconds.' }, 503);
+      }
+      console.error('Unhandled server error:', code ?? (error instanceof Error ? error.name : typeof error)); // never log request data
       return json({ error: 'Internal server error' }, 500);
     }
   };
