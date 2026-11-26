@@ -56,6 +56,7 @@ html[data-motion="reduced"] *, html[data-motion="reduced"] *::before, html[data-
 
 /* start card: daily briefs (K6) */
 .start-notice { margin: 0; padding: .2rem 0 .2rem .8rem; border-left: 2px solid var(--carrot); font: 400 1.02rem/1.35 var(--f-body); color: var(--straw); }
+.start-machine { margin: .35rem 0 0; padding: .45rem .7rem; border: 1px solid var(--root); font-weight: 700; font-size: .95rem; }
 .start-offline { margin: 0; padding: .5rem .7rem; border: 1px solid var(--beet); border-left-width: 3px; color: var(--straw); font-size: .9rem; }
 .start-twists { margin: 0; padding-left: 1.1rem; display: flex; flex-direction: column; gap: 2px; }
 .start-actions { flex-wrap: wrap; }
