@@ -1,8 +1,9 @@
 // Arena helpers (SIM_SPEC.md appendix "Arena helpers"). Pure; no rules change.
-import { BASE_RULES_VERSION, COMPOSTER, DAILY_TICKS, HIVE, ITEMS, ITEM_COUNT, MARKET_RULES_VERSION, OP, PLOT_SIZE, RULES_VERSION, SEASON_TICKS, UNLOCKS } from './rules.ts';
+import { BASE_RULES_VERSION, COMPOSTER, DAILY_TICKS, FARM_OPS, HIVE, ITEMS, ITEM_COUNT, MARKET_RULES_VERSION, OP, PLOT_SIZE, RULES_VERSION, SEASON_TICKS, UNLOCKS } from './rules.ts';
 import { IllegalAction } from './types.ts';
-import type { Goal, LogEntry, Setup, World } from './types.ts';
-import { SETUP_BRIEF, briefActive, drawBrief } from './brief.ts';
+import type { Goal, LogEntry, Picture, Setup, World } from './types.ts';
+import { SETUP_BRIEF, SETUP_PICTURE, briefActive, drawBrief, pictureActive } from './brief.ts';
+import { PIC_BARN, PIC_SOIL } from './pictures.ts';
 import type { Brief } from './brief.ts';
 import { applyAction, netWorth, scanAt, tickWorld } from './world.ts';
 import { utcDay } from './date.ts';
@@ -64,6 +65,66 @@ export interface GoalReplay {
   mosaic: string;
 }
 
+/**
+ * The cell code a tile shows seen from above (SIM_SPEC 7.2): 2..7 a ripe crop (code = crop id + 1), 1 soil (tilled, or a crop that is not
+ * ripe yet), 0 untilled grass, 9 a building (hive, composter, silo: matches no cell). `null` for a tile the farm does not own.
+ */
+export function tileCode(world: World, x: number, y: number): number | null {
+  const s = scanAt(world, x, y);
+  if (!s) return null;
+  if (s.building) return 9;
+  if (s.crop >= 1 && s.crop <= 6 && s.stage >= 3) return s.crop + 1;
+  return s.crop || s.tilled ? PIC_SOIL : 0;
+}
+
+/** True when the tile holds a crop that is not ripe yet (it shows as soil now and may change by itself later). */
+const growing = (world: World, x: number, y: number): boolean => { const s = scanAt(world, x, y); return !!s && !s.building && s.crop >= 1 && s.stage < 3; };
+
+/**
+ * Keeps `pictureScore` up to date cheaply during a replay: only an action on a tile, a plot bought or sold, or a crop ripening can change a
+ * pixel, so a full scan happens at the start and when plots change, one tile after an action, and only the still-growing pixels each tick.
+ * Always equal to `pictureScore(world, pic)`.
+ */
+function pictureTracker(world: World, pic: Picture): { full: () => void; touch: (x: number, y: number) => void; tick: () => void; score: () => number } {
+  const n = pic.w * pic.h;
+  const want = Array.from({ length: n }, (_, i) => pic.cells.charCodeAt(i) - 48);
+  const have = new Array<number>(n).fill(9);
+  let matches = 0;
+  const pending = new Set<number>();
+  const set = (i: number, code: number): void => { if (have[i] === want[i]) matches--; have[i] = code; if (code === want[i]) matches++; };
+  const read = (i: number): void => {
+    const x = i % pic.w, y = (i - x) / pic.w;
+    if (want[i] === PIC_BARN) { set(i, PIC_BARN); return; }
+    set(i, tileCode(world, x, y) ?? 9);
+    if (growing(world, x, y)) pending.add(i); else pending.delete(i);
+  };
+  return {
+    full: () => { matches = 0; have.fill(9); pending.clear(); for (let i = 0; i < n; i++) { if (want[i] === PIC_BARN) { have[i] = PIC_BARN; matches++; } else read(i); } },
+    touch: (x, y) => { if (x >= 0 && y >= 0 && x < pic.w && y < pic.h) read(y * pic.w + x); },
+    tick: () => { for (const i of [...pending]) read(i); },
+    score: () => Math.floor(matches * 1000 / n),
+  };
+}
+
+/** What the farm shows under each pixel of `pic` now: one code per cell as in `Picture.cells` (the barn pixel is 8; an unowned or built-on tile is 9). Does not change the world. */
+export function pictureCodes(world: World, pic: Picture): number[] {
+  const out: number[] = new Array<number>(pic.w * pic.h);
+  for (let y = 0; y < pic.h; y++) for (let x = 0; x < pic.w; x++) out[y * pic.w + x] = pic.cells.charCodeAt(y * pic.w + x) - 48 === PIC_BARN ? PIC_BARN : (tileCode(world, x, y) ?? 9);
+  return out;
+}
+
+/** Crop Circles score: permille of matching pixels, `floor(matches * 1000 / (w * h))`; the barn pixel always matches. */
+export function pictureScore(world: World, pic: Picture): number {
+  let m = 0;
+  for (let y = 0; y < pic.h; y++) {
+    for (let x = 0; x < pic.w; x++) {
+      const want = pic.cells.charCodeAt(y * pic.w + x) - 48;
+      if (want === PIC_BARN || tileCode(world, x, y) === want) m++;
+    }
+  }
+  return Math.floor(m * 1000 / (pic.w * pic.h));
+}
+
 /** Festival score: filled permille 0..1000, `floor(sum(min(deposited, quota)) * 1000 / sum(quota))`; 0 when no quota is set. */
 export function festivalScore(quotas: readonly number[] | undefined, deposited: readonly number[]): number {
   let total = 0, filled = 0;
@@ -85,10 +146,12 @@ export function replayWithGoal(world: World, actions: LogEntry[], toTick: number
   let orderCoins = 0;
   const start = netWorth(world);
   const kind = goal?.kind ?? 'wealth';
-  const score = (): number => (kind === 'festival' ? festivalScore(goal!.quotas, deposited) : kind === 'orders' ? orderCoins : kind === 'inherited' ? netWorth(world) - start : netWorth(world));
+  const pic = kind === 'picture' ? pictureTracker(world, goal!.picture!) : null;
+  pic?.full();
+  const score = (): number => (kind === 'picture' ? pic!.score() : kind === 'festival' ? festivalScore(goal!.quotas, deposited) : kind === 'orders' ? orderCoins : kind === 'inherited' ? netWorth(world) - start : netWorth(world));
   const check = (): void => { if (parTick === null && score() >= par) parTick = world.tick; };
   check();
-  const advance = (to: number): void => { while (world.tick < to) { tickWorld(world); check(); } };
+  const advance = (to: number): void => { while (world.tick < to) { tickWorld(world); pic?.tick(); check(); } };
   for (const e of actions) {
     const t = Array.isArray(e) ? e[0] : undefined;
     if (typeof t !== 'number' || !Number.isSafeInteger(t) || t < world.tick || t >= toTick) {
@@ -103,6 +166,7 @@ export function replayWithGoal(world: World, actions: LogEntry[], toTick: number
     if (item) sold[item] = sold[item]! + (before - world.stock[item]!);
     if (stockBefore) for (let c = 1; c < ITEM_COUNT; c++) deposited[c] = deposited[c]! + (world.stock[c]! - stockBefore[c]!);
     if (op === OP.deliver) orderCoins += res;
+    if (pic) { if (op === OP.buyPlot || op === OP.sellPlot) pic.full(); else if (FARM_OPS.indexOf(op as number) < 0) { const b = world.bots[e[1] as number]!; pic.touch(b.x, b.y); } }
     check();
   }
   advance(toTick);
@@ -137,7 +201,7 @@ export function replayStats(world: World, actions: LogEntry[], toTick: number): 
 export type ChallengeKind = 'daily' | 'season' | 'duel';
 
 /** Setup version for a new challenge dated `date` (a season: the date it starts): `SETUP_BRIEF` from `BRIEF_EPOCH`, else `SETUP_VERSION`. */
-export function setupVersionFor(date: string): number { return briefActive(date) ? SETUP_BRIEF : SETUP_VERSION; }
+export function setupVersionFor(date: string): number { return pictureActive(date) ? SETUP_PICTURE : briefActive(date) ? SETUP_BRIEF : SETUP_VERSION; }
 
 /** Challenges created before modifiers existed use version 0 (the plain farm); new rows use SETUP_VERSION. Stored per challenge row. */
 export const SETUP_LEGACY = 0;
@@ -177,11 +241,11 @@ export function challengeSetup(kind: ChallengeKind, seed: number, version: numbe
 function baseSetup(kind: ChallengeKind, seed: number, version: number, market?: { p: number[] } | null, source?: 'daily' | 'season'): ChallengeSetup {
   if (kind !== 'daily' && kind !== 'season' && kind !== 'duel') throw new Error(`bad challenge kind ${String(kind)}`);
   if (!Number.isSafeInteger(seed)) throw new Error('seed must be a safe integer');
-  if (version !== SETUP_LEGACY && version !== SETUP_VERSION && version !== SETUP_BRIEF) throw new Error(`bad setup version ${String(version)}`);
+  if (version !== SETUP_LEGACY && version !== SETUP_VERSION && version !== SETUP_BRIEF && version !== SETUP_PICTURE) throw new Error(`bad setup version ${String(version)}`);
   if (market && kind === 'season') throw new Error('seasons have no market');
   if (version === SETUP_LEGACY) return { ticks: kind === 'season' ? SEASON_TICKS : DAILY_TICKS, setup: market ? { prices: market.p } : {}, modifiers: null };
-  if (version === SETUP_BRIEF) {
-    const { brief, setup, priceMult } = drawBrief(kind, seed, source);
+  if (version === SETUP_BRIEF || version === SETUP_PICTURE) {
+    const { brief, setup, priceMult } = drawBrief(kind, seed, source, version);
     if (priceMult) {
       // Specialist: the day's price (market table or base) times the multiplier, whole centicoins, at least 1.
       setup.prices = priceMult.map((m, c) => (c >= 1 && c < ITEM_COUNT ? Math.max(1, Math.floor((market ? market.p[c]! : ITEMS[c]!.price * 100) * m / 1000)) : 0));
