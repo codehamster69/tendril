@@ -10,7 +10,9 @@ import { PLATFORMS, RELEASES_PAGE } from '../data/downloads';
       Pick your system below. Your farm, your programs and your leaderboard place are the same on every system
       and in the browser.
     </p>
-    <p class="now"><a class="btn primary" href="/play/">Play in browser</a></p>
+    <div class="now">
+      <p><a class="btn primary" href="/play/">Play in browser</a> <span class="dim">Fastest start. Nothing to install, and your farm works the same here.</span></p>
+    </div>
 
     <ul class="platforms" role="list">
       {PLATFORMS.map((p) => (
@@ -39,10 +41,16 @@ import { PLATFORMS, RELEASES_PAGE } from '../data/downloads';
       </section>
       <section>
         <h2>First launch warnings</h2>
-        <p>Early builds aren't signed yet, so your system will ask before opening them.</p>
+        <p>Early builds aren't signed yet, so your system will ask before opening them. This is expected, and it's safe to continue.</p>
         <ul>
-          <li><b>Windows:</b> if SmartScreen appears, choose More info, then Run anyway.</li>
-          <li><b>macOS:</b> if macOS blocks the app, open System Settings, Privacy &amp; Security, and choose Open Anyway.</li>
+          <li>
+            <b>Windows:</b> SmartScreen says it blocked an unrecognised app. Click <b>More info</b>, then <b>Run anyway</b>.
+          </li>
+          <li>
+            <b>macOS:</b> the app isn't notarised yet, so macOS says it can't be opened. Click <b>Done</b>, then open
+            System Settings, Privacy &amp; Security, scroll to the message about Tendril, and choose <b>Open Anyway</b>.
+            Confirm with your password or Touch ID. On older macOS versions you can also right-click Tendril in Applications and choose <b>Open</b>.
+          </li>
           <li><b>Linux:</b> make the AppImage executable with <code>chmod +x Tendril-*.AppImage</code>, then run it.</li>
         </ul>
       </section>
@@ -88,6 +96,8 @@ import { PLATFORMS, RELEASES_PAGE } from '../data/downloads';
   .page { padding-top: clamp(2.5rem, 6vw, 4.5rem); }
   .lede { font-size: 1.2rem; color: var(--dim); max-width: 40rem; margin: 1rem 0 1.5rem; }
   .now { margin: 0 0 2.5rem; }
+  .now p { margin: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem 1rem; }
+  .now .dim { color: var(--dim); font-size: 0.95rem; }
   .platforms { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1.25rem; }
   .platform { border: 1.5px solid var(--line); border-radius: 14px; padding: 1.5rem; display: flex; flex-direction: column; }
   .platform.mine { border-color: var(--leaf); }
