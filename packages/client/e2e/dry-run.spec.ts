@@ -20,7 +20,9 @@ const farmer = [
 ].join('\n');
 
 async function liveFarmRunning(page: Page, source: string): Promise<void> {
-  await page.goto('/?coach=0');
+  // Edits must wait for the dry run here, so the code is not equipped by itself while the test types.
+  await page.addInitScript(() => localStorage.setItem('tendril.settings.v1', JSON.stringify({ liveCode: false })));
+  await page.goto('/?mode=live&coach=0');
   await ready(page);
   await expect(page.locator('#status')).toHaveAttribute('data-state', /running|catching-up/);
   await page.evaluate((s) => { window.tendril!.editor.setSource(s); window.tendril!.loop.run(); }, source);

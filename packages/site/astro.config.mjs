@@ -14,7 +14,7 @@ export default defineConfig({
   site,
   trailingSlash: 'ignore',
   integrations: [mdx(), sitemap({
-    filter: (page) => !page.includes('/play/'),
+    filter: (page) => !page.includes('/play/') && !page.includes('/packets/view'),
     // Closed daily pages are rendered by the API function, so the build cannot list them: they get their own sitemap (G2).
     customSitemaps: [`${site}/sitemap-daily.xml`],
   }), og()],

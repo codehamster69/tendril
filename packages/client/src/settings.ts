@@ -3,11 +3,11 @@
 
 export type Quality = 'auto' | 'low' | 'high';
 export type MotionPref = 'system' | 'reduced' | 'full';
-export interface Settings { muted: boolean; volume: number; quality: Quality; motion: MotionPref; fontSize: number }
+export interface Settings { muted: boolean; volume: number; quality: Quality; motion: MotionPref; fontSize: number; liveCode: boolean }
 
 export const SETTINGS_KEY = 'tendril.settings.v1';
 export const FONT_MIN = 11, FONT_MAX = 20;
-export const DEFAULTS: Settings = { muted: false, volume: 0.6, quality: 'auto', motion: 'system', fontSize: 14 };
+export const DEFAULTS: Settings = { muted: false, volume: 0.6, quality: 'auto', motion: 'system', fontSize: 14, liveCode: true };
 
 const clamp = (n: number, lo: number, hi: number): number => Math.min(hi, Math.max(lo, n));
 
@@ -20,6 +20,7 @@ export function normalizeSettings(raw: unknown): Settings {
     quality: r.quality === 'low' || r.quality === 'high' || r.quality === 'auto' ? r.quality : DEFAULTS.quality,
     motion: r.motion === 'reduced' || r.motion === 'full' || r.motion === 'system' ? r.motion : DEFAULTS.motion,
     fontSize: typeof r.fontSize === 'number' && Number.isFinite(r.fontSize) ? Math.round(clamp(r.fontSize, FONT_MIN, FONT_MAX)) : DEFAULTS.fontSize,
+    liveCode: r.liveCode !== false,
   };
 }
 
