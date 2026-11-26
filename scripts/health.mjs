@@ -100,6 +100,13 @@ export async function runChecks(deps) {
     else add('budget guard', false, `HTTP ${res.status}`);
   } catch (e) { add('budget guard', false, String(e)); }
 
+  // 6. Humans vs machines data (H1): the read behind /bench/ answers with the expected shape. 404 = not deployed yet.
+  try {
+    const { status, body } = await getJson(fetchFn, `${api}/bench?days=1`);
+    if (status === 404) add('humans vs machines data', true, 'not deployed yet', true);
+    else add('humans vs machines data', status === 200 && !!body && Array.isArray(body.days) && !!body.tally, `HTTP ${status}`);
+  } catch (e) { add('humans vs machines data', false, String(e)); }
+
   if (simulateFailure) add('simulated failure', false, 'HEALTH_SIMULATE_FAILURE is set');
   return results;
 }

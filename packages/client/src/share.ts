@@ -19,6 +19,8 @@ export interface ShareInput {
   percentile: number | null; mosaic: string; entryId: string | null; label?: string;
   /** Sprout tokens of the checked program, from the server. Absent or null when no program was checked. */
   tokens?: number | null;
+  /** Against today's machine entry: "Beat Gemini by 14%" (H1). Absent when there is none. */
+  machine?: string | null;
 }
 
 export const topShare = (percentile: number): number => Math.min(100, Math.max(1, 101 - percentile));
@@ -29,7 +31,7 @@ export function shareText(r: ShareInput): string {
   if (r.percentile !== null) head.push(`top ${topShare(r.percentile)}%`);
   const second = r.par === null ? [] : [r.parTick === null ? 'Par not reached' : `Par at tick ${r.parTick.toLocaleString('en-US')}`];
   if (r.tokens != null) second.push(`${r.tokens.toLocaleString('en-US')} tokens`);
-  return [head.join(' · '), ...(second.length ? [second.join(' · ')] : []), ...mosaicEmoji(r.mosaic), r.entryId ? `${SHARE_HOST}/r/${r.entryId}` : SHARE_HOST].join('\n');
+  return [head.join(' · '), ...(second.length ? [second.join(' · ')] : []), ...(r.machine ? [`🤖 ${r.machine}`] : []), ...mosaicEmoji(r.mosaic), r.entryId ? `${SHARE_HOST}/r/${r.entryId}` : SHARE_HOST].join('\n');
 }
 
 /** Clipboard write with a textarea fallback for desktop and older webviews. */
