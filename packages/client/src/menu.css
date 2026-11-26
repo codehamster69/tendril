@@ -59,6 +59,7 @@ html[data-motion="reduced"] *, html[data-motion="reduced"] *::before, html[data-
 
 /* start card: daily briefs (K6) */
 .start-notice { margin: 0; padding: .2rem 0 .2rem .8rem; border-left: 3px solid var(--hk-lantern); font: italic 1.02rem/1.35 var(--hk-display); color: var(--hk-text); }
+.start-machine { margin: .35rem 0 0; padding: .45rem .7rem; border-radius: var(--hk-r-sm); border: 1px solid var(--hk-line); font-weight: 600; font-size: .95rem; }
 .start-offline { margin: 0; padding: .5rem .7rem; border-radius: var(--hk-r-sm); background: rgba(239, 122, 102, .14); border: 1px solid rgba(239, 122, 102, .4); font-size: .9rem; }
 .start-twists { margin: 0; padding-left: 1.1rem; display: flex; flex-direction: column; gap: 2px; }
 .start-actions { flex-wrap: wrap; }
