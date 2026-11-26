@@ -3,7 +3,8 @@ import type { Snapshot } from './sim-types.ts';
 import { matte } from './fallback-models.ts';
 import { dropUnit, type DropDistances } from './drop-distance.ts';
 
-export type FarmOverlay = 'none' | 'moisture' | 'nitrogen' | 'fatigue' | 'growth' | 'drop';
+/** `grid` draws only the tile outlines (the Grid lens); the others tint the tiles. */
+export type FarmOverlay = 'none' | 'grid' | 'moisture' | 'nitrogen' | 'fatigue' | 'growth' | 'drop';
 const OVERLAYS = {
   moisture: [new THREE.Color('#e0bb79'), new THREE.Color('#287caf')],
   nitrogen: [new THREE.Color('#e0c898'), new THREE.Color('#468653')],
@@ -12,12 +13,14 @@ const OVERLAYS = {
   // Near a drop: tendril teal. Far from every barn and silo: clay.
   drop: [new THREE.Color('#4fd1b0'), new THREE.Color('#c86a3a')],
 };
+/** Lens plates sit just above the furrow crests so they cover the soil. */
+const TOP = 0.068;
 export const unit = (value: number): number => THREE.MathUtils.clamp(value / 100, 0, 1);
 /** Most instances any one mesh holds (a hard cap, whatever the farm size). */
 export const MAX_OVERLAY = 20000;
 
 /** The lens colour of one tile (used per cell when tiles are merged at Map zoom). `far` is the drop lens's 0..1 distance. */
-export function overlayColor(overlay: Exclude<FarmOverlay, 'none'>, tile: Snapshot['tiles'][number], out: THREE.Color, far = 0): THREE.Color {
+export function overlayColor(overlay: Exclude<FarmOverlay, 'none' | 'grid'>, tile: Snapshot['tiles'][number], out: THREE.Color, far = 0): THREE.Color {
   const [low, high] = OVERLAYS[overlay];
   const k = overlay === 'drop' ? far : overlay === 'growth' ? (tile.crop ? tile.stage / 3 : 0) : unit(tile[overlay]);
   return out.copy(low).lerp(high, k);
@@ -60,7 +63,7 @@ export class OverlayLayer {
       this.capacity = Math.max(64, Math.min(MAX_OVERLAY, tiles.length * 2));
       this.guides = new THREE.InstancedMesh(
         new THREE.RingGeometry(0.475 * Math.SQRT2, 0.495 * Math.SQRT2, 4).rotateZ(Math.PI / 4).rotateX(-Math.PI / 2),
-        new THREE.MeshBasicMaterial({ color: 0x36462f, transparent: true, opacity: 0.16, depthWrite: false }), this.capacity);
+        new THREE.MeshBasicMaterial({ color: 0xece2d0, transparent: true, opacity: 0.55, depthWrite: false }), this.capacity);
       this.scene.add(this.guides);
       this.mesh = new THREE.InstancedMesh(new THREE.BoxGeometry(0.95, 0.012, 0.95), matte(0xffffff), this.capacity);
       this.mesh.receiveShadow = true;
@@ -68,16 +71,16 @@ export class OverlayLayer {
     }
     const mesh = this.mesh, guides = this.guides;
     if (!mesh || !guides) return [];
-    guides.visible = guideLines;
+    guides.visible = guideLines && overlay === 'grid';
     guides.count = tiles.length;
-    tiles.forEach((tile, index) => guides.setMatrixAt(index, this.flat(tile.x, 0.003, tile.y)));
+    tiles.forEach((tile, index) => guides.setMatrixAt(index, this.flat(tile.x, TOP + 0.004, tile.y)));
     guides.instanceMatrix.needsUpdate = true;
     guides.computeBoundingSphere();
-    mesh.visible = overlay !== 'none';
+    mesh.visible = overlay !== 'none' && overlay !== 'grid';
     const colors: { x: number; y: number; color: string }[] = [];
-    if (overlay !== 'none') {
+    if (overlay !== 'none' && overlay !== 'grid') {
       tiles.forEach((tile, index) => {
-        mesh.setMatrixAt(index, this.flat(tile.x, 0.01, tile.y));
+        mesh.setMatrixAt(index, this.flat(tile.x, TOP, tile.y));
         overlayColor(overlay, tile, this.color, dropUnit(dist, tile.x, tile.y));
         mesh.setColorAt(index, this.color);
         if (index < 16) colors.push({ x: tile.x, y: tile.y, color: this.color.getHexString() });

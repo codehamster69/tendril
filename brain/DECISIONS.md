@@ -169,3 +169,8 @@ Live goal progress comes from the sim worker (`tendril:goal`), with `World.brief
 - **Decision:** `BRIEF_EPOCH` is `2026-11-18` (Rohan set the launch date to today, 18 Nov his time). Dailies dated on or after it, and seasons starting on or after it, draw a brief (setup version 2). Earlier rows and every row already stored keep their version.
 - **Why:** the choice is stored on the row when it is first created, so the switch changes nothing already running. `CHALLENGE_SALT` is set in Vercel; without it a brief day answers 503 instead of opening.
 - **Consequences:** server tests that use a real date pin `setupVersion` to the old version where they test the pre-brief world. To roll back, set `BRIEF_EPOCH` back to a far date; rows already created as briefs keep working.
+
+## D-F1 (2026-11-26) Farm ground and sky: instanced soil beds, meadow blades, sky dome (F1)
+- **Decision:** tilled tiles draw a seamless furrowed soil bed and untilled owned tiles draw a flat meadow with instanced blade clumps, both coloured by world-space noise. Tile outlines show only in a new Grid lens (key 6). The canvas sky gradient is replaced by a camera-following dome with three calm stops per time of day, fog set to the horizon colour. Additive blending, emissive pulse and glow are removed from terrain and frontier.
+- **Why:** the approved Blender target (renders/v2) has continuous beds, soft furrows and calm skies; the old look (dark bed boxes, always-on grid, neon glow, peach-to-blue gradient) read as generated.
+- **Consequences:** client only, no rules change. `FarmIsland.update` no longer takes an owned-tile callback and `pulse` is gone. F2 builds the island body and rim on top of this.
