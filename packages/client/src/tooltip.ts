@@ -43,6 +43,8 @@ export function mountTooltip(view: FarmView, canvas: HTMLElement): void {
     box.style.transform = `translate(${Math.round(p.x)}px, ${Math.round(p.y)}px)`;
   };
 
+  /** The docked Inspector panel mirrors the pinned tile. */
+  const inspect = (info: TileInfo | null): void => { window.dispatchEvent(new CustomEvent('tendril:inspect', { detail: info })); };
   const drawHover = (): void => {
     const t = hover && !(pinned && pinned.x === hover.x && pinned.y === hover.y) ? find(hover) : undefined;
     if (!t || !latest) { tip.hidden = true; return; }
@@ -52,16 +54,17 @@ export function mountTooltip(view: FarmView, canvas: HTMLElement): void {
   };
   const drawPin = (reposition: boolean): void => {
     const t = pinned ? find(pinned) : undefined;
-    if (!pinned || !t || !latest) { pin.hidden = true; return; }
+    if (!pinned || !t || !latest) { pin.hidden = true; inspect(null); return; }
     const close = el('button', { type: 'button', class: 'hk-button tip-close', 'aria-label': 'Unpin', text: '✕' });
     close.addEventListener('click', unpin);
     const info = infoOf(t);
+    inspect(info);
     pin.replaceChildren(close, ...body(info, true));
     const wasHidden = pin.hidden;
     pin.hidden = false;
     if (reposition || wasHidden) place(pin, pointer.x, pointer.y);
   };
-  const unpin = (): void => { pinned = null; pin.hidden = true; drawHover(); canvas.focus?.({ preventScroll: true } as FocusOptions); };
+  const unpin = (): void => { pinned = null; pin.hidden = true; inspect(null); drawHover(); canvas.focus?.({ preventScroll: true } as FocusOptions); };
 
   const resolve = (): void => {
     timer = 0;

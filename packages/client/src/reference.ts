@@ -7,12 +7,9 @@ const KIND_TITLES: Record<string, string> = {
   utility: 'Helpers · free', constant: 'Names & constants', keyword: 'Language keywords',
 };
 
-export function mountReference(insert: (code: string) => void): void {
-  const trigger = el('button', { id: 'btn-reference', type: 'button', class: 'quiet', text: 'Reference' });
-  document.getElementById('toolbar')!.append(trigger);
-  const dialog = el('dialog', { id: 'api-reference', 'aria-labelledby': 'reference-title' });
-  const close = el('button', { type: 'button', class: 'quiet', text: 'Close' });
-  close.addEventListener('click', () => dialog.close());
+/** The Sprout reference as the body of the Reference panel. Insert puts an example at the end of the program. */
+export function buildReference(insert: (code: string) => void): HTMLElement {
+  const dialog = el('section', { id: 'api-reference', 'aria-labelledby': 'reference-title' });
   const search = el('input', { type: 'search', placeholder: 'Find a command, question or keyword…', 'aria-label': 'Search the Sprout reference' });
   const content = el('div', { class: 'ref-body' });
   for (const kind of Object.keys(KIND_TITLES)) {
@@ -23,14 +20,13 @@ export function mountReference(insert: (code: string) => void): void {
       const ticks = api.ticks === 'n' ? 'n ticks' : api.ticks === 0 ? 'free' : `${api.ticks} tick${api.ticks === 1 ? '' : 's'}`;
       const pre = el('pre', { text: api.example });
       const use = el('button', { type: 'button', class: 'quiet', text: 'Insert' });
-      use.addEventListener('click', () => { insert(api.example); dialog.close(); });
+      use.addEventListener('click', () => { insert(api.example); });
       group.append(el('article', { class: 'api-entry', 'data-function': api.name },
         el('header', {}, el('code', { text: api.signature }), el('span', { class: 'api-cost', text: ticks })),
         el('p', { text: api.doc }), el('div', { class: 'ex' }, pre, use)));
     }
     content.append(group);
   }
-  search.addEventListener('keydown', (event) => { if (event.key === 'Escape') { event.preventDefault(); dialog.close(); } });
   search.addEventListener('input', () => {
     const q = search.value.trim().toLowerCase();
     const entries = [...content.querySelectorAll<HTMLElement>('.api-entry')];
@@ -41,9 +37,8 @@ export function mountReference(insert: (code: string) => void): void {
     for (const g of content.querySelectorAll<HTMLElement>('.ref-group')) g.hidden = ![...g.querySelectorAll<HTMLElement>('.api-entry')].some((a) => !a.hidden);
   });
   dialog.append(el('header', { class: 'ref-head' }, el('div', {},
-    el('span', { class: 'eyebrow', text: 'Sprout reference' }), el('h2', { id: 'reference-title', text: 'Everything your bots understand' })), close),
+    el('span', { class: 'eyebrow', text: 'Sprout reference' }), el('h2', { id: 'reference-title', text: 'Everything your bots understand' }))),
   el('p', { class: 'muted', text: 'Coordinates start at the barn (0, 0); x grows east, y grows south. Every bot runs the same program. Actions end a bot\'s turn and cost ticks; questions are free.' }),
   search, content);
-  document.body.append(dialog);
-  trigger.addEventListener('click', () => { dialog.showModal(); search.focus(); });
+  return dialog;
 }

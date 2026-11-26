@@ -7,13 +7,9 @@ import { el } from './palette';
 import { mountMenu } from './menu';
 import type { ModeKey } from './menu';
 import type { FarmApi } from './api-client';
+import { mountWorkbench, type Workbench } from './workbench';
+import { panelContent } from './workbench-panels';
 
-const SLATE_W = 'tendril.slate.width', SLATE_HIDDEN = 'tendril.slate.hidden', STRIP_OPEN = 'tendril.slate.console';
-const MIN_W = 320, DEFAULT_W = 440;
-/** The slate sits 12px from the right edge and its resize grip reaches 7px further left; the free area ends this far from the right edge. */
-const SLATE_INSET_PAD = 24;
-const get = (k: string): string | null => { try { return localStorage.getItem(k); } catch { return null; } };
-const put = (k: string, v: string): void => { try { localStorage.setItem(k, v); } catch { /* storage blocked: choice just does not persist */ } };
 const byId = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T;
 const listen = <T>(name: string, cb: (detail: T) => void): void => window.addEventListener(`tendril:${name}`, (e) => cb((e as CustomEvent).detail));
 const typing = (t: EventTarget | null): boolean => {
@@ -64,71 +60,14 @@ class Panels {
   }
 }
 
-/** The full-screen game layout: stage behind everything, code slate, transport bar, HUD chips and a menu overlay. */
-export function mountStage({ loop, api, current, ranked }: { loop: GameLoop; editor?: Editor; api: FarmApi; current: ModeKey; ranked: boolean }): void {
-  const root = document.documentElement;
+/** The game screen: the ledger strip on top, the docking workbench under it (farm, code, console and the rest), a transport bar on the farm and a menu overlay. */
+export function mountStage({ loop, editor, api, current, ranked }: { loop: GameLoop; editor?: Editor; api: FarmApi; current: ModeKey; ranked: boolean }): Workbench {
   const live = loop.mode === 'live';
   document.body.classList.add('game-stage');
 
-  // ---- code slate ----
+  // ---- code panel heading: the examples picker, and a slot for the editor's own buttons ----
   const side = byId('side');
-  const clampW = (w: number): number => Math.round(Math.min(Math.max(w, MIN_W), Math.max(MIN_W, Math.min(760, window.innerWidth - 360))));
-  /** Tells the farm view how many px on the right the slate covers (its margin included, 0 when hidden); the camera frames the rest. */
-  const announceInset = (): void => {
-    const open = !document.body.classList.contains('slate-hidden');
-    const w = parseFloat(getComputedStyle(root).getPropertyValue('--slate-w')) || DEFAULT_W;
-    window.dispatchEvent(new CustomEvent('tendril:slate-inset', { detail: open ? w + SLATE_INSET_PAD : 0 }));
-  };
-  const setW = (w: number, save = false): void => { root.style.setProperty('--slate-w', `${clampW(w)}px`); if (save) put(SLATE_W, String(clampW(w))); announceInset(); };
-  setW(Number(get(SLATE_W)) || DEFAULT_W);
-  const grip = el('div', { class: 'slate-grip', role: 'separator', 'aria-orientation': 'vertical', 'aria-label': 'Resize the code slate', tabindex: '0' });
-  side.prepend(grip);
-  grip.addEventListener('pointerdown', (e) => {
-    e.preventDefault(); grip.setPointerCapture(e.pointerId); document.body.classList.add('resizing');
-    const move = (ev: PointerEvent): void => setW(window.innerWidth - ev.clientX - 12);
-    const up = (): void => { grip.removeEventListener('pointermove', move); grip.removeEventListener('pointerup', up); grip.removeEventListener('pointercancel', up); document.body.classList.remove('resizing'); setW(parseFloat(getComputedStyle(root).getPropertyValue('--slate-w')), true); };
-    grip.addEventListener('pointermove', move); grip.addEventListener('pointerup', up); grip.addEventListener('pointercancel', up);
-  });
-  grip.addEventListener('keydown', (e) => {
-    const cur = parseFloat(getComputedStyle(root).getPropertyValue('--slate-w')) || DEFAULT_W;
-    if (e.key === 'ArrowLeft') { e.preventDefault(); setW(cur + 24, true); } else if (e.key === 'ArrowRight') { e.preventDefault(); setW(cur - 24, true); }
-  });
-  window.addEventListener('resize', () => setW(parseFloat(getComputedStyle(root).getPropertyValue('--slate-w')) || DEFAULT_W));
-
-  const slateBtn = el('button', { id: 'btn-slate', class: 'hk-button', type: 'button', 'aria-controls': 'side', title: 'Hide or show the code slate (Ctrl/Cmd+E)' });
-  const setSlate = (open: boolean, focus = false): void => {
-    document.body.classList.toggle('slate-hidden', !open);
-    side.toggleAttribute('inert', !open);
-    slateBtn.textContent = open ? 'Hide code' : 'Show code';
-    slateBtn.setAttribute('aria-expanded', String(open));
-    put(SLATE_HIDDEN, open ? '0' : '1');
-    if (open && focus) document.querySelector<HTMLElement>('#editor textarea')?.focus();
-    announceInset();
-  };
-  const slateOpen = (): boolean => !document.body.classList.contains('slate-hidden');
-  setSlate(get(SLATE_HIDDEN) !== '1');
-  slateBtn.addEventListener('click', () => setSlate(!slateOpen(), true));
-  window.addEventListener('keydown', (e) => {
-    if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'e') { e.preventDefault(); e.stopPropagation(); setSlate(!slateOpen(), true); }
-  }, true);
-  // Slate heading: a hide button beside the examples picker.
-  const hide = el('button', { class: 'hk-button slate-hide', type: 'button', text: 'Hide', title: 'Hide the code slate (Ctrl/Cmd+E)' });
-  hide.addEventListener('click', () => setSlate(false));
-  side.querySelector('.code-heading')?.append(hide);
-
-  // ---- console strip (collapsible, bottom of the slate) ----
-  const tabs = side.querySelector<HTMLElement>('.dock-tabs')!;
-  const strip = el('button', { id: 'console-strip', class: 'strip-toggle', type: 'button', 'aria-controls': 'console', text: 'Output' });
-  const setStrip = (open: boolean): void => {
-    side.classList.toggle('strip-closed', !open);
-    strip.setAttribute('aria-expanded', String(open));
-    strip.dataset.open = String(open);
-    put(STRIP_OPEN, open ? '1' : '0');
-  };
-  setStrip(get(STRIP_OPEN) !== '0');
-  strip.addEventListener('click', () => setStrip(side.classList.contains('strip-closed')));
-  tabs.prepend(strip);
-  listen('debug', (d: { paused: unknown }) => { if (d.paused) { setSlate(true); setStrip(true); } });
+  side.querySelector('.code-heading')?.append(el('span', { class: 'code-actions', id: 'code-actions' }));
 
   // ---- HUD: coins + stock top-left, menu top-right ----
   // The ledger strip: mark, then one cell per readout (label over value), then the slate and menu buttons at the right.
@@ -140,8 +79,8 @@ export function mountStage({ loop, api, current, ranked }: { loop: GameLoop; edi
     el('span', { class: 'hk-chip', title: 'Items in the barn' }, el('small', { text: 'Stock' }), stock));
   const menuBtn = el('button', { id: 'btn-menu', class: 'hk-button', type: 'button', 'aria-haspopup': 'dialog', 'aria-label': 'Menu', title: 'Menu', text: 'Menu' });
   const hudTr = el('div', { id: 'game-hud-tr', class: 'hud-tr' }, menuBtn);
-  const slateToggle = el('div', { id: 'slate-toggle', class: 'slate-toggle' }, slateBtn);
-  const hud = el('div', { id: 'game-hud', class: 'hud-tl', role: 'banner' }, mark, cells, el('div', { class: 'ledger-actions' }, slateToggle, hudTr));
+  const wbMenus = el('div', { id: 'wb-menus', class: 'wb-menus' });
+  const hud = el('div', { id: 'game-hud', class: 'hud-tl', role: 'banner' }, mark, cells, el('div', { class: 'ledger-actions' }, wbMenus, hudTr));
   listen<Snapshot>('snapshot', (s) => {
     coins.textContent = s.coins.toLocaleString();
     stock.textContent = (s.stock ?? []).reduce((a, b) => a + b, 0).toLocaleString();
@@ -199,8 +138,12 @@ export function mountStage({ loop, api, current, ranked }: { loop: GameLoop; edi
   // ---- menu + panels ----
   const panels = new Panels(() => {});
   // The menu itself lives in menu.ts; the stage only hands it the pieces it needs.
-  mountMenu({ loop, api, current, ranked, button: menuBtn, panels, openDebugger: () => { setSlate(true); setStrip(true); document.querySelector<HTMLButtonElement>('[data-dock="debugger"]')?.click(); } });
+  mountMenu({ loop, api, current, ranked, button: menuBtn, panels, openPanel: (id) => workbench.open(id) });
 
-  document.body.append(hud, transport);
-  // The caption's tile readout and the farm bar stay on the stage; chips sit above them.
+  // The transport sits at the bottom of the farm panel, so it never covers the code.
+  document.body.append(hud);
+  byId('farm-stage').append(transport);
+  const workbench: Workbench = mountWorkbench({ content: panelContent((code) => editor?.setSource(editor.getSource() + '\n' + code + '\n')) });
+  workbench.mountMenus(wbMenus);
+  return workbench;
 }

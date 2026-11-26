@@ -1,0 +1,142 @@
+/* Docking workbench skin. Border-first: panels share hairlines, no fills for emphasis, no shadows. The active tab is a 2px carrot underline.
+   The drop preview while dragging a tab is a dashed carrot outline with no fill. Tokens: style.css. */
+
+#dock-root { position: fixed; z-index: 1; left: 0; right: 0; top: var(--ledger-h); bottom: var(--status-h); background: var(--soil); }
+#dock-root[hidden], #wb-phone[hidden] { display: none; }
+
+.dockview-theme-tendril {
+  --dv-paneview-active-outline-color: var(--carrot);
+  --dv-tabs-and-actions-container-font-size: 13px;
+  --dv-tabs-and-actions-container-height: 32px;
+  --dv-drag-over-background-color: transparent;
+  --dv-drag-over-border-color: var(--carrot);
+  --dv-drag-over-border: 2px dashed var(--carrot);
+  --dv-tabs-container-scrollbar-color: var(--root);
+  --dv-icon-hover-background-color: transparent;
+  --dv-floating-box-shadow: none;
+  --dv-floating-border: 1px solid var(--root);
+  --dv-overlay-z-index: 50;
+  --dv-tab-font-size: inherit;
+  --dv-border-radius: 0px;
+  --dv-tab-margin: 0;
+  --dv-sash-color: transparent;
+  --dv-active-sash-color: var(--carrot);
+  --dv-active-sash-transition-duration: .1s;
+  --dv-active-sash-transition-delay: .15s;
+  --dv-spacing-padding: 0px;
+  --dv-tab-border-radius: 0px;
+  --dv-sash-border-radius: 0px;
+  --dv-dropdown-border-radius: 0px;
+  --dv-tab-close-icon-size: inherit;
+  --dv-floating-group-border: none;
+  --dv-group-view-background-color: var(--soil);
+  --dv-tabs-and-actions-container-background-color: var(--soil);
+  --dv-activegroup-visiblepanel-tab-background-color: transparent;
+  --dv-activegroup-hiddenpanel-tab-background-color: transparent;
+  --dv-inactivegroup-visiblepanel-tab-background-color: transparent;
+  --dv-inactivegroup-hiddenpanel-tab-background-color: transparent;
+  --dv-tab-divider-color: transparent;
+  --dv-activegroup-visiblepanel-tab-color: var(--straw);
+  --dv-activegroup-hiddenpanel-tab-color: var(--chaff);
+  --dv-inactivegroup-visiblepanel-tab-color: var(--chaff);
+  --dv-inactivegroup-hiddenpanel-tab-color: var(--chaff);
+  --dv-separator-border: var(--loam);
+  --dv-paneview-header-border-color: var(--loam);
+  font-family: var(--f-body);
+}
+.dockview-theme-tendril .dv-groupview { background: var(--soil); }
+.dockview-theme-tendril .dv-tabs-and-actions-container { border-bottom: 1px solid var(--loam); }
+/* One hairline between neighbouring panels, nothing around the outside. */
+.dockview-theme-tendril .dv-split-view-container > .dv-sash-container > .dv-sash { background: transparent; }
+.dockview-theme-tendril .dv-split-view-container > .dv-view-container > .dv-view:not(:first-child)::before { content: ""; position: absolute; inset: 0; border-left: 1px solid var(--loam); pointer-events: none; z-index: 2; }
+.dockview-theme-tendril .dv-split-view-container.dv-vertical > .dv-view-container > .dv-view:not(:first-child)::before { border-left: 0; border-top: 1px solid var(--loam); }
+.dockview-theme-tendril .dv-sash:hover, .dockview-theme-tendril .dv-sash:active { background: var(--carrot); opacity: .8; }
+
+/* Tabs: Barlow Condensed labels, a 2px carrot underline on the active one, a border that animates in on hover. */
+.dockview-theme-tendril .dv-tab { height: 100%; padding: 0; background: none; }
+.wb-tab { position: relative; display: flex; align-items: center; gap: 6px; height: 100%; padding: 0 12px; font: 600 14px/1 var(--f-label); letter-spacing: .09em; text-transform: uppercase; color: inherit; cursor: grab; white-space: nowrap; user-select: none; }
+.wb-tab::before { content: ""; position: absolute; inset: 4px 2px; border: 1px solid var(--root); opacity: 0; transform: scale(.94); transition: opacity .15s ease-out, transform .15s ease-out; pointer-events: none; }
+.wb-tab:hover::before { opacity: 1; transform: scale(1); }
+.wb-tab::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 2px; background: var(--carrot); opacity: 0; }
+.dv-tab.dv-active-tab .wb-tab::after { opacity: 1; }
+.dv-tab.dv-active-tab .wb-tab { color: var(--straw); }
+.dv-active-group .dv-tab.dv-active-tab .wb-tab { color: var(--straw); }
+.wb-tab-close { position: relative; z-index: 1; display: inline-grid; place-items: center; width: 18px; height: 18px; padding: 0; margin-right: -4px; border: 0; background: none; color: var(--chaff); font: 400 16px/1 var(--f-body); letter-spacing: 0; cursor: pointer; }
+.wb-tab-close:hover { color: var(--beet); transform: none; }
+.dv-tab:focus-visible, .wb-tab-close:focus-visible { outline: 2px solid var(--carrot); outline-offset: -2px; }
+
+/* Drop preview: a dashed carrot outline, no fill. */
+.dockview-theme-tendril .dv-drop-target-container .dv-drop-target-anchor { background: transparent !important; border: 2px dashed var(--carrot) !important; outline: 0; }
+.dockview-theme-tendril .dv-drop-target-dropzone > .dv-drop-target-selection { background: transparent !important; border: 2px dashed var(--carrot) !important; }
+.dockview-theme-tendril .dv-tabs-container .dv-tab.dv-tab--dragging { opacity: .5; }
+
+/* Panel bodies */
+.wb-body { width: 100%; height: 100%; overflow: auto; background: var(--soil); outline: none; color: var(--straw); }
+.wb-body[data-panel="farm"], .wb-body[data-panel="code"] { overflow: hidden; }
+.wb-body > #side, #wb-phone .wb-phone-panel > #side { height: 100%; width: 100%; max-width: none; border: 0; }
+.wb-body > #console, .wb-body > #debugger, .wb-phone-panel > #console, .wb-phone-panel > #debugger { height: 100%; box-sizing: border-box; border: 0; }
+.wb-body > #farm-stage { height: 100%; }
+.wb-orders, .wb-bots, .wb-inspector, .wb-market, .wb-map, .wb-settings, .wb-reference { padding: 12px 14px 16px; display: flex; flex-direction: column; gap: 12px; }
+.wb-reference { padding: 0; display: block; }
+.wb-empty { margin: 0; color: var(--chaff); font: 400 .9rem/1.45 var(--f-body); }
+.wb-empty[hidden] { display: none; }
+.wb-market .farm-market:not([hidden]) ~ .wb-empty { display: none; }
+.wb-sub { margin: 4px 0 0; font: 600 13px/1 var(--f-label); letter-spacing: .1em; text-transform: uppercase; color: var(--chaff); }
+.wb-orders > .deck { height: auto; padding: 0; overflow: visible; }
+.wb-bot-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.wb-bot { display: grid; grid-template-columns: 12px auto 1fr auto; gap: 10px; align-items: center; padding: 7px 0; border-bottom: 1px solid var(--loam); font: 13px var(--f-code); }
+.wb-bot b { font: 600 13px var(--f-code); }
+.wb-bot-at { color: var(--chaff); }
+.wb-bot-doing { color: var(--straw); text-align: right; }
+.wb-dot { width: 10px; height: 10px; border-radius: 50%; display: block; }
+.wb-inspector-card h3 { margin: 0 0 6px; font: 700 1.1rem/1.1 var(--f-label); letter-spacing: .04em; text-transform: uppercase; }
+.wb-inspector-card dl { margin: 6px 0; display: grid; grid-template-columns: auto 1fr; gap: 3px 14px; font: 13px var(--f-code); }
+.wb-inspector-card dt { color: var(--chaff); } .wb-inspector-card dd { margin: 0; }
+.wb-inspector-card code { display: block; margin: 3px 0; padding: 4px 8px; background: var(--code-bg); font: 12.5px var(--f-code); }
+.wb-inspector-card .tip-hint { margin: 10px 0 4px; color: var(--chaff); font-size: 12px; }
+.wb-inspector-card .tip-note { margin: 0 0 6px; color: var(--chaff); }
+
+/* Layout and Panels menus */
+.wb-menu { position: fixed; z-index: 80; min-width: 230px; padding: 4px; background: var(--soil); border: 1px solid var(--root); border-radius: var(--r); }
+.wb-menu[hidden] { display: none; }
+.wb-menu-label { margin: 8px 10px 4px; color: var(--chaff); font: 600 11px/1 var(--f-label); letter-spacing: .12em; text-transform: uppercase; }
+.wb-menu-item { position: relative; display: flex; width: 100%; justify-content: space-between; align-items: center; gap: 18px; padding: 8px 10px; border: 0; background: none; color: var(--straw); text-align: left; font: 500 14px var(--f-body); letter-spacing: 0; text-transform: none; cursor: pointer; }
+.wb-menu-item::before { content: ""; position: absolute; inset: 1px; border: 1px solid var(--root); opacity: 0; transform: scale(.94); transition: opacity .15s ease-out, transform .15s ease-out; pointer-events: none; }
+.wb-menu-item:hover::before, .wb-menu-item:focus-visible::before { opacity: 1; transform: scale(1); }
+.wb-menu-item[aria-checked="true"] { box-shadow: inset 2px 0 0 var(--carrot); }
+.wb-menu-item[aria-checked="false"] { color: var(--chaff); }
+.wb-menu-item.danger { color: var(--beet); }
+.wb-menu-item kbd { color: var(--chaff); font: 11px var(--f-code); background: none; border: 0; padding: 0; }
+.wb-menu-button[hidden] { display: none; }
+.wb-menu-button[aria-expanded="true"] { color: var(--carrot); }
+
+/* Phone: no docking. The farm on top, one panel below, a tab row at the bottom; the line between them drags. */
+#wb-phone { --wb-split: .4; position: fixed; z-index: 1; left: 0; right: 0; top: var(--ledger-h); bottom: var(--status-h); display: flex; flex-direction: column; background: var(--soil); }
+.wb-phone-farm { flex: 0 0 calc(var(--wb-split) * 100%); min-height: 0; position: relative; overflow: hidden; }
+.wb-phone-farm > #farm-stage { height: 100%; }
+.wb-phone-divider { flex: none; height: 14px; position: relative; cursor: row-resize; touch-action: none; border-block: 1px solid var(--loam); }
+.wb-phone-divider::after { content: ""; position: absolute; left: 50%; top: 50%; width: 44px; height: 2px; margin: -1px 0 0 -22px; background: var(--root); transition: background .15s ease-out; }
+.wb-phone-divider:hover::after, .wb-phone-divider:focus-visible::after, body.resizing .wb-phone-divider::after { background: var(--carrot); }
+.wb-phone-divider:focus-visible { outline: 2px solid var(--carrot); outline-offset: -2px; }
+.wb-phone-panel { flex: 1 1 0; min-height: 0; overflow: auto; position: relative; display: flex; flex-direction: column; }
+.wb-phone-panel > * { flex: 1 1 auto; min-height: 0; }
+.wb-phone-panel[data-panel="code"] { overflow: hidden; }
+.wb-phone-tabs { flex: none; display: flex; overflow-x: auto; scrollbar-width: none; border-top: 1px solid var(--loam); }
+.wb-phone-tabs::-webkit-scrollbar { display: none; }
+.wb-phone-tab { flex: none; position: relative; min-height: 44px; padding: 0 16px; border: 0; background: none; color: var(--chaff); font: 600 14px/1 var(--f-label); letter-spacing: .09em; text-transform: uppercase; cursor: pointer; }
+.wb-phone-tab[aria-selected="true"] { color: var(--straw); box-shadow: inset 0 2px 0 var(--carrot); }
+.wb-phone-tab:focus-visible { outline: 2px solid var(--carrot); outline-offset: -2px; }
+body.wb-phone-mode .code-heading .example-row span { display: none; }
+body.wb-phone-mode .game-stage #side .editor-footer, body.wb-phone-mode #side .editor-footer { display: none; }
+@media (max-width: 759px) { .game-stage .transport { bottom: 8px; } }
+
+html[data-motion="reduced"] .wb-tab::before, html[data-motion="reduced"] .wb-menu-item::before, html[data-motion="reduced"] .wb-phone-divider::after { transition: none; }
+@media (prefers-reduced-motion: reduce) { .wb-tab::before, .wb-menu-item::before, .wb-phone-divider::after { transition: none; } }
+
+/* Phone: keep the farm readable. The mode caption and the code heading give their room back; the examples picker stays. */
+body.wb-phone-mode .farm-caption { display: none; }
+body.wb-phone-mode #side .panel-heading { padding: 4px 10px; }
+body.wb-phone-mode #side .panel-heading > div:first-child { display: none; }
+body.wb-phone-mode #side .example-row, body.wb-phone-mode #side .example-row select { width: 100%; }
+body.wb-phone-mode .transport .hk-button { padding: 6px 8px; }
+body.wb-phone-mode .transport .tp-play { width: 2.2rem; height: 2.2rem; }

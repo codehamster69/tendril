@@ -124,7 +124,7 @@ export class FarmView {
     this.ro = new ResizeObserver(this.resize);
     this.ro.observe(canvas.parentElement ?? canvas);
     window.addEventListener('resize', this.resize);
-    if (!this.lite) window.addEventListener('tendril:slate-inset', this.onSlate);
+    if (!this.lite) { window.addEventListener('tendril:slate-inset', this.onSlate); window.addEventListener('tendril:farm-visible', this.panelVisible); }
     canvas.addEventListener('wheel', this.wake, { passive: true });
     canvas.addEventListener('pointerdown', this.wake, { passive: true });
     canvas.addEventListener('pointermove', this.pointerWake, { passive: true });
@@ -190,8 +190,11 @@ export class FarmView {
     this.raf = requestAnimationFrame(this.loop);
   }
 
+  /** The workbench says whether the farm panel can be seen (it may be a hidden tab); a hidden farm draws nothing. */
+  private panelShown = true;
+  private panelVisible = (e: Event): void => { this.panelShown = !!(e as CustomEvent<boolean>).detail; this.visibility(); };
   private visibility = (): void => {
-    this.hidden = document.hidden;
+    this.hidden = document.hidden || !this.panelShown;
     if (this.hidden) { cancelAnimationFrame(this.raf); this.raf = 0; this.previousTime = 0; this.scale.gap(); }
     else this.wake();
   };
@@ -627,6 +630,7 @@ export class FarmView {
     this.raf = 0;
     window.removeEventListener('resize', this.resize);
     window.removeEventListener('tendril:slate-inset', this.onSlate);
+    window.removeEventListener('tendril:farm-visible', this.panelVisible);
     this.canvas.removeEventListener('wheel', this.wake);
     this.canvas.removeEventListener('pointerdown', this.wake);
     this.canvas.removeEventListener('pointermove', this.pointerWake);

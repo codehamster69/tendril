@@ -19,8 +19,9 @@ for (const mode of ['sandbox', 'live']) {
     await expect(reference.locator('.api-entry:visible .api-cost')).toHaveText('2 ticks');
     await reference.getByRole('searchbox').fill('wait');
     await expect(reference.locator('.api-entry:visible .api-cost')).toHaveText('n ticks');
-    await page.keyboard.press('Escape');
-    await expect(reference).not.toBeVisible();
+    await page.locator('.wb-tab[data-panel="reference"] .wb-tab-close').click();
+    await expect(page.locator('.wb-tab[data-panel="reference"]')).toHaveCount(0);
+    await expect(reference).toBeHidden();
     await page.locator('#soil-overlay').selectOption('nitrogen');
     await expect(page.locator('#soil-overlay')).toHaveValue('nitrogen');
     await page.locator('#btn-focus-farm').click();

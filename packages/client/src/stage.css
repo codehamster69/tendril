@@ -1,46 +1,24 @@
-/* Full-screen game stage: the island fills the window; the ledger strip, the code slate and the status line are opaque panels on top of it. Tokens: style.css. */
-:root { --slate-w: 440px; }
-body.game-stage { display: block; min-height: 0; height: 100vh; overflow: hidden; font-family: var(--f-body); }
-.game-stage #topbar, .game-stage #workbench > #view > .panel-heading, .game-stage #view > .deck-tabs, .game-stage #view > .deck { display: none; }
-.game-stage #workbench { display: block; padding: 0; margin: 0; }
-.game-stage #view { position: static; background: none; border: 0; overflow: visible; display: block; }
-.game-stage #farm-stage { position: fixed; inset: 0; height: auto; flex: none; z-index: 0; min-height: 0; border: 0; }
-.game-stage #stage-tools { top: calc(var(--ledger-h) + 18px); left: 14px; right: calc(var(--slate-w) + 40px); }
-.game-stage.slate-hidden #stage-tools { right: 70px; }
-.game-stage .farm-caption { left: 14px; right: calc(var(--slate-w) + 40px); bottom: 92px; }
-.game-stage.slate-hidden .farm-caption { right: 14px; }
-/* The goal card owns the bottom-left corner when there is one; the caption moves up against it. */
-.game-stage:has(#goal-hud) .farm-caption { bottom: calc(var(--status-h) + 190px); }
-.game-stage #toast-host { top: calc(var(--ledger-h) + 18px); right: calc(var(--slate-w) + 40px); }
-.game-stage.slate-hidden #toast-host { right: 14px; }
-.game-stage .farm-market:not(.in-panel) { display: none; }
-.game-stage:not(.farm-large) #farm-minimap { display: none; }
-.game-stage #farm-minimap.in-panel { position: static; }
-.game-stage .farm-market.in-panel { position: static; width: 100%; }
-
-/* code slate: a docked panel under the ledger strip, a hairline on its left edge */
-.game-stage #side {
-  position: fixed; z-index: 20; top: var(--ledger-h); right: 0; bottom: var(--status-h); width: var(--slate-w); min-width: 0; overflow: visible;
-  background: var(--soil); border-left: 1px solid var(--root);
-  transition: transform .22s ease, visibility .22s;
-}
-.game-stage.slate-hidden #side { transform: translateX(100%); visibility: hidden; }
+/* Game screen: the ledger strip on top, the docking workbench (workbench.css) in the middle, the status line at the bottom. Tokens: style.css. */
+body.game-stage { display: block; min-height: 0; height: 100vh; height: 100dvh; overflow: hidden; font-family: var(--f-body); }
+.game-stage #topbar, .game-stage #workbench, .game-stage #view > .deck-tabs { display: none; }
+/* Panels hold the nodes the old layout had; they fill their panel instead of sitting over the farm. */
+.game-stage #farm-stage { position: relative; inset: auto; width: 100%; height: 100%; flex: 1 1 auto; min-height: 0; border: 0; }
+.game-stage #farm-minimap { position: static; display: block; width: 100%; max-width: 360px; }
+.game-stage #farm-minimap-canvas { width: 100%; height: auto; aspect-ratio: 1; }
+.game-stage .farm-market { position: static; width: 100%; max-width: 360px; }
+.game-stage .farm-market .farm-market-body { display: flex; }
+.game-stage .farm-market .farm-market-head { cursor: default; pointer-events: none; }
 .game-stage #side > #lesson-card, .game-stage #toolbar { display: none; }
 .game-stage #side .panel-heading { padding: 8px 14px 6px; border-bottom: 1px solid var(--loam); }
 .game-stage #side .panel-heading h2 { font: 700 1.1rem/1.1 var(--f-label); letter-spacing: .04em; text-transform: uppercase; }
 .game-stage #editor { flex: 1 1 0; height: auto; min-height: 120px; border-radius: 0; border-top: 0; }
-.game-stage .slate-hide { padding: .15rem .7rem; min-height: 1.8rem; }
-.slate-grip { position: absolute; left: -7px; top: 0; bottom: 0; width: 14px; cursor: col-resize; z-index: 2; touch-action: none; }
-.slate-grip::after { content: ""; position: absolute; left: 6px; top: 50%; width: 2px; height: 44px; margin-top: -22px; background: var(--root); opacity: 0; transition: opacity .15s ease-out; }
-.slate-grip:hover::after, .slate-grip:focus-visible::after { opacity: 1; background: var(--carrot); }
-body.resizing { cursor: col-resize; user-select: none; }
-body.resizing iframe, body.resizing canvas { pointer-events: none; }
-.game-stage .dock-tabs { padding: 0 8px; border-top: 1px solid var(--loam); border-bottom: 0; align-items: center; }
-.strip-toggle { color: var(--chaff); }
-.strip-toggle::after { content: " ▾"; position: static; border: 0; opacity: 1; transform: none; inset: auto; } .strip-toggle[data-open="false"]::after { content: " ▴"; }
-.game-stage #side.strip-closed #console, .game-stage #side.strip-closed #debugger, .game-stage #side.strip-closed .dock-tabs button:not(.strip-toggle) { display: none; }
-.game-stage .dock { height: 150px; }
 .game-stage .editor-footer { padding: 4px 14px; }
+.game-stage .farm-caption { bottom: 64px; left: 10px; right: 10px; }
+.code-actions { display: inline-flex; gap: 4px; align-items: center; }
+.code-actions:empty { display: none; }
+body.resizing { user-select: none; }
+body.resizing.wb-phone-mode { cursor: row-resize; }
+body.resizing iframe, body.resizing canvas { pointer-events: none; }
 
 /* Ledger strip: one bar along the top edge. Label over value, tabular numbers, a hairline between items.
    Layout: mark, cells (coins, stock, crew, weather, day), then the slate and menu buttons at the right. */
@@ -53,11 +31,10 @@ body.resizing iframe, body.resizing canvas { pointer-events: none; }
 #stock-chips { display: contents; }
 .ledger-actions { display: flex; align-items: center; gap: 2px; padding: 0 8px; margin-left: auto; flex: none; border-left: 1px solid var(--loam); }
 .ledger-actions .hk-button { min-height: 30px; }
-.slate-toggle { display: contents; }
+.wb-menus { display: flex; align-items: center; gap: 2px; }
 
-/* transport: one bordered strip, bottom centre of the free area */
-.transport { position: fixed; z-index: 25; bottom: calc(var(--status-h) + 12px); left: calc((100vw - var(--slate-w)) / 2); transform: translateX(-50%); display: flex; align-items: center; gap: 2px; padding: 3px; background: var(--soil); border: 1px solid var(--root); border-radius: var(--r); transition: left .22s ease; }
-.game-stage.slate-hidden .transport { left: 50%; }
+/* transport: one bordered strip, bottom centre of the farm panel */
+.transport { position: absolute; z-index: 6; bottom: 12px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 2px; padding: 3px; background: var(--soil); border: 1px solid var(--root); border-radius: var(--r); max-width: calc(100% - 16px); overflow-x: auto; scrollbar-width: none; }
 .transport .hk-button { color: var(--chaff); padding: 8px 12px; }
 .transport .hk-button:hover:not(:disabled) { color: var(--straw); }
 .transport .hk-button[aria-pressed="true"] { color: var(--carrot); }
@@ -66,7 +43,7 @@ body.resizing iframe, body.resizing canvas { pointer-events: none; }
 
 /* status line: a thin strip at the very bottom */
 .game-stage #statusbar { position: fixed; z-index: 24; left: 0; right: 0; bottom: 0; height: var(--status-h); padding: 0 14px; }
-.game-stage #unranked-notice { position: fixed; z-index: 30; top: calc(var(--ledger-h) + 8px); left: 50%; transform: translateX(-50%); width: min(560px, calc(100vw - 340px)); border: 1px solid var(--carrot); border-radius: var(--r); background: var(--soil); }
+.game-stage #unranked-notice { position: fixed; z-index: 30; top: calc(var(--ledger-h) + 8px); left: 50%; transform: translateX(-50%); width: min(560px, calc(100vw - 32px)); border: 1px solid var(--carrot); border-radius: var(--r); background: var(--soil); }
 .game-stage #unranked-notice[hidden] { display: none; }
 
 /* menu and panel overlays */
@@ -83,11 +60,6 @@ body.resizing iframe, body.resizing canvas { pointer-events: none; }
 .panel-body #forecast { min-height: 40px; }
 
 @media (max-width: 720px) { .game-stage #unranked-notice { width: calc(100vw - 24px); } }
-@media (max-width: 1100px) {
-  :root { --slate-w: 380px; }
-  .game-stage #unranked-notice { width: min(520px, calc(100vw - 200px)); }
-}
-html[data-motion="reduced"] .game-stage #side, html[data-motion="reduced"] .transport, html[data-motion="reduced"] .slate-grip::after { transition: none; }
 @media (max-width: 720px) { .ledger-mark span { display: none; } .hk-chip { padding: 6px 10px; } }
 .panel-body #lesson-card, .panel-body #lesson-card.in-panel { max-height: none; overflow: visible; }
 

@@ -94,8 +94,8 @@ test('price lens is disabled without a market and enabled once one exists', asyn
 test('clicking the minimap moves the camera', async ({ page }) => {
   test.setTimeout(90_000); // software-rendered frames are slow
   await open(page);
-  // The minimap is a corner widget only on big farms (island-hud.ts); the sandbox starts small, so mark it large.
-  await page.evaluate(() => document.body.classList.add('farm-large'));
+  // The minimap lives in the Map panel; bring that tab to the front.
+  await page.locator('.wb-tab[data-panel="map"]').click();
   const map = page.locator('#farm-minimap-canvas');
   await expect(map).toBeVisible();
   await page.waitForTimeout(400); // the minimap draws at 8 Hz; its frame must exist before the click maps to the world

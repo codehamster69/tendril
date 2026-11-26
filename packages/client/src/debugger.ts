@@ -4,18 +4,8 @@ import { el } from './palette';
 
 export function mountDebugger(): void {
   const host = document.getElementById('debugger')!;
-  const tabs = document.querySelectorAll<HTMLButtonElement>('.dock-tabs [data-dock]');
-  const show = (name: string): void => {
-    for (const t of tabs) t.setAttribute('aria-selected', String(t.dataset.dock === name));
-    document.getElementById('console')!.hidden = name !== 'console';
-    host.hidden = name !== 'debugger';
-  };
-  for (const t of tabs) t.addEventListener('click', () => show(t.dataset.dock!));
-
   window.addEventListener('tendril:debug', (event) => {
     const { bots, paused } = (event as CustomEvent<{ bots: BotDebug[]; paused: { bot: number; line: number } | null }>).detail;
-    if (paused) show('debugger');
-    if (host.hidden) return;
     const grid = el('div', { class: 'bots' });
     for (const b of bots) {
       const name = el('span', { text: `Bot ${b.bot}` });

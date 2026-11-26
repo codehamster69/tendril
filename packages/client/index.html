@@ -41,12 +41,7 @@
           <div class="farm-caption"><span id="mode-note">10 ticks per second, saved on this device.</span><span><b id="hud-plots">1</b> plot · <b id="hud-bots">1</b> bot</span></div>
           <div id="toast-host" aria-live="polite"></div>
         </div>
-        <nav class="deck-tabs" role="tablist" aria-label="Farm instruments">
-          <button role="tab" id="tab-farm" aria-controls="deck-farm" aria-selected="true" data-tab="farm">Farm</button>
-          <button role="tab" id="tab-goals" aria-controls="deck-goals" aria-selected="false" data-tab="goals">Achievements</button>
-        </nav>
-        <div class="deck" id="deck-farm" role="tabpanel" aria-labelledby="tab-farm"></div>
-        <div class="deck" id="deck-goals" role="tabpanel" aria-labelledby="tab-goals" hidden></div>
+        <div class="deck" id="deck-goals" aria-label="Achievements" hidden></div>
       </section>
       <section id="side" aria-labelledby="code-heading">
         <div id="lesson-card" hidden></div>
@@ -65,10 +60,6 @@
         </div>
         <div id="editor"></div>
         <div class="editor-footer"><span>Actions cost ticks · questions are free · <kbd>F9</kbd> breakpoint · <kbd>F10</kbd> step</span><span id="equip-chip" class="equip-chip" role="status" aria-live="polite" hidden></span><span id="editor-save">Saved on this device</span></div>
-        <nav class="dock-tabs" role="tablist" aria-label="Program output">
-          <button role="tab" id="dock-tab-console" aria-controls="console" aria-selected="true" data-dock="console">Console</button>
-          <button role="tab" id="dock-tab-debugger" aria-controls="debugger" aria-selected="false" data-dock="debugger">Debugger</button>
-        </nav>
         <div id="console" class="dock" role="log" aria-label="Program console" aria-live="polite" tabindex="0"></div>
         <div id="debugger" class="dock" hidden></div>
       </section>

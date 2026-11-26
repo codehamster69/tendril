@@ -5,16 +5,17 @@ import { isDesktop } from './api-client';
 import type { GameLoop } from './game-loop';
 import { utcToday } from './arena';
 import { el } from './palette';
+import type { PanelId } from './workbench-layout';
 import { dailyStreak, streakText } from './streak';
-import { buildSettingsPanel, KEYS } from './settings-panel';
+import { KEYS } from './settings-panel';
 import { mountTryIt } from './try-it';
 
 export type ModeKey = 'live' | 'sandbox' | 'campaign' | 'daily' | 'season';
 export interface PanelHost { open(title: string, nodes: HTMLElement[], opts?: { onOpen?: () => void; onClose?: () => void; wide?: boolean }): void; readonly isOpen: boolean }
 export interface MenuContext {
   loop: GameLoop; api: FarmApi; current: ModeKey; ranked: boolean; button: HTMLElement; panels: PanelHost;
-  /** Opens the code slate on the debugger tab. */
-  openDebugger(): void;
+  /** Opens a workbench panel (and brings it to the front). */
+  openPanel(id: PanelId): void;
 }
 export interface MenuApi {
   open(): void; close(): void; toggle(): void; readonly isOpen: boolean;
@@ -36,7 +37,7 @@ const decks = (...ids: string[]): HTMLElement[] => ids.map(byId).filter((n): n i
 
 /** Esc belongs to whatever is on top: dialogs, panels, autocomplete. The menu only takes it when nothing else wants it. */
 const somethingElseOpen = (): boolean =>
-  !!document.querySelector('dialog[open], .hk-overlay:not([hidden]):not(#menu-overlay):not(#start-card), .cm-tooltip-autocomplete');
+  !!document.querySelector('dialog[open], .hk-overlay:not([hidden]):not(#menu-overlay):not(#start-card), .cm-tooltip-autocomplete, .wb-menu:not([hidden])');
 
 export function mountMenu(ctx: MenuContext): MenuApi {
   const { loop, api, current, button, panels } = ctx;
@@ -80,14 +81,11 @@ export function mountMenu(ctx: MenuContext): MenuApi {
 
   const toolsGrid = el('div', { class: 'menu-entries menu-tools' });
   const tool = (id: string, label: string, hint: string, run: () => void): HTMLButtonElement => { const b = action(id, label, hint, run); toolsGrid.append(b); return b; };
-  tool('progression', 'Achievements', 'Goals you have earned', () => panels.open('Achievements', decks('deck-goals')));
+  tool('progression', 'Achievements', 'Goals you have earned', () => ctx.openPanel('orders'));
   tool('arena', 'Arena & lessons', 'Daily result, submit, lessons', () => panels.open('Arena & lessons', decks('lesson-card'), { wide: true }));
-  const marketBtn = tool('market', 'Market', 'Shared market prices', () => {
-    const m = q('.farm-market');
-    if (m && !m.hidden) panels.open('Market', [m], { onOpen: () => m.classList.remove('collapsed'), onClose: () => m.classList.add('collapsed') });
-  });
-  tool('debugger', 'Debugger', 'Variables and breakpoints', () => ctx.openDebugger());
-  tool('reference', 'Reference', 'Every Sprout command', () => q('#btn-reference')?.click());
+  tool('market', 'Market', 'Shared market prices', () => ctx.openPanel('market'));
+  tool('debugger', 'Debugger', 'Variables and breakpoints', () => ctx.openPanel('debugger'));
+  tool('reference', 'Reference', 'Every Sprout command', () => ctx.openPanel('reference'));
   tool('account', 'Account', 'Sign in or out', () => byId('btn-account')?.click());
   const keysList = el('dl', { class: 'set-keys' });
   for (const [k, what] of KEYS) keysList.append(el('dt', {}, el('kbd', { text: k })), el('dd', { text: what }));
@@ -96,7 +94,7 @@ export function mountMenu(ctx: MenuContext): MenuApi {
   document.body.append(keysPanel);
   const showKeys = (): void => panels.open('Keyboard shortcuts', [keysPanel]);
   tool('shortcuts', 'Shortcuts', 'Every key, press ? any time', showKeys);
-  tool('settings', 'Settings', 'Sound, graphics, motion, code, keys', () => showSettings());
+  tool('settings', 'Settings', 'Sound, graphics, motion, code, keys', () => ctx.openPanel('settings'));
   if (isDesktop) tool('quit', 'Quit', 'Close Tendril', () => (window as unknown as { tendrilDesktop?: { quit?(): void } }).tendrilDesktop?.quit?.());
 
   const tryIt = mountTryIt({ current });
@@ -109,28 +107,15 @@ export function mountMenu(ctx: MenuContext): MenuApi {
     el('p', { class: 'menu-label' }, 'Play', streakEl), el('div', { class: 'menu-entries' }, cont), modeGrid, tryIt.node,
     el('p', { class: 'menu-label', text: 'Farm and tools' }), toolsGrid, links);
 
-  // ---- settings view ----
-  const settingsBack = el('button', { class: 'hk-button', type: 'button', text: '← Menu' });
-  const settingsView = el('div', { class: 'menu-view', 'data-view': 'settings', hidden: '' },
-    el('div', { class: 'menu-subhead' }, settingsBack, el('h3', { text: 'Settings' })),
-    buildSettingsPanel(el('div', { class: 'set-account' }, el('p', { id: 'set-account-line', text: '' }), (() => { const b = el('button', { class: 'hk-button', type: 'button', text: 'Sign in or out' }); b.addEventListener('click', () => { close(false); byId('btn-account')?.click(); }); return b; })())));
-  const showView = (name: 'main' | 'settings'): void => {
-    main.hidden = name !== 'main'; settingsView.hidden = name !== 'settings';
-    (name === 'main' ? cont : settingsBack).focus();
-  };
-  const showSettings = (): void => { open(); const line = byId('set-account-line'); if (line) line.textContent = accountLine(); showView('settings'); };
-  settingsBack.addEventListener('click', () => showView('main'));
-
   const closeBtn = el('button', { class: 'hk-button', type: 'button', text: 'Close', title: 'Close (Esc)' });
   closeBtn.addEventListener('click', () => close());
   overlay.append(el('div', { class: 'hk-card menu-card' },
-    el('header', {}, el('div', { class: 'menu-title' }, el('h2', { text: 'Tendril' }), el('small', { text: 'Paused while the menu is open' })), closeBtn), main, settingsView));
+    el('header', {}, el('div', { class: 'menu-title' }, el('h2', { text: 'Tendril' }), el('small', { text: 'Paused while the menu is open' })), closeBtn), main));
   overlay.addEventListener('mousedown', (e) => { if (e.target === overlay) close(); });
   document.body.append(overlay);
 
   const accountLine = (): string => { const label = byId('btn-account')?.textContent?.trim(); return label && label !== 'Sign in' ? `Signed in as ${label}` : 'Not signed in. Local play never needs an account.'; };
   const sync = (): void => {
-    marketBtn.disabled = !q('.farm-market') || !!q('.farm-market')?.hidden;
     (entryEls.get('profile') as HTMLButtonElement).disabled = !profileOk();
     note('account', accountLine().replace('Not signed in. Local play never needs an account.', 'Sign in or out'));
   };
@@ -162,7 +147,6 @@ export function mountMenu(ctx: MenuContext): MenuApi {
     if (!overlay.hidden) return;
     opener = document.activeElement as HTMLElement | null;
     sync(); pauseSim(); loadStatus();
-    showView('main');
     overlay.hidden = false;
     document.body.classList.add('menu-open');
     button.setAttribute('aria-expanded', 'true');
@@ -185,7 +169,7 @@ export function mountMenu(ctx: MenuContext): MenuApi {
       e.preventDefault(); close(false); actions.get('shortcuts')?.(); return;
     }
     if (e.key !== 'Escape' || e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey) return;
-    if (!overlay.hidden) { e.preventDefault(); e.stopPropagation(); if (!settingsView.hidden) showView('main'); else close(); return; }
+    if (!overlay.hidden) { e.preventDefault(); e.stopPropagation(); close(); return; }
     if (somethingElseOpen() || q('#start-card:not([hidden])')) return; // the start card takes Esc itself: it closes without starting the day
     e.preventDefault(); e.stopPropagation(); open();
   }, true);

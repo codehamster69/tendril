@@ -1,10 +1,6 @@
-#api-reference {
-  width: min(860px, 94vw); max-height: 86vh; padding: 20px 22px; border: 1px solid var(--root); border-radius: var(--r);
-  background: var(--soil); color: var(--straw);
-}
-#api-reference::backdrop { background: var(--scrim); }
+#api-reference { padding: 12px 16px 20px; color: var(--straw); }
 .ref-head { display: flex; justify-content: space-between; align-items: flex-start; }
-.ref-head h2 { font: 700 26px/1.1 var(--f-label); letter-spacing: .03em; text-transform: uppercase; margin-top: 4px; }
+.ref-head h2 { font: 700 20px/1.1 var(--f-label); letter-spacing: .03em; text-transform: uppercase; margin-top: 4px; }
 #api-reference input[type=search] { width: 100%; padding: 9px 12px; border-radius: var(--r); margin: 6px 0 14px; }
 .ref-group h3 { font: 600 14px var(--f-label); letter-spacing: .09em; text-transform: uppercase; color: var(--chaff); margin: 16px 0 8px; }
 .api-entry { border: 1px solid var(--loam); border-radius: var(--r); padding: 10px 12px; margin-bottom: 8px; }

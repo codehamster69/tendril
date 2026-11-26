@@ -75,44 +75,23 @@ export class DayDial {
     const hud = document.getElementById('game-hud');
     if (hud) this.ro?.observe(hud);
     this.ro?.observe(this.root);
+    this.ro?.observe(host);
     const tools = document.getElementById('stage-tools');
     if (tools) this.ro?.observe(tools);
     window.addEventListener('resize', this.layout);
-    window.addEventListener('tendril:slate-inset', this.layout);
-    // The slate slides in and out; measure again once it has arrived.
-    window.addEventListener('transitionend', this.slateMoved, true);
     requestAnimationFrame(this.layout);
   }
 
   private ro: ResizeObserver | null;
-  private slateMoved = (e: TransitionEvent): void => { if ((e.target as Element | null)?.id === 'side') this.layout(); };
-  /**
-   * When the chips on the left reach under the dial (narrow stage, slate open), the dial moves into the gap right of
-   * them, smaller; when that gap is too narrow it drops below the chips. Either way the tool row starts below it.
-   */
+  /** The tool row starts below the dial and the contract cards below the tool row; both are measured inside the farm panel. */
   private layout = (): void => {
     if (!this.root.isConnected) return;
-    const st = this.root.style;
-   
-    st.top = ''; st.left = ''; st.width = '';
-    const d = this.root.getBoundingClientRect();
-    const h = document.getElementById('game-hud')?.getBoundingClientRect();
-    if (h && h.height > 0 && h.right + 8 > d.left && h.top < d.bottom && h.bottom > d.top) {
-      // Right edge: the slate if it is open, else whatever sits top right (menu, Show code).
-      // The open slate always bounds the room, whatever its top and even when the chips reach past its left edge
-      // (wide chip text): then there is no room and the dial drops below the chips instead of sitting on the slate.
-      const lefts = ['side', 'game-hud-tr', 'slate-toggle'].map((id) => [id, document.getElementById(id)?.getBoundingClientRect()] as const)
-        .filter((e): e is readonly [string, DOMRect] => !!e[1] && e[1].width > 0 && (e[0] === 'side' ? e[1].left < window.innerWidth : e[1].top < d.bottom && e[1].left > h.right))
-        .map(([, r]) => r.left);
-      const from = h.right + 16, to = Math.min(window.innerWidth, ...lefts) - 16, room = to - from;
-      if (room >= 200) { const w = Math.min(300, room); st.width = `${w}px`; st.left = `${Math.round(from + w / 2)}px`; }
-      else st.top = `${Math.round(h.bottom + 6)}px`;
-    }
-    const root = document.documentElement.style;
-    root.setProperty('--dd-bottom', `${Math.round(this.root.getBoundingClientRect().bottom + 8)}px`);
-    // The contract cards sit under the tool row, wherever the dial pushed it and however far it wraps.
+    const stage = this.root.parentElement?.getBoundingClientRect();
+    const top = stage?.top ?? 0;
+    const root = this.root.parentElement?.style ?? document.documentElement.style;
+    root.setProperty('--dd-bottom', `${Math.round(this.root.getBoundingClientRect().bottom - top + 8)}px`);
     const t = document.getElementById('stage-tools')?.getBoundingClientRect();
-    if (t && t.height > 0) root.setProperty('--tools-bottom', `${Math.round(t.bottom + 10)}px`);
+    if (t && t.height > 0) root.setProperty('--tools-bottom', `${Math.round(t.bottom - top + 10)}px`);
   };
 
   /** Called with every snapshot. Cheap when nothing visible changed. */
@@ -215,8 +194,6 @@ export class DayDial {
   dispose(): void {
     this.ro?.disconnect();
     window.removeEventListener('resize', this.layout);
-    window.removeEventListener('tendril:slate-inset', this.layout);
-    window.removeEventListener('transitionend', this.slateMoved, true);
     this.root.remove();
     document.documentElement.style.removeProperty('--dd-bottom');
     document.documentElement.style.removeProperty('--tools-bottom');

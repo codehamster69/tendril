@@ -69,11 +69,10 @@ export function mountFirstRun({ editor }: { editor: Editor }): void {
     const w = Math.min(320, window.innerWidth - 24);
     card.style.width = `${w}px`;
     const h = card.offsetHeight;
-    const slate = document.getElementById('side')?.getBoundingClientRect();
-    const freeRight = slate && slate.width > 0 && slate.left < window.innerWidth ? slate.left : window.innerWidth;
+    const farm = document.getElementById('farm-stage')?.getBoundingClientRect();
     const onFarm = p.anchor === '#farm-canvas';
-    // The farm is the whole window, so its "panel" is the free area left of the code slate: the card sits above its middle and the line drops to it.
-    const fx = freeRight / 2, fy = (window.innerHeight + 44) / 2;
+    // The farm is a panel of its own: the card sits above its middle and the line drops to it.
+    const fx = farm && farm.width > 0 ? farm.left + farm.width / 2 : window.innerWidth / 2, fy = farm && farm.height > 0 ? farm.top + farm.height / 2 : window.innerHeight / 2;
     const side = p.anchor === '#side';
     const left = side ? r.left - w - 20 : onFarm ? fx - w / 2 : r.left + r.width / 2 - w / 2;
     const top = side ? r.top + 150 : p.anchor === '#tp-play' ? r.top - h - 36 : onFarm ? fy - h - 70 : r.top + 110;
