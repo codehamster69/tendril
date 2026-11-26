@@ -100,7 +100,7 @@ test('run recompiles edits at the current farm and snapshot events match the sea
   expect(Number(tick)).toBeGreaterThan(100);
   expect(await page.evaluate(() => window.tendril!.loop.snapshot()!.tick)).toBe(Number(tick));
   await expect(page.locator('body')).toHaveAttribute('data-snapshot-tick', tick!);
-  await expect(page.locator('#console')).toContainText('farm kept');
+  await expect(page.locator('#equip-chip')).toContainText(/Equipped at tick \d/);
 });
 
 test('syntax and runtime errors show useful console text and the correct Sprout line', async ({ page }) => {
@@ -232,7 +232,7 @@ test('flush is an ordered durability barrier and save failure retains logs for r
 
 test('live clock catches up offline, speed cannot mint ticks and reset needs confirmation', async ({ page }) => {
   test.slow(); // Boots the farm twice (reload) on a shared CPU with software GL.
-  await page.goto('/');
+  await page.goto('/?mode=live');
   await ready(page);
   await expect(page.locator('#status')).toHaveAttribute('data-state', /running|catching-up/);
   await expect(page.locator('#mode-label')).toHaveText('Local live · unverified');
