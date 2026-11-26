@@ -101,6 +101,8 @@ export class FarmApi {
   }
 
   me(): Promise<{ profile: Profile }> { return this.request('/me'); }
+  /** A player page: only the streak is used here (consecutive UTC days of daily challenges). */
+  player(login: string): Promise<{ streak: { current: number; best: number; lastDay: string | null } }> { return this.request(`/players/${encodeURIComponent(login)}`); }
   logout(): Promise<void> { return this.request('/auth/logout', 'POST', {}); }
   pollDesktop(nonce: string): Promise<{ token: string; profile: Profile }> { return this.request('/auth/desktop/poll', 'POST', { nonce }); }
   login(displayName: string): Promise<{ token: string; profile: { id: string; displayName: string } }> {
