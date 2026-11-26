@@ -16,6 +16,7 @@ function healthySite(overrides = {}) {
     if (url.endsWith('/play/')) return new Response('<html>game</html>');
     if (url.endsWith('/api/budget')) return json({}, 404);
     if (url.includes('/api/packets')) return json({ sort: 'popular', tag: null, packets: [] });
+    if (url.includes('/api/bench')) return json({ days: [], tally: { decided: 0, humans: 0, machines: 0, ties: 0 } });
     if (url.endsWith('/')) return new Response('<html>home</html>');
     throw new Error(`unexpected ${url}`);
   };
@@ -34,6 +35,14 @@ test('stale daily challenge fails the daily check', async () => {
   const results = await runChecks(deps(healthySite({ 'https://example.test/api/daily': () => json({ date: '2026-11-11', seed: dailySeed('2026-11-11'), ticks: 1000, rulesVersion: RULES_VERSION }) })));
   assert.equal(results.find((r) => r.name === 'daily challenge').ok, false);
   assert.equal(isFailing(results), true);
+});
+
+test('a broken humans vs machines read fails its check, and a missing one is skipped', async () => {
+  const broken = await runChecks(deps(healthySite({ 'https://example.test/api/bench?days=1': () => json({ nope: true }) })));
+  assert.equal(broken.find((r) => r.name === 'humans vs machines data').ok, false);
+  const missing = await runChecks(deps(healthySite({ 'https://example.test/api/bench?days=1': () => json({}, 404) })));
+  assert.equal(missing.find((r) => r.name === 'humans vs machines data').skipped, true);
+  assert.equal(isFailing(missing), false);
 });
 
 test('a changed fixture hash fails the local replay check', async () => {

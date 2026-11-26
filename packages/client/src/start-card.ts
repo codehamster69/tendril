@@ -3,13 +3,17 @@ import './menu.css';
 import type { ChallengeInfo } from './api-client';
 import type { GameLoop } from './game-loop';
 import { anotherFarm, briefOf, challengeTitle, hiddenLine, OFFLINE_LINE } from './arena';
-import { GOAL_NAMES, goalLine, parText, twistLines } from './goal-view';
+import { GOAL_NAMES, goalLine, parText, scoreText, twistLines } from './goal-view';
+import { getRival, hasMachine, startLine } from './machine';
+import type { GoalKind } from '@tendril/sim/src/index.ts';
 import { el, itemName } from './palette';
 import type { Snapshot } from './sim-types';
 import { TICKS_PER_SECOND } from './clock';
 
 export interface StartCardInfo {
   eyebrow: string; goal: string; par: number | null; ticks: number;
+  /** Today's real daily: the card says what the machine scored, or when it plays (H1). */
+  machine?: { kind: GoalKind };
   /** Daily briefs: the village notice, goal name, twist labels and the lines about hidden farms and practice. */
   brief?: { notice: string; name: string; twists: string[]; parText: string | null; hidden: string; practice: boolean; offline: boolean; another: () => void };
 }
@@ -20,9 +24,10 @@ const fmt = (n: number): string => n.toLocaleString('en-US');
 export function challengeCardInfo(c: ChallengeInfo): StartCardInfo {
   const base = { eyebrow: challengeTitle(c), goal: `Finish with the highest net worth after ${fmt(c.ticks)} ticks.`, par: c.par, ticks: c.ticks };
   const brief = briefOf(c);
-  if (!brief) return base;
+  const machine = hasMachine(c) ? { machine: { kind: (brief?.goal.kind ?? 'wealth') as GoalKind } } : {};
+  if (!brief) return { ...base, ...machine };
   return {
-    ...base, goal: goalLine(brief.goal),
+    ...base, ...machine, goal: goalLine(brief.goal),
     brief: { notice: brief.notice, name: GOAL_NAMES[brief.goal.kind], twists: twistLines(brief.labels), parText: parText(brief.goal, c.par), hidden: c.practice ? '' : hiddenLine(c.hiddenFarms ?? 0, c.kind), practice: !!c.practice, offline: !!c.offline, another: () => anotherFarm(c) },
   };
 }
@@ -44,7 +49,14 @@ export function mountStartCard({ loop, info, skip }: { loop: GameLoop; info: Sta
   const visible = (): boolean => !overlay.hidden;
   const hide = (): void => { if (overlay.hidden) return; overlay.hidden = true; document.body.classList.remove('start-open'); };
   const row = (label: string, ...kids: (Node | string)[]): HTMLElement => el('div', { class: 'start-row' }, el('dt', { text: label }), el('dd', {}, ...kids));
+  let lastSnap: Snapshot | null = null;
+  const machineLine = (): HTMLElement[] => {
+    const kind = info.machine?.kind;
+    const text = kind ? startLine(getRival(), (n) => scoreText(kind, n)) : null;
+    return text ? [el('p', { class: 'start-machine', role: 'status', text })] : [];
+  };
   const fill = (s: Snapshot): void => {
+    lastSnap = s;
     const live = (s.orders ?? []).filter((o) => o.opensAt <= s.tick).slice(0, 4);
     const orders = live.length
       ? el('ul', { class: 'start-orders' }, ...live.map((o) => el('li', { text: `${itemName(o.crop)} × ${o.qty} for ${fmt(o.reward)} coins, due tick ${fmt(o.deadline)}` })))
@@ -55,6 +67,7 @@ export function mountStartCard({ loop, info, skip }: { loop: GameLoop; info: Sta
       : (info.par === null ? [] : [row('Par', `${fmt(info.par)} coins. Reach it and the run is rated.`)]);
     body.replaceChildren(
       ...(b ? [el('blockquote', { class: 'start-notice', text: b.notice })] : []),
+      ...machineLine(),
       ...(b?.offline ? [el('p', { class: 'start-offline', role: 'status', text: OFFLINE_LINE })] : []),
       el('dl', { class: 'start-facts' },
         row(b ? b.name : 'Goal', info.goal),
@@ -74,6 +87,8 @@ export function mountStartCard({ loop, info, skip }: { loop: GameLoop; info: Sta
     if (document.activeElement && document.activeElement !== start && document.activeElement.tagName === 'BUTTON') return; // Enter on another button does that button's job
     e.preventDefault(); go();
   });
+  // The machine's score arrives in the background; the card repaints when it does.
+  window.addEventListener('tendril:rival', () => { if (visible() && lastSnap) fill(lastSnap); });
   window.addEventListener('tendril:snapshot', (event) => {
     const s = (event as CustomEvent<Snapshot>).detail;
     if (s.tick > 0) { shown = dismissed = false; hide(); return; } // a run is under way; the next reset to tick 0 shows the card again
