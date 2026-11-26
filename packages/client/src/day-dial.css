@@ -1,6 +1,6 @@
-/* Day dial: a thin arc under the ledger strip, in the free area left of the code slate. Its tick text is a ledger cell. */
-.dd { position: fixed; z-index: 22; top: calc(var(--ledger-h) + 8px); left: calc((100vw - var(--slate-w, 440px) - 24px) / 2); transform: translateX(-50%); width: min(300px, 34vw); min-width: 180px; display: flex; flex-direction: column; align-items: center; pointer-events: none; }
-.game-stage.slate-hidden .dd { left: 50%; }
+/* Day dial: a thin arc at the top centre of the farm panel. Its tick text is a ledger cell. */
+/* z-index 4: above the canvas, below the tool row */
+.dd { position: absolute; z-index: 4; top: 8px; left: 50%; transform: translateX(-50%); width: min(300px, 34vw); min-width: 180px; display: flex; flex-direction: column; align-items: center; pointer-events: none; }
 .dd-art { width: 100%; height: auto; overflow: visible; }
 .dd-track { fill: none; stroke: var(--root); stroke-width: 2; stroke-dasharray: 2 5; }
 .dd-done { fill: none; stroke: var(--carrot); stroke-width: 3; stroke-linecap: butt; }
@@ -21,7 +21,7 @@
 .dd-tick b { font-weight: 600; }
 .dd-tip { position: absolute; top: 100%; margin-top: 6px; padding: .35rem .6rem; width: max-content; max-width: 260px; font: 500 .8rem/1.3 var(--f-body); pointer-events: none; }
 .dd-tip[hidden] { display: none; }
-@media (max-width: 760px) { .dd { top: calc(var(--ledger-h) + 8px); width: 56vw; } }
+@media (max-width: 760px) { .dd { width: 56vw; } }
 /* The dial sits above the tool row: day-dial.ts sets --dd-bottom so the row starts below it. */
-body.game-stage #stage-tools { top: max(calc(var(--ledger-h) + 18px), var(--dd-bottom, 96px)); }
-@media (max-width: 760px) { body.game-stage #stage-tools { top: max(120px, var(--dd-bottom, 120px)); } }
+body.game-stage #stage-tools { top: var(--dd-bottom, 56px); }
+

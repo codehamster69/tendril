@@ -4,7 +4,6 @@ import { createEditor, EXAMPLES } from './editor';
 import { FarmView } from './farm-view';
 import { GameLoop } from './game-loop';
 import { RealSim } from './real-sim';
-import { mountReference } from './reference';
 import { mountIslandHud } from './island-hud';
 import { mountDebugger } from './debugger';
 import { mountConsole } from './console-panel';
@@ -76,7 +75,6 @@ const perf = mountPerfMeter({ renderInfo: () => view.renderInfo(), canvas: docum
 mountControls({ loop, editor });
 mountConsole(editor);
 mountDebugger();
-mountReference((code) => editor.setSource(editor.getSource() + '\n' + code + '\n'));
 mountIslandHud(view, () => sim.meta.seed, () => scenario.tickLimit ?? null);
 if (challenge) view.setMarket(challenge.market ?? null, { opensInDays: marketOpensIn(challenge) });
 mountProgression({ loop, editor, view, api });
@@ -88,7 +86,7 @@ mountNotice({ live: mode === 'live', verified: sim.ranked });
 mountUpdates();
 mountRating(api);
 mountAccount(api, sim);
-mountStage({ loop, editor, api, current: isSeason ? 'season' : mode, ranked: sim.ranked }); // last: it moves panels that the mounts above create
+mountStage({ loop, editor, api, current: isSeason ? 'season' : mode, ranked: sim.ranked }); // last: it builds the workbench from the nodes the mounts above create
 mountStartCard({ loop, skip: !!stress || firstRun, info: challenge ? challengeCardInfo(challenge) : mode === 'campaign' ? { eyebrow: `Lesson · ${lesson.title}`, goal: lesson.goal, par: null, ticks: lesson.tickLimit } : null });
 mountCatalogue({ editor }); // after the stage: it badges the menu button and entry
 mountWorldFeedback({ view, editor });
@@ -106,12 +104,7 @@ examples.addEventListener('change', () => {
   if (example && confirm('Replace your editor draft with this example? The farm is kept.')) { editor.setSource(example.source); editor.setErrors([]); editor.setDiagnostics([]); }
   examples.value = '';
 });
-for (const tab of document.querySelectorAll<HTMLButtonElement>('.deck-tabs button')) tab.addEventListener('click', () => {
-  for (const t of document.querySelectorAll<HTMLButtonElement>('.deck-tabs button')) t.setAttribute('aria-selected', String(t === tab));
-  for (const p of document.querySelectorAll<HTMLElement>('#view .deck')) p.hidden = p.id !== `deck-${tab.dataset.tab}`;
-});
-
-document.querySelector('.skip-link')?.addEventListener('click', (e) => { e.preventDefault(); editor.revealLine(1); });
+document.querySelector('.skip-link')?.addEventListener('click', (e) => { e.preventDefault(); window.dispatchEvent(new CustomEvent('tendril:open-panel', { detail: { id: 'code' } })); editor.revealLine(1); });
 
 document.addEventListener('visibilitychange', () => { if (document.hidden && sim.latest()) void sim.flush().catch(() => {}); });
 window.addEventListener('pagehide', () => { loop.dispose(); view.dispose(); sim.dispose(); });

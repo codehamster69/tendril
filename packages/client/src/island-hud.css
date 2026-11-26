@@ -44,8 +44,6 @@ button.hk-chip::after { border-radius: 0; }
 .crew-row { display: flex; justify-content: space-between; gap: var(--hk-s3); text-align: left; }
 .crew-row small { color: var(--chaff); font: 500 .75rem var(--f-code); letter-spacing: 0; text-transform: none; }
 
-.game-stage.farm-large #farm-minimap { right: calc(var(--slate-w) + 40px); bottom: 100px; }
-.game-stage.farm-large.slate-hidden #farm-minimap { right: 14px; }
 
 @media (max-width: 800px) { .order-cards { top: auto; bottom: 150px; width: 11rem; } .lens-legend { bottom: 100px; } }
 html[data-motion="reduced"] .order-card.filled, html[data-motion="reduced"] .order-card.gone { animation: none; opacity: 0; }

@@ -1,5 +1,5 @@
 /* Goal HUD (K6): a small glass card under the top-left chips. Quotas as bars; other goals a score and a par meter. */
-.goal-hud { position: fixed; z-index: 24; bottom: 78px; left: 14px; width: min(260px, calc(100vw - 28px)); display: grid; gap: 6px; padding: 10px 12px; font: 13px/1.3 var(--f-body); color: var(--straw); }
+.goal-hud { position: static; width: 100%; max-width: 320px; display: grid; gap: 6px; padding: 10px 12px; font: 13px/1.3 var(--f-body); color: var(--straw); }
 .goal-hud .gh-name { font: 600 13px/1 var(--f-label); letter-spacing: .09em; text-transform: uppercase; color: var(--carrot); }
 .goal-hud .gh-line { margin: 0; display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; }
 .goal-hud .gh-score { font: 700 26px/1 var(--f-code); font-variant-numeric: tabular-nums; }
@@ -16,5 +16,5 @@
 .goal-hud .gh-quota[data-done="true"] .gh-fill { background: var(--sprout); }
 .goal-hud .gh-quota[data-done="true"] .gh-have { color: var(--sprout); }
 body.start-open .goal-hud, body.menu-open .goal-hud { visibility: hidden; }
-@media (max-width: 720px) { .goal-hud { z-index: 30; bottom: 120px; width: min(220px, calc(100vw - 28px)); padding: 8px 10px; } .goal-hud .gh-score { font-size: 20px; } }
+@media (max-width: 720px) { .goal-hud { padding: 8px 10px; } .goal-hud .gh-score { font-size: 20px; } }
 @media (prefers-reduced-motion: reduce) { .goal-hud .gh-fill { transition: none; } }
