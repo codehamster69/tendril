@@ -31,6 +31,7 @@ import { el, toast } from './palette';
 import { mountPerfMeter } from './perf-meter';
 import { mountWorldFeedback } from './world-feedback';
 import { mountDryRun } from './dry-run';
+import { mountWelcomeBack } from './welcome-back';
 import { stressConfig, stressParam } from './stress-farm';
 import type { Mode } from './clock';
 import type { Scenario } from './sim-protocol';
@@ -93,6 +94,7 @@ mountStartCard({ loop, skip: !!stress || firstRun, info: challenge ? challengeCa
 mountCatalogue({ editor }); // after the stage: it badges the menu button and entry
 mountWorldFeedback({ view, editor });
 if (!stress) mountDryRun({ loop, editor }); // after the stage: it adds a button to the transport bar
+if (!stress && sim.ranked) mountWelcomeBack({ sim, api, revealLine: (line) => editor.revealLine(line) });
 if (sim.ranked) mountAutoSync(api, sim, document.getElementById('mode-note'));
 window.addEventListener('tendril:snapshot', (event) => view.update((event as CustomEvent).detail));
 
