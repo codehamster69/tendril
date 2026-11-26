@@ -1,7 +1,7 @@
 import { OP, SILO } from '@tendril/sim/src/index.ts';
 import type { LogEntry, Setup, Snapshot } from '@tendril/sim/src/index.ts';
 export interface Lesson { id: string; title: string; intro: string; goal: string; starter: string; solution: string; features: string[]; setup?: Setup; seed: number; tickLimit: number; check: (s: Snapshot, log: LogEntry[]) => boolean }
-const ALL = ['commands', 'repeat', 'variables', 'if', 'while', 'for', 'functions', 'lists', 'records', 'queries', 'market', 'farm', 'crew', 'weather', 'orders', 'buildings', 'utilities'];
+const ALL = ['commands', 'repeat', 'variables', 'if', 'while', 'for', 'functions', 'lists', 'records', 'queries', 'market', 'farm', 'crew', 'weather', 'orders', 'buildings', 'utilities', 'tend'];
 const harvest = 'move east\ntill\nplant carrot\nwait 100\nharvest\n';
 const sell = harvest + 'go_to barn\ndeposit\nsell carrot, all\n';
 const entries: Omit<Lesson, 'id' | 'features' | 'seed' | 'tickLimit'>[] = [
@@ -21,4 +21,4 @@ const entries: Omit<Lesson, 'id' | 'features' | 'seed' | 'tickLimit'>[] = [
   { title: 'Weather-wise farming', intro: 'forecast gives rain and frost intervals. Wheat survives frost, so it is a good crop for a route that must keep working.', goal: 'Research wheat and harvest it after checking the forecast.', starter: 'say forecast(500)\nunlock wheat\nmove east\n', solution: 'say forecast(500)\nunlock wheat\nmove east\ntill\nplant wheat\nwait 200\nharvest\n', setup: { coins: 1000 }, check: (s) => s.bots.some((b) => b.items[2]! > 0) },
   { title: 'Shorter trips', intro: 'Every trip to the barn costs ticks, and farms grow far from it. A silo takes deposits and sales like the barn. nearest_drop() returns the barn or the silo closest to your bot.', goal: 'Build a silo and deposit at the drop nearest your crop.', starter: '# Research the silo, then buy the plots you need.\nunlock silo\nbuy_plot 1, 0\nbuy_plot 1, 1\nbuy_plot 0, 1\n# Build the silo near the far plots, then plant and harvest there.\n', solution: 'unlock silo\nbuy_plot 1, 0\nbuy_plot 1, 1\nbuy_plot 0, 1\ngo_to 12, 12\nbuild silo\ngo_to 12, 9\ntill\nplant carrot\nwait 100\nharvest\ngo_to nearest_drop()\ndeposit\nsell carrot, all\n', setup: { coins: 3000, siloTick: 0 }, check: (_s, log) => log.some((e) => e[2] === OP.build && e[3] === SILO) && log.some((e) => e[2] === OP.deposit) },
 ];
-export const LESSONS: Lesson[] = entries.map((entry, i) => ({ ...entry, id: `lesson-${i + 1}`, features: i === 0 ? ['commands'] : i === 1 ? ['commands', 'repeat'] : i === 2 ? ['commands', 'repeat', 'variables'] : ALL, seed: 42, tickLimit: 3000 }));
+export const LESSONS: Lesson[] = entries.map((entry, i) => ({ ...entry, id: `lesson-${i + 1}`, features: i === 0 ? ['commands', 'tend'] : i === 1 ? ['commands', 'repeat', 'tend'] : i === 2 ? ['commands', 'repeat', 'variables', 'tend'] : ALL, seed: 42, tickLimit: 3000 }));
