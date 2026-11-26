@@ -5,6 +5,7 @@ import { isDesktop } from './api-client';
 import type { GameLoop } from './game-loop';
 import { utcToday } from './arena';
 import { el } from './palette';
+import { dailyStreak, streakText } from './streak';
 import { buildSettingsPanel } from './settings-panel';
 
 export type ModeKey = 'live' | 'sandbox' | 'campaign' | 'daily' | 'season';
@@ -93,8 +94,9 @@ export function mountMenu(ctx: MenuContext): MenuApi {
   const topActions = q('.top-actions');
   if (topActions) links.append(topActions);
 
+  const streakEl = el('span', { id: 'menu-streak' });
   const main = el('div', { class: 'menu-view', 'data-view': 'main' },
-    el('p', { class: 'menu-label', text: 'Play' }), el('div', { class: 'menu-entries' }, cont), modeGrid,
+    el('p', { class: 'menu-label' }, 'Play', streakEl), el('div', { class: 'menu-entries' }, cont), modeGrid,
     el('p', { class: 'menu-label', text: 'Farm and tools' }), toolsGrid, links);
 
   // ---- settings view ----
@@ -140,6 +142,7 @@ export function mountMenu(ctx: MenuContext): MenuApi {
       }).catch(() => { if (id !== current) note(id, 'Needs a connection'); });
     };
     show('daily', `d-${utcToday()}`);
+    void dailyStreak(api).then((n) => { if (n !== null) streakEl.textContent = ` · ${streakText(n)}`; });
     show('season', 'week');
     if (current !== 'live') note('live', ctx.ranked ? 'Server-verified' : 'Saved on this device');
   };

@@ -32,6 +32,7 @@ import { mountPerfMeter } from './perf-meter';
 import { mountWorldFeedback } from './world-feedback';
 import { mountDryRun } from './dry-run';
 import { mountLiveCode } from './live-code-ui';
+import { mountWelcomeBack } from './welcome-back';
 import { stressConfig, stressParam } from './stress-farm';
 import type { Mode } from './clock';
 import type { Scenario } from './sim-protocol';
@@ -95,6 +96,7 @@ mountCatalogue({ editor }); // after the stage: it badges the menu button and en
 mountWorldFeedback({ view, editor });
 mountLiveCode({ loop, editor });
 if (!stress) mountDryRun({ loop, editor }); // after the stage: it adds a button to the transport bar
+if (!stress && sim.ranked) mountWelcomeBack({ sim, api, revealLine: (line) => editor.revealLine(line) });
 if (sim.ranked) mountAutoSync(api, sim, document.getElementById('mode-note'));
 window.addEventListener('tendril:snapshot', (event) => view.update((event as CustomEvent).detail));
 

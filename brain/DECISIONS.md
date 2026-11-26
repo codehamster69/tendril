@@ -176,6 +176,9 @@ Live goal progress comes from the sim worker (`tendril:goal`), with `World.brief
 - **Consequences:** on a non-practice challenge, code swapped after tick 0 makes the run unverifiable as one program, so the result card says so and offers "Re-run my final code from the start". No rule, server or epoch change. Specs that edit a running farm and expect no effect must turn the setting off.
 
 
+## D-H7 Welcome back card from the catch-up log (2026-11-24)
+The away card counts sales and bot activity from the action log that catch-up already produces, instead of a second replay or new sim counters. Rules and goldens are untouched. Streak comes from the existing player page API; no email or push (they would need accounts or keys). Details in `brain/notes/H7.md`.
+
 ## D-H3 (2026-11-24) Crop Circles: the picture goal is setup version 3, shipped off (H3)
 - **Decision:** a new goal kind `picture` drawn only under `SETUP_PICTURE = 3`, behind `PICTURE_EPOCH = '2099-01-01'`. Dailies draw the goal out of 19 with picture 4 (about 21%); seasons keep the version 2 draw. A picture (8x8, 16x8 or 16x16, from a pool of 178 CC0 pictures or a seeded symmetric glyph, 1 draw in 5) is stored whole on the goal; extra plots come through `setup.plots`. Score is the permille of pixels matching the farm seen from above at the final tick (grass, soil, six ripe crops, the barn pixel matching anything); `parTick` is first time at par.
 - **Why:** every rule change ships off and dispatches by stored data, so every existing hash, challenge and duel replays as today (a digest of 4500 version 2 setups is pinned). Storing the picture on the goal means a later change to the pool cannot alter a stored challenge.
