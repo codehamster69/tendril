@@ -172,3 +172,8 @@ Live goal progress comes from the sim worker (`tendril:goal`), with `World.brief
 
 ## D-H7 Welcome back card from the catch-up log (2026-11-24)
 The away card counts sales and bot activity from the action log that catch-up already produces, instead of a second replay or new sim counters. Rules and goldens are untouched. Streak comes from the existing player page API; no email or push (they would need accounts or keys). Details in `brain/notes/H7.md`.
+
+## D-H13a (2026-11-24) Logic-first Sprout: `tend` blocks and `when` rules are expanded to ordinary Sprout (H13a)
+- **Decision:** `tend every tile:` with `when <plain words>: <action>` rules (first match wins) and top-level between-tile `when` rules compile to ordinary statements inside `compile`; `expandTend` prints the result. Walking, depositing when full, returning home and an idle `wait 10` are automatic in a fixed documented order. Several bots take contiguous shares of the tile list. `countTokens` counts only what the player wrote.
+- **Why:** players should write decisions, not plumbing. Expanding in the parser means the interpreter, compiled engine and server check run identical code, so no golden hash, challenge or replay changes and no epoch is needed.
+- **Consequences:** five contextual keywords (`tend when every unless region`), a `tend` lesson feature id, warnings for rules that can never run, `compile` returns the program alongside warnings. Lessons 1-3 and the "See the full program" button are follow-ups (client).

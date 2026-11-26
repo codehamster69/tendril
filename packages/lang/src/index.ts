@@ -8,5 +8,8 @@ export { CompileError, SproutError } from './errors.ts';
 export type { Diagnostic } from './errors.ts';
 export const LANGUAGE_VERSION = 1;
 export { countTokens, STRING_CHUNK } from './tokens.ts';
+export { expandTend } from './expand.ts';
+export { unparse } from './unparse.ts';
+export { TEND_WORDS } from './tend.ts';
 export { API_DOCS, KEYWORD_DOCS, runDemo } from './api-docs.ts';
 export type { ApiDoc } from './api-docs.ts';
