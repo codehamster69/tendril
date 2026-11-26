@@ -44,6 +44,8 @@ export interface EntryResult {
   /** Briefs: the visible farm's score, the final score over all farms (null until the hidden farms are scored) and whether it is still provisional. */
   score?: number | null; finalScore?: number | null; finalParTick?: number | null; provisional?: boolean;
 }
+/** The few board fields the client reads (the machine rival). `score` is the visible farm's goal score on a brief day; `finalScore` is set once the hidden farms are scored. */
+export interface BoardEntry { rank: number; login: string; value: number; authorKind: 'human' | 'model'; model: string | null; score?: number | null; finalScore?: number | null; provisional?: boolean }
 export interface DuelPage {
   id: string; seed: number; ticks: number; par: number | null; rulesVersion: number; createdAt: number;
   challenger: { login: string; displayName: string; avatarUrl: string | null } | null;
@@ -114,6 +116,10 @@ export class FarmApi {
   }
   replay(id: string, fromTick = 0): Promise<ReplayResponse> { return this.request(`/farms/${encodeURIComponent(id)}/replay?fromTick=${fromTick}&limit=1`); }
   challenge(id: string): Promise<ChallengeInfo> { return this.request(`/challenges/${encodeURIComponent(id)}`); }
+  /** The top entries of one author kind, for the machine rival. Never blocks play: callers ignore failures. */
+  challengeBoard(id: string, author: 'human' | 'model', limit = 5): Promise<{ entries: BoardEntry[] }> {
+    return this.request(`/challenges/${encodeURIComponent(id)}/board?author=${author}&limit=${limit}`);
+  }
   createDuel(body: { seed: number; ticks: number; from?: string }): Promise<{ challengeId: string }> { return this.request('/duels', 'POST', body); }
   duel(id: string): Promise<DuelPage> { return this.request(`/duels/${encodeURIComponent(id)}`); }
   acceptDuel(id: string): Promise<{ accepted: true; changed: boolean; challenger: { login: string; displayName: string } }> {

@@ -7,6 +7,10 @@ name: Model runs
 #   TENDRIL_RUNNER_TOKEN a random 43-character token whose SHA-256 is set in Vercel as MODEL_RUNNER_TOKEN_SHA256
 # Repository variables: MODEL_RUNNER_MODEL (default gemini-3.5-flash), MODEL_RUNNER_PROVIDER (gemini or anthropic).
 # For anthropic also set the ANTHROPIC_API_KEY secret.
+# More rivals: set MODEL_RUNNER_MODELS to provider:model pairs separated by spaces, commas or new lines, for example
+#   gemini:gemini-3.5-flash anthropic:claude-haiku-5-5
+# Each pair whose provider key exists as a secret plays and submits under its own model name; the others are skipped quietly.
+# With the variable unset, the single model above plays, exactly as before. A manual run with a model input plays only that one.
 
 on:
   schedule:
@@ -37,18 +41,27 @@ jobs:
       PROVIDER: ${{ vars.MODEL_RUNNER_PROVIDER || 'gemini' }}
       TENDRIL_TOKEN: ${{ secrets.TENDRIL_RUNNER_TOKEN }}
       MODEL: ${{ inputs.model || vars.MODEL_RUNNER_MODEL || 'gemini-3.5-flash' }}
+      MODELS: ${{ vars.MODEL_RUNNER_MODELS }}
+      MODEL_INPUT: ${{ inputs.model }}
       CHALLENGE: ${{ inputs.challenge || 'today' }}
     steps:
-      - name: Check secrets
+      - name: Plan the runs
         id: gate
         run: |
-          key="$GEMINI_API_KEY"; [ "$PROVIDER" = anthropic ] && key="$ANTHROPIC_API_KEY"
-          if [ -z "$key" ] || [ -z "$TENDRIL_TOKEN" ]; then
-            echo "::notice::The $PROVIDER API key or TENDRIL_RUNNER_TOKEN is not set; skipping."
-            echo "run=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "run=true" >> "$GITHUB_OUTPUT"
-          fi
+          # One "provider:model" per line in $RUNNER_TEMP/plan; a pair is kept only when its provider's key is set.
+          plan="$RUNNER_TEMP/plan"; : > "$plan"
+          pairs="$MODELS"; [ -n "$MODEL_INPUT" ] && pairs=""
+          [ -z "${pairs//[[:space:],]/}" ] && pairs="$PROVIDER:$MODEL"
+          for pair in $(printf '%s' "$pairs" | tr ',\n' '  '); do
+            provider="${pair%%:*}"; model="${pair#*:}"
+            case "$provider" in gemini) key="$GEMINI_API_KEY" ;; anthropic) key="$ANTHROPIC_API_KEY" ;; *) key="" ;; esac
+            if [ "$provider" = "$pair" ] || [ -z "$model" ]; then echo "::notice::Skipping '$pair': use provider:model."
+            elif [ -z "$key" ]; then echo "::notice::Skipping $pair: no API key for $provider."
+            else echo "$provider:$model" >> "$plan"; fi
+          done
+          if [ -z "$TENDRIL_TOKEN" ]; then echo "::notice::TENDRIL_RUNNER_TOKEN is not set; skipping."; echo "run=false" >> "$GITHUB_OUTPUT"
+          elif [ ! -s "$plan" ]; then echo "::notice::No model has its API key set; skipping."; echo "run=false" >> "$GITHUB_OUTPUT"
+          else echo "Playing: $(tr '\n' ' ' < "$plan")"; echo "run=true" >> "$GITHUB_OUTPUT"; fi
       - if: steps.gate.outputs.run == 'true'
         name: Token fingerprint (SHA-256 is not secret; compare it with MODEL_RUNNER_TOKEN_SHA256 in Vercel)
         run: |
@@ -66,4 +79,11 @@ jobs:
         run: pnpm install --frozen-lockfile
       - if: steps.gate.outputs.run == 'true'
         name: Play and submit
-        run: node --experimental-transform-types --no-warnings examples/agent/run.ts --provider "$PROVIDER" --model "$MODEL" --challenge "$CHALLENGE" --attempts 3 --submit
+        run: |
+          failed=0
+          while IFS=: read -r provider model; do
+            echo "::group::$provider $model"
+            node --experimental-transform-types --no-warnings examples/agent/run.ts --provider "$provider" --model "$model" --challenge "$CHALLENGE" --attempts 3 --submit || { echo "::error::$provider:$model failed"; failed=1; }
+            echo "::endgroup::"
+          done < "$RUNNER_TEMP/plan"
+          exit "$failed"

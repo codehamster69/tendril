@@ -23,6 +23,7 @@ import { mountResultScreen } from './result-screen';
 import { briefOf, challengeScenario, loadChallenge, marketOpensIn, mountArena } from './arena';
 import { worldSeedOf } from './challenge-setup';
 import { mountGoalHud } from './goal-hud';
+import { mountRival } from './machine';
 import { FarmApi, signedInHint, wireSiteLinks } from './api-client';
 import { mountJoinDuel } from './join-duel';
 import { mountAutoSync } from './autosync';
@@ -83,6 +84,7 @@ mountIslandHud(view, () => sim.meta.seed, () => scenario.tickLimit ?? null);
 if (challenge) view.setMarket(challenge.market ?? null, { opensInDays: marketOpensIn(challenge) });
 mountProgression({ loop, editor, view, api });
 if (firstRun) mountFirstRun({ editor });
+if (challenge) mountRival({ api, challenge }); // before the HUD, the result screen and the start card, which read it
 if (challenge) mountArena({ loop, api, challenge });
 if (challenge) mountResultScreen({ loop, api, challenge, view });
 if (challenge) mountGoalHud({ challenge });
