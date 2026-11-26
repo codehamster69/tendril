@@ -2,6 +2,7 @@ import { DAILY_TICKS } from '@tendril/sim/src/index.ts';
 import { authenticate, clearSessionCookie, devAuthEnabled, devLogin, finishGithub, getProfile, logout, pollDesktop, sessionCookie, startGithub } from './auth.ts';
 import type { Ctx, Env, FetchFn, Identity } from './auth.ts';
 import type { Db } from './db.ts';
+import { dbErrorCode, isTransientDbError } from './db.ts';
 import { acceptDuel, duelCounts, duelPage } from './duels.ts';
 import { board, challengeInfo, createDuel, entryReplay, entrySource, entrySummary, hallOfFame, publishedSources, KIND_LIMITS, legacyLeaderboard, legacySubmit, noteLegacySubmit, refreshLegacyGrace, loadChallenge, marketOf, MAX_SOURCE_BYTES, moveLegacyDaily, stats, submitEntry } from './arena.ts';
 import type { AuthorKind, Medal } from './arena.ts';
@@ -13,6 +14,7 @@ import { handleDailyPages } from './daily-pages.ts';
 import { createGuard, dropReplaysOutsideTop, pruneOncePerDay, rateScale, refreshGuard, prune, syncScale, withCacheHeaders } from './housekeeping.ts';
 import type { SourceVerifier } from './verify-client.ts';
 import { reportProgram } from './moderation.ts';
+import { listPackets, packetInput, packetPage, packetTag, plantPacket, publishPacket, reportPacket } from './packets.ts';
 import { challengeSalt, createBriefCloser } from './brief.ts';
 import { createRater, decorateBoard, disciplineParam, latestChange, ratingBoard, ratingModels } from './ratings.ts';
 import { migrate } from './migrations.ts';
@@ -380,6 +382,35 @@ function createInnerApp(options: AppOptions): (request: Request) => Promise<Resp
           return json(await acceptDuel(db, await loadChallenge(db, ref!, now(), options.verifySource, options.setupVersion, salt), identity.userId, now()));
         }
       }
+      // ---- H8 seed packets: public reads are CDN-cached; sharing, planting and reporting need a session ----
+      if (route === '/packets' && method === 'GET') {
+        rejectQuery(url, ['sort', 'tag', 'limit']);
+        const sort = url.searchParams.get('sort') ?? 'popular';
+        if (sort !== 'popular' && sort !== 'new') throw new HttpError(400, 'Invalid sort');
+        return json(await listPackets(db, sort, packetTag(url.searchParams.get('tag')), limitParam(url), now()));
+      }
+      if (route === '/packets' && method === 'POST') {
+        const identity = await requireUser();
+        await reserveAttempt(db, identity.userId, 'packet', now(), undefined, scale);
+        rejectQuery(url);
+        const input = packetInput(await readJson(request));
+        return json(await publishPacket(db, identity.userId, input, now()), 201);
+      }
+      const packetRoute = /^\/packets\/([^/]+?)(?:\/(plant|report))?$/.exec(route);
+      if (packetRoute) {
+        const [, id, action] = packetRoute;
+        if (!action && method === 'GET') {
+          rejectQuery(url);
+          return json(await packetPage(db, id!, now()));
+        }
+        if (action && method === 'POST') {
+          const identity = await requireUser();
+          await reserveAttempt(db, identity.userId, action === 'plant' ? 'follow' : 'report', now(), undefined, scale);
+          rejectQuery(url);
+          objectWithKeys(await readJson(request), []);
+          return json(action === 'plant' ? await plantPacket(db, identity.userId, id!, now()) : await reportPacket(db, identity.userId, id!, now()));
+        }
+      }
       // ---- players: profile, follows, README badge (B5) ----
       const playerRoute = /^\/players\/([^/]+?)(?:\/(follow|unfollow))?$/.exec(route);
       if (playerRoute) {
@@ -446,7 +477,14 @@ function createInnerApp(options: AppOptions): (request: Request) => Promise<Resp
       throw new HttpError(404, 'Not found');
     } catch (error) {
       if (error instanceof HttpError) return json({ error: error.message }, error.status);
-      console.error('Unhandled server error:', error instanceof Error ? error.name : typeof error); // never log request data
+      const code = dbErrorCode(error);
+      if (code !== undefined && isTransientDbError(error, true)) { // busy only: the statement did not apply, so a retry cannot double-write
+        // Storage stayed busy or unreachable through the retries in db.ts: ask the client to come back shortly.
+        console.error('Transient storage error after retries:', code); // codes only, never request data
+        headers.set('Retry-After', '5');
+        return json({ error: 'Storage is busy. Please try again in a few seconds.' }, 503);
+      }
+      console.error('Unhandled server error:', code ?? (error instanceof Error ? error.name : typeof error)); // never log request data
       return json({ error: 'Internal server error' }, 500);
     }
   };

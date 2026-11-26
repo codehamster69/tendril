@@ -1,13 +1,14 @@
 import type { FarmView } from './farm-view';
 import { el } from './palette';
 
-/** Keys 1 to 4 pick a lens. The same key again goes back to natural. */
+/** Keys 1 to 6 pick a lens. The same key again goes back to natural. */
 const LENSES = [
   { key: '1', id: 'nitrogen', name: 'Soil', lo: 'poor', hi: 'rich', grad: '#e0c898, #468653' },
   { key: '2', id: 'moisture', name: 'Water', lo: 'dry', hi: 'wet', grad: '#e0bb79, #287caf' },
   { key: '3', id: 'growth', name: 'Growth', lo: 'bare', hi: 'ripe', grad: '#9aa98c, #f2b84b' },
   { key: '4', id: 'price', name: 'Value', lo: 'cheap', hi: 'dear', grad: '#3b6fa8, #cfe0c8, #ff8a2e' },
   { key: '5', id: 'drop', name: 'Drop', lo: 'near a drop', hi: 'far', grad: '#4fd1b0, #c86a3a' },
+  { key: '6', id: 'grid', name: 'Grid', lo: '', hi: '', grad: '' },
 ] as const;
 
 const typing = (t: EventTarget | null): boolean => {
@@ -32,7 +33,8 @@ export function mountLens(view: FarmView, stage: HTMLElement): void {
     if (!l) return;
     name.textContent = `${l.key} ${l.name}`;
     lo.textContent = l.lo; hi.textContent = l.hi;
-    bar.style.background = `linear-gradient(90deg, ${l.grad})`;
+    bar.hidden = !l.grad;
+    if (l.grad) bar.style.background = `linear-gradient(90deg, ${l.grad})`;
   };
   const set = (id: string): void => {
     if (!select) { view.setLens(id as never); return; }

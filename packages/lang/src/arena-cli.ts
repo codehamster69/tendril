@@ -233,3 +233,61 @@ export async function submit(options: SubmitOptions = {}): Promise<void> {
   console.log(renderMosaic(e.mosaic));
   console.log(`Rank: wealth ${e.ranks.wealth ?? '-'}, speed ${e.ranks.speed ?? '-'}, brevity ${e.ranks.brevity ?? '-'} of ${e.total} (top ${100 - e.percentile + 1}%)`);
 }
+
+// ---- seed packets (H8): tendril packets, tendril packet publish|plant ----
+type PacketRow = { id: string; name: string; note: string; tags: string[]; plants: number; parentId: string | null; author: { login: string } };
+
+/** `tendril packets [new]`: the popular (default) or newest packets. Public; no sign-in. */
+export async function packets(sort: string | undefined): Promise<void> {
+  const order = sort === 'new' ? 'new' : 'popular';
+  if (sort && sort !== 'new' && sort !== 'popular') throw new Error('Usage: tendril packets [popular|new]');
+  const r = await api<{ packets: PacketRow[] }>(`/packets?sort=${order}&limit=20`);
+  if (r.status !== 200) fail('Packets', r);
+  if (r.json.packets.length === 0) { console.log('No seed packets yet. Share the first: tendril packet publish my.sprout --name "My farm"'); return; }
+  for (const p of r.json.packets) {
+    console.log(`${p.id}  ${p.name}  by ${p.author.login}, ${p.plants} ${p.plants === 1 ? 'plant' : 'plants'}${p.parentId ? ', a remix' : ''}${p.tags.length ? ` [${p.tags.join(', ')}]` : ''}`);
+  }
+  console.log('\nPlant one with: tendril packet plant <id> [file.sprout]');
+}
+
+export interface PublishOptions { name?: string; note?: string; tags: string[]; parent?: string }
+/** Parses `--name x --note y --tag a --tag b --parent id` (after the file name). */
+export function parsePublishOptions(args: string[]): PublishOptions {
+  const out: PublishOptions = { tags: [] };
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i]!;
+    const value = (): string => { const v = args[++i]; if (v === undefined || v.startsWith('--')) throw new Error(`${a} needs a value`); return v; };
+    if (a === '--name') out.name = value();
+    else if (a === '--note') out.note = value();
+    else if (a === '--tag') out.tags.push(value());
+    else if (a === '--parent') out.parent = value();
+    else throw new Error(`Unknown option ${a}. Usage: tendril packet publish file.sprout --name "Name" [--note "..."] [--tag tiny] [--parent <packet id>]`);
+  }
+  return out;
+}
+
+/** `tendril packet publish file.sprout --name "..."`: shares a program as a seed packet (sign-in needed). */
+export async function publishPacket(file: string | undefined, options: PublishOptions): Promise<void> {
+  if (!file || !options.name) throw new Error('Usage: tendril packet publish file.sprout --name "Name" [--note "..."] [--tag tiny] [--parent <packet id>]');
+  const source = readFileSync(file, 'utf8');
+  const token = loadToken();
+  if (!token) throw new Error('Not signed in. Run: tendril login');
+  const r = await api<{ id: string; parentId: string | null }>('/packets', { token, body: { name: options.name, note: options.note, tags: options.tags, source, parentId: options.parent ?? null, origin: 'cli' } });
+  if (r.status !== 201) fail('Share', r);
+  console.log(`Shared "${options.name}"${r.json.parentId ? ' as a remix' : ''}.\n${apiOrigin()}/packets/${r.json.id}`);
+}
+
+/** `tendril packet plant <id> [file.sprout]`: writes a packet's program to a file (never over an existing one) and counts a plant if signed in. */
+export async function plantPacket(id: string | undefined, file: string | undefined): Promise<void> {
+  const wanted = /([A-Za-z0-9_-]{8,16})\/?$/.exec(id ?? '')?.[1];
+  if (!wanted) throw new Error('Usage: tendril packet plant <packet id> [file.sprout]');
+  const r = await api<{ id: string; name: string; source: string; author: { login: string } }>(`/packets/${encodeURIComponent(wanted)}`);
+  if (r.status !== 200) fail('Packet', r);
+  const out = file ?? `${wanted}.sprout`;
+  if (existsSync(out)) throw new Error(`${out} already exists. Pick another file name: tendril packet plant ${wanted} other.sprout`);
+  writeFileSync(out, r.json.source);
+  console.log(`Planted "${r.json.name}" by ${r.json.author.login} in ${out}.`);
+  const token = loadToken();
+  if (token) await api(`/packets/${encodeURIComponent(wanted)}/plant`, { token, body: {} });
+  console.log(`Change it, then share your version: tendril packet publish ${out} --name "My version" --parent ${wanted}`);
+}

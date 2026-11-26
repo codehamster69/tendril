@@ -62,3 +62,8 @@ html[data-motion="reduced"] *, html[data-motion="reduced"] *::before, html[data-
 .start-actions { flex-wrap: wrap; }
 .start-another { margin-left: auto; }
 @media (max-width: 640px) { .start-another { margin-left: 0; } }
+
+/* plain-words line under each mode, and the "things to try" list */
+.menu-entry .menu-what { color: var(--straw); font: 400 .8rem var(--f-body); }
+.try-head { display: flex; justify-content: space-between; align-items: center; gap: var(--hk-s3); }
+.try-it[hidden] { display: none; }

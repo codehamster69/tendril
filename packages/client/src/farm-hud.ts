@@ -3,7 +3,7 @@ import type { LightPreset } from './farm-light';
 import { FarmMinimap, lodLabel } from './farm-minimap';
 import { mountDayDial, type DayDial } from './day-dial';
 
-export type Lens = 'none' | 'moisture' | 'nitrogen' | 'fatigue' | 'growth' | 'price' | 'drop';
+export type Lens = 'none' | 'grid' | 'moisture' | 'nitrogen' | 'fatigue' | 'growth' | 'price' | 'drop';
 export type ZoomMode = 'cursor' | 'center';
 
 export interface FarmHudApi {
@@ -20,7 +20,7 @@ const LIGHTS: { id: LightPreset; label: string }[] = [
   { id: 'day', label: 'Day' }, { id: 'dawn', label: 'Dawn' }, { id: 'noon', label: 'Noon' }, { id: 'golden', label: 'Golden' }, { id: 'night', label: 'Night' },
 ];
 const LENSES: { id: Lens; label: string }[] = [
-  { id: 'none', label: 'Natural' }, { id: 'moisture', label: 'Moisture' }, { id: 'nitrogen', label: 'Nitrogen' }, { id: 'fatigue', label: 'Fatigue' }, { id: 'growth', label: 'Growth' }, { id: 'price', label: 'Price' }, { id: 'drop', label: 'Distance to drop' },
+  { id: 'none', label: 'Natural' }, { id: 'moisture', label: 'Moisture' }, { id: 'nitrogen', label: 'Nitrogen' }, { id: 'fatigue', label: 'Fatigue' }, { id: 'growth', label: 'Growth' }, { id: 'price', label: 'Price' }, { id: 'drop', label: 'Distance to drop' }, { id: 'grid', label: 'Grid' },
 ];
 const LIGHT_KEY = 'tendril.light';
 const ZOOM_KEY = 'tendril.zoomMode';

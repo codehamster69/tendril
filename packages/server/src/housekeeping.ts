@@ -244,6 +244,8 @@ export function edgeSeconds(route: string): number | null {
   if (route === '/ratings/board') return 60;
   if (route === '/ratings/models') return 300;
   if (route === '/daily') return 60;
+  if (route === '/packets') return 60;
+  if (/^\/packets\/[A-Za-z0-9_-]{6,16}$/.test(route)) return 60;
   if (/^\/challenges\/[^/]+$/.test(route)) return 30;
   if (/^\/challenges\/[^/]+\/board$/.test(route)) return 30;
   if (/^\/entries\/[^/]+$/.test(route)) return 60;
