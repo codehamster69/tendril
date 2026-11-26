@@ -1,0 +1,103 @@
+---
+import Base from '../layouts/Base.astro';
+---
+<Base title="Humans vs machines" description="Every day, the best human run against the best AI model run on the same Tendril farm, and a running tally of who is ahead.">
+  <section class="wrap page">
+    <p class="kicker">Daily farm</p>
+    <h1>Humans vs machines</h1>
+    <p class="lede">An AI model plays every daily farm, and its score goes up against the best person's. See who is ahead, then <a href="/play/?mode=daily">play today's farm</a> and try to beat it.</p>
+
+    <p class="tally" data-tally role="status">Loading…</p>
+
+    <div class="table-scroll" data-table-wrap hidden>
+      <table class="bench">
+        <thead><tr><th>Day</th><th>Best human</th><th>Best machine</th><th>Result</th></tr></thead>
+        <tbody data-rows></tbody>
+      </table>
+    </div>
+    <p class="state" data-state hidden></p>
+
+    <p class="about">The machine is an open harness (<a href="/docs/models/">how models enter</a>) that plays each daily with an AI model and publishes its program, so anyone can read how it did it. Scores are checked by the server like any other run. On a day with hidden farms, a score is the visible farm's until the day closes. The boards live on the <a href="/leaderboard/#daily">leaderboard</a>.</p>
+  </section>
+</Base>
+
+<script>
+  import { api, el, fmt } from '../scripts/arena';
+
+  interface Run { login: string; displayName: string; model: string | null; value: number; final: boolean; entryId: string }
+  interface Day { id: string; date: string; number: number | null; closed: boolean; goal: string | null; human: Run | null; models: Run[]; winner: 'humans' | 'machines' | 'tie' | null }
+  interface Bench { days: Day[]; tally: { decided: number; humans: number; machines: number; ties: number } }
+
+  /** "gemini-3.5-flash" -> "Gemini 3.5 Flash" (the game uses the same rule). */
+  function label(id: string): string {
+    const out: string[] = [];
+    for (const p of id.trim().split(/[-_\s]+/).filter(Boolean)) {
+      const prev = out[out.length - 1];
+      if (/^\d$/.test(p) && prev !== undefined && /^\d$/.test(prev)) out[out.length - 1] = `${prev}.${p}`;
+      else out.push(/^\d/.test(p) ? p : p[0]!.toUpperCase() + p.slice(1));
+    }
+    return out.join(' ') || 'Machine';
+  }
+  /** A score as a player reads it: coins, except the festival, which counts permille of the quotas. */
+  const score = (goal: string | null, v: number): string => (goal === 'festival' ? `${(v / 10).toFixed(1)}%` : fmt.format(v));
+  const GOALS: Record<string, string> = { wealth: 'Wealth', festival: 'Harvest festival', specialist: 'Specialist prices', orders: 'Orders only', inherited: 'Inherited farm' };
+  const dayLabel = (d: Day): string => new Date(`${d.date}T00:00:00Z`).toLocaleDateString(undefined, { month: 'short', day: 'numeric', timeZone: 'UTC' });
+
+  const rows = document.querySelector<HTMLElement>('[data-rows]')!;
+  const wrap = document.querySelector<HTMLElement>('[data-table-wrap]')!;
+  const tallyEl = document.querySelector<HTMLElement>('[data-tally]')!;
+  const stateEl = document.querySelector<HTMLElement>('[data-state]')!;
+
+  function tallyText(b: Bench): string {
+    const t = b.tally;
+    if (t.decided === 0) return 'No day has been decided yet. A day counts once it has closed and both a person and a machine have a final score.';
+    return `Humans have won ${t.humans} of the last ${t.decided} decided ${t.decided === 1 ? 'day' : 'days'}${t.ties ? `, with ${t.ties} tied` : ''}.`;
+  }
+
+  function resultCell(d: Day): Node | string {
+    if (!d.human || d.models.length === 0) return el('span', 'dim', d.human ? 'No machine entry' : d.models.length ? 'No human entry' : 'No entries');
+    const m = d.models[0]!;
+    const pct = (hi: number, lo: number): string => (lo > 0 ? ` by ${Math.max(1, Math.round(((hi - lo) * 100) / lo))}%` : '');
+    if (!d.closed || d.winner === null) return el('span', 'dim', d.closed ? 'Being scored' : 'Today, in progress');
+    if (d.winner === 'tie') return 'Tie';
+    return d.winner === 'humans' ? el('b', 'win-h', `Humans${pct(d.human.value, m.value)}`) : el('b', 'win-m', `Machine${pct(m.value, d.human.value)}`);
+  }
+
+  function render(b: Bench): void {
+    tallyEl.textContent = tallyText(b);
+    if (b.days.length === 0) { stateEl.textContent = 'No daily challenges yet.'; stateEl.hidden = false; return; }
+    rows.replaceChildren();
+    for (const d of b.days) {
+      const tr = el('tr');
+      const day = el('td'); day.append(el('span', 'day', dayLabel(d)));
+      if (d.goal && GOALS[d.goal]) day.append(el('small', 'goal', GOALS[d.goal]!));
+      const human = el('td');
+      if (d.human) { const a = el('a', 'player', d.human.displayName || d.human.login); a.href = `/u/?login=${encodeURIComponent(d.human.login)}`; human.append(a, el('span', 'score', ` ${score(d.goal, d.human.value)}${d.human.final ? '' : '*'}`)); } else human.append(el('span', 'dim', '—'));
+      const machine = el('td');
+      if (d.models[0]) { const m = d.models[0]; machine.append(el('span', 'model', label(m.model ?? '')), el('span', 'score', ` ${score(d.goal, m.value)}${m.final ? '' : '*'}`)); } else machine.append(el('span', 'dim', '—'));
+      const res = el('td'); res.append(resultCell(d));
+      tr.append(day, human, machine, res);
+      rows.append(tr);
+    }
+    wrap.hidden = false;
+    if (b.days.some((d) => d.human && !d.human.final || d.models[0] && !d.models[0].final)) { stateEl.textContent = '* Visible farm only. The final score adds the hidden farms when the day closes.'; stateEl.hidden = false; }
+  }
+
+  void api<Bench>('/bench').then((b) => {
+    if (!b) { tallyEl.textContent = 'The scores could not be loaded. Try again in a minute.'; return; }
+    render(b);
+  });
+</script>
+
+<style is:global>
+  .tally { font: 700 1.25rem/1.35 var(--display); margin: 0 0 1.5rem; }
+  table.bench td, table.bench th { text-align: left; padding: 0.55rem 0.6rem 0.55rem 0; vertical-align: baseline; }
+  table.bench .score { color: var(--dim); font-variant-numeric: tabular-nums; }
+  table.bench .model { font-weight: 600; }
+  table.bench .day { white-space: nowrap; }
+  table.bench .goal { display: block; color: var(--dim); font-size: 0.82rem; }
+  table.bench .dim, .bench-page .dim { color: var(--dim); }
+  table.bench .win-h { color: var(--leaf); }
+  table.bench .win-m { color: var(--ink); }
+  .state[hidden] { display: none; }
+</style>
