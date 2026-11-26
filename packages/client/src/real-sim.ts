@@ -6,6 +6,7 @@ import type { ChunkResponse, FarmResponse } from './api-client';
 import { targetTick, type Meta, type Mode } from './clock';
 import { planSubmission, trimLocalLog, validateFarm, type Accepted, type LogChunk, type Submission } from './chunks';
 import type { GoalProgress } from './goal-progress';
+import type { AwayFacts } from './away-facts';
 import type { BotDebug, Diagnostic, FromWorker, OutputLine, Scenario, SimError, StateMessage, ToWorker, ViewEvent } from './sim-protocol';
 import { ViewStore } from './view-codec';
 import type { ViewSnapshot } from './view-codec';
@@ -119,6 +120,8 @@ export class RealSim implements SimSource {
   drainEvents(): ViewEvent[] { return this.viewEvents.splice(0); }
   drainOutput(): OutputLine[] { return this.out.splice(0); }
   drainErrors(): SimError[] { return this.errs.splice(0); }
+  /** Counts sales and bot activity from the log of every step, for the welcome-back card. Null: nothing is counted. */
+  facts: AwayFacts | null = null;
   /** Every action kind this farm has ever logged, kept cheaply so achievements need not scan or copy the log. */
   private opsSeen = new Set<number>();
   opKinds(): ReadonlySet<number> { return this.opsSeen; }
@@ -446,6 +449,7 @@ export class RealSim implements SimSource {
     // A light step is not saved: its actions wait in memory with the others until the next full save (see requestStep).
     const log = this.held ? this.held.log : [];
     for (const entry of state.log) log.push(entry);
+    this.facts?.record(state.log);
     const from = this.held?.from ?? { tick: state.fromTick, hash: state.fromHash || this.durableHash || '' };
     if (light || log.some((entry) => entry[0] >= state.view.tick)) {
       this.hashStale ||= light;
