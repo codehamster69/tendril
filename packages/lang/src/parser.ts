@@ -1,13 +1,19 @@
 import type { AssignOp, BinaryOp, Expr, Pos, Stmt } from './ast.ts';
 import { API, CONSTANTS } from './api.ts';
-import { didYouMean, type Diagnostic, SproutError } from './errors.ts';
+import { didYouMean, type Diagnostic, SproutError, suggest } from './errors.ts';
 import { lex, type Token } from './lexer.ts';
+import { desugar, rewriteCond, tendBody, TEND_WORDS, unlessBody } from './tend.ts';
+import type { TendNode, TendRule, TendTarget, WhenNode } from './tend.ts';
 export interface Program { body: Stmt[] }
 export interface CompileOptions { features?: ReadonlySet<string> }
 const pos = (t: Pos): Pos => ({ line: t.line, col: t.col, endCol: t.endCol });
 const PRECEDENCE: Record<string, number> = { or: 1, and: 2, '==': 4, '!=': 4, '<': 4, '<=': 4, '>': 4, '>=': 4, is: 4, in: 4, not: 4, '+': 5, '-': 5, '*': 6, '/': 6, '%': 6 };
 class Parser {
   i = 0;
+  /** True while reading the one-line action of a rule, where `unless` ends a command. */
+  inRule = false;
+  /** Block nesting, and how deep inside a rule body we are (a `when` or `tend` cannot start there). */
+  depth = 0; ruleDepth = 0;
   constructor(private tokens: Token[]) {}
   get t(): Token { return this.tokens[this.i]!; }
   take(): Token { return this.tokens[this.i++]!; }
@@ -64,7 +70,7 @@ class Parser {
     }
     return left;
   }
-  block(): Stmt[] { this.need(':'); this.need('\n'); this.need('INDENT'); const body = this.statements(); this.need('DEDENT'); return body; }
+  block(): Stmt[] { this.need(':'); this.need('\n'); this.need('INDENT'); this.depth++; const body = this.statements(); this.depth--; this.need('DEDENT'); return body; }
   statements(): Stmt[] {
     const out: Stmt[] = [];
     while (this.t.kind !== 'dedent' && this.t.kind !== 'eof') { if (this.eat('\n')) continue; out.push(this.statement()); }
@@ -72,6 +78,12 @@ class Parser {
   }
   statement(): Stmt {
     const t = this.t, p = pos(t), k = t.text;
+    if (k === 'tend' && this.colonOnLine(true)) return this.tendBlock();
+    if (k === 'when' && this.colonOnLine(false)) {
+      if (this.depth > 0 || this.ruleDepth > 0) this.fail('A top-level `when` rule belongs at the start of your program, or inside a `tend` block, not inside another block.');
+      const rule = this.rule();
+      return { k: 'when', cond: rule.cond, body: rule.body, pos: rule.pos } as WhenNode as unknown as Stmt;
+    }
     if (['if', 'while', 'repeat', 'for', 'define', 'def'].includes(k)) {
       this.take();
       if (k === 'if') {
@@ -96,6 +108,12 @@ class Parser {
       if (!this.eat(')')) { do { const n = this.name(); params.push({ name: n.text, pos: pos(n) }); } while (this.eat(',')); this.need(')'); }
       return { k: 'define', name: name.text, namePos: pos(name), params, body: this.block(), pos: p };
     }
+    const s = this.simple();
+    this.need('\n'); return s;
+  }
+  /** One statement that fits on a line, without its line break. */
+  simple(): Stmt {
+    const t = this.t, p = pos(t), k = t.text;
     let s: Stmt;
     if (['pass', 'break', 'continue', 'stop'].includes(k)) { this.take(); s = { k: k as 'pass', pos: p }; }
     else if (k === 'return') { this.take(); s = { k: 'return', value: this.t.kind === 'newline' ? null : this.expression(), pos: p }; }
@@ -106,18 +124,90 @@ class Parser {
       if (['=', '+=', '-=', '*='].includes(this.t.text)) {
         if (!['name', 'index', 'field'].includes(e.k)) this.fail('Assign to a variable, list index or record field.');
         const op = this.take().text as AssignOp; s = { k: 'assign', target: e, op, value: this.expression(), pos: p };
-      } else if (e.k === 'name' && this.t.kind !== 'newline' && this.t.kind !== 'eof') {
+      } else if (e.k === 'name' && this.t.kind !== 'newline' && this.t.kind !== 'eof' && !(this.inRule && this.t.text === 'unless')) {
         const args: Expr[] = []; do { args.push(this.expression()); } while (this.eat(',')); s = { k: 'expr', e: { k: 'call', callee: e, args, pos: p }, command: true, pos: p };
       } else s = { k: 'expr', e: e.k === 'name' ? { k: 'call', callee: e, args: [], pos: p } : e, command: e.k === 'name', pos: p };
     }
-    this.need('\n'); return s;
+    return s;
+  }
+  /** Is the rest of this line a block head (`tend ...:`) or a rule (`when ...: action`)? Looks for a colon outside brackets. */
+  colonOnLine(last: boolean): boolean {
+    let depth = 0, prev = '';
+    for (let j = this.i + 1; this.tokens[j]!.kind !== 'newline' && this.tokens[j]!.kind !== 'eof'; j++) {
+      const x = this.tokens[j]!.text;
+      if ('([{'.includes(x)) depth++; else if (')]}'.includes(x)) depth--;
+      else if (x === ':' && depth === 0 && !last) return true;
+      prev = x;
+    }
+    return last && prev === ':';
+  }
+  /** `tend every tile:`, `tend <list>:` or `tend region x1, y1 to x2, y2:` and its indented `when` rules. */
+  tendBlock(): Stmt {
+    const head = this.take(), p = pos(head);
+    if (this.ruleDepth > 0) this.fail('Put `tend` at the top of your program or inside your own loop, not inside a rule.');
+    let target: TendTarget;
+    if (this.eat('every')) { if (!this.eat('tile')) this.fail('Write `tend every tile:` to visit every tile you own.'); target = { kind: 'tiles' }; }
+    else if (this.eat('region')) {
+      const x1 = this.expression(); this.need(','); const y1 = this.expression(); this.need('to'); const x2 = this.expression(); this.need(','); const y2 = this.expression();
+      target = { kind: 'region', x1, y1, x2, y2 };
+    } else target = { kind: 'list', expr: this.expression() };
+    this.need(':'); this.need('\n'); this.need('INDENT');
+    const rules: TendRule[] = [];
+    while (this.t.kind !== 'dedent' && this.t.kind !== 'eof') {
+      if (this.eat('\n')) continue;
+      if (this.t.text !== 'when') this.fail(`Inside \`tend\`, every rule starts with \`when\`.${didYouMean(this.t.text, ['when'])}`);
+      rules.push(this.rule());
+    }
+    this.need('DEDENT');
+    if (!rules.length) this.fail('Add at least one `when` rule inside this `tend` block.');
+    return { k: 'tend', target, rules, pos: p } as TendNode as unknown as Stmt;
+  }
+  /** `when <condition>: <action>` or `when <condition>:` with an indented block. Used inside `tend` and at the top of a program. */
+  rule(): TendRule {
+    const head = this.take(), p = pos(head);
+    const cond = rewriteCond(this.expression());
+    this.need(':');
+    this.ruleDepth++;
+    let body: Stmt[];
+    if (this.t.kind === 'newline') { this.need('\n'); this.need('INDENT'); this.depth++; body = this.statements(); this.depth--; this.need('DEDENT'); }
+    else body = this.inlineAction();
+    this.ruleDepth--;
+    return { cond, body: tendBody(body), pos: p };
+  }
+  inlineAction(): Stmt[] {
+    this.inRule = true;
+    const action = this.simple();
+    let body: Stmt[] = [action];
+    if (this.eat('unless')) {
+      const cond = rewriteCond(this.expression());
+      let other: Stmt | null = null;
+      if (this.eat(',')) {
+        this.need('else');
+        const q = pos(this.t);
+        const name = this.t.kind === 'word' ? this.t.text : '';
+        if (name && API.some((a) => a.name === name && ['action', 'farm', 'utility'].includes(a.kind))) other = this.simple();
+        else {
+          // `plant carrot unless tired, else clover`: the same verb with different arguments.
+          const call = action.k === 'expr' && action.e.k === 'call' && action.e.callee.k === 'name' ? action.e : null;
+          if (!call) this.fail('After `else`, name a full action, such as `else water`.');
+          const args: Expr[] = []; do { args.push(this.expression()); } while (this.eat(','));
+          other = { k: 'expr', e: { ...call, args, pos: q }, command: true, pos: q };
+        }
+      }
+      body = unlessBody(action, cond, other, pos(this.t));
+    }
+    this.inRule = false;
+    this.need('\n');
+    return body;
   }
 }
 export function compile(source: string, opts: CompileOptions = {}): { program: Program | null; diagnostics: Diagnostic[] } {
   const diagnostics: Diagnostic[] = [];
   try {
-    const parser = new Parser(lex(source)); const program = { body: parser.statements() };
+    const parser = new Parser(lex(source)); const statements = parser.statements();
     if (parser.t.kind !== 'eof') parser.fail('Unexpected indentation.');
+    const program = { body: desugar(statements, opts.features, diagnostics) };
+    if (diagnostics.some((d) => d.severity === 'error')) return { program: null, diagnostics };
     const names = new Set([...API.map((a) => a.name), ...CONSTANTS]);
     const collect = (v: unknown): void => {
       if (!v || typeof v !== 'object') return;
@@ -134,15 +224,15 @@ export function compile(source: string, opts: CompileOptions = {}): { program: P
       if (!v || typeof v !== 'object') return;
       if (Array.isArray(v)) { for (const x of v) visit(x); return; }
       const o = v as Record<string, unknown>, p = o.pos as Pos;
-      if (o.k === 'name' && !names.has(o.name as string)) error(p, `I don't know what \`${o.name}\` means.${didYouMean(o.name as string, names)}`);
+      if (o.k === 'name' && !names.has(o.name as string)) error(p, `I don't know what \`${o.name}\` means.${didYouMean(o.name as string, o.cond && suggest(o.name as string, TEND_WORDS) ? TEND_WORDS : names)}`);
       if (o.k === 'assign') { const target = o.target as Expr; if (target.k === 'name' && (API.some((a) => a.name === target.name) || CONSTANTS.includes(target.name))) error(target.pos, 'Choose a variable name that is not a built-in.'); }
       const features: Record<string, string> = { forever: 'repeat', times: 'repeat', assign: 'variables', if: 'if', while: 'while', foreach: 'for', forrange: 'for', define: 'functions', list: 'lists', record: 'records' };
       const feature = o.k === 'name' ? API.find((a) => a.name === o.name)?.feature : features[o.k as string];
-      if (feature && opts.features && !opts.features.has(feature)) error(p, `The ${feature} feature is locked. Complete its campaign lesson first.`);
+      if (feature && !o.gen && opts.features && !opts.features.has(feature)) error(p, `The ${feature} feature is locked. Complete its campaign lesson first.`);
       for (const [key, x] of Object.entries(o)) if (key !== 'pos') visit(x);
     };
     visit(program);
-    return { program: diagnostics.length ? null : program, diagnostics };
+    return { program: diagnostics.some((d) => d.severity === 'error') ? null : program, diagnostics };
   } catch (e) {
     const x = e as Error & Partial<Pos>;
     return { program: null, diagnostics: [{ line: x.line ?? 1, col: x.col ?? 1, endCol: x.endCol ?? (x.col ?? 1) + 1, message: x.message ?? 'Invalid program.', severity: 'error' }] };
