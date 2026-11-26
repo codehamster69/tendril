@@ -9,7 +9,7 @@ test('splash paints at once on Slow 4G, shows real progress, and leaves only whe
   await page.locator('#splash .sp-name').waitFor({ state: 'visible', timeout: 5000 });
   expect(Date.now() - t0).toBeLessThan(1500); // generous in CI; the splash is in the first HTML bytes
   const bg = await page.evaluate(() => getComputedStyle(document.documentElement).backgroundColor);
-  expect(bg).toBe('rgb(20, 17, 15)');
+  expect(bg).toBe('rgb(24, 19, 14)');
   await expect(page.locator('#splash .sp-tip')).not.toBeEmpty();
   // While the splash is up nothing unfinished is visible: it covers the whole viewport.
   const covers = await page.evaluate(() => { const r = document.getElementById('splash')!.getBoundingClientRect(); return r.width === innerWidth && r.height === innerHeight; });

@@ -32,6 +32,8 @@ export class DayDial {
   private done: SVGPathElement;
   private marksG: SVGGElement;
   private tick: HTMLElement;
+  private tickLabel: HTMLElement;
+  private tickValue: HTMLElement;
   private tip: HTMLElement;
   private marks = new Map<string, Mark>();
   private cfg: DayConfig = { runTicks: null };
@@ -52,6 +54,9 @@ export class DayDial {
       svg('path', { class: 'dd-track', d: ARC }), this.done, this.marksG, this.sun);
     this.tick = document.createElement('span');
     this.tick.className = 'dd-tick hk-chip';
+    this.tickLabel = document.createElement('small');
+    this.tickValue = document.createElement('b');
+    this.tick.append(this.tickLabel, this.tickValue);
     this.tip = document.createElement('div');
     this.tip.className = 'dd-tip hk-card';
     this.tip.hidden = true;
@@ -61,8 +66,10 @@ export class DayDial {
     this.root.className = 'dd';
     this.root.setAttribute('role', 'group');
     this.root.setAttribute('aria-label', 'Day dial');
-    this.root.append(art, this.tick, this.tip);
+    this.root.append(art, this.tip);
     host.append(this.root);
+    // The day and tick read as one more ledger cell; without a ledger (other pages) it stays under the dial.
+    this.root.insertBefore(this.tick, this.tip);
     // Keep clear of the top-left chips and push the tool row below the dial (stage.css reads --dd-bottom).
     this.ro = typeof ResizeObserver === 'function' ? new ResizeObserver(this.layout) : null;
     const hud = document.getElementById('game-hud');
@@ -111,6 +118,8 @@ export class DayDial {
   /** Called with every snapshot. Cheap when nothing visible changed. */
   update(s: Snapshot, info: DayInfo, cfg: DayConfig): void {
     this.cfg = cfg;
+    const ledger = document.getElementById('ledger-cells'); // built after the dial, so look each time until it is there
+    if (ledger && this.tick.parentElement !== ledger) ledger.append(this.tick);
     if (Math.abs(info.progress - this.lastProgress) > 0.0004 || info.start !== this.lastWindow) {
       this.lastProgress = info.progress;
       const [x, y] = at(info.progress);
@@ -120,7 +129,9 @@ export class DayDial {
     const label = info.looping ? `Day ${fmt(info.day)} · tick ${fmt(s.tick - info.start)} of ${fmt(info.length)}` : `Tick ${fmt(s.tick)} of ${fmt(info.length)}`;
     if (label !== this.lastLabel) {
       this.lastLabel = label;
-      this.tick.textContent = label;
+      this.tickLabel.textContent = info.looping ? `Day ${fmt(info.day)}` : 'Tick';
+      this.tickValue.textContent = info.looping ? `${fmt(s.tick - info.start)} of ${fmt(info.length)}` : `${fmt(s.tick)} of ${fmt(info.length)}`;
+      this.tick.title = label;
       this.root.setAttribute('aria-label', `Day dial. ${label}, ${Math.round(info.progress * 100)}% of the day`);
     }
     if (info.start !== this.lastWindow) { this.lastWindow = info.start; this.weatherKey = ''; this.lastOrders = ''; }

@@ -1,50 +1,50 @@
 /* Sunset result screen (U6). Tokens and classes come from hud-kit.css. */
 .rs-layer { position: fixed; inset: 0; z-index: 45; pointer-events: none; display: flex; justify-content: center; align-items: flex-end; padding-bottom: 56px; }
-.rs-layer[data-phase="dusk"]::before { content: ""; position: absolute; inset: 0; background: radial-gradient(120% 90% at 50% 40%, transparent 45%, rgba(8, 10, 24, .45)); animation: rs-fade 1.2s ease both; }
+.rs-layer[data-phase="dusk"]::before { content: ""; position: absolute; inset: 0; background: var(--scrim); opacity: .5; animation: rs-fade 1.2s ease both; }
 .rs-layer[hidden] { display: none; }
-.rs-card { pointer-events: auto; position: relative; width: min(30rem, calc(100vw - 2rem)); max-height: calc(100vh - 7rem); overflow: auto; background: var(--hk-glass-strong);
-  display: grid; gap: var(--hk-s3); transform: translateY(calc(100% + 80px)); opacity: 0; transition: transform .7s cubic-bezier(.2, .9, .25, 1), opacity .5s ease; }
+.rs-card { pointer-events: auto; position: relative; width: min(30rem, calc(100vw - 2rem)); max-height: calc(100vh - 7rem); overflow: auto; background: var(--soil); border-top: 2px solid var(--carrot);
+  display: grid; gap: var(--hk-s3); transform: translateY(16px); opacity: 0; transition: transform .25s ease-out, opacity .25s ease-out; }
 .rs-card.rise { transform: none; opacity: 1; }
 .game-stage .rs-layer { padding-right: calc(var(--slate-w) + 24px); }
 .game-stage.slate-hidden .rs-layer { padding-right: 0; }
-.rs-card h2 { margin: 0; font: 700 1.5rem/1.1 var(--hk-display); color: var(--hk-lantern); }
-.rs-card[data-missed="true"] h2 { color: var(--hk-text); }
+.rs-card h2 { margin: 0; font: 700 2rem/1 var(--f-label); letter-spacing: .03em; text-transform: uppercase; color: var(--carrot); }
+.rs-card[data-missed="true"] h2 { color: var(--straw); }
 .rs-coins { margin: 0; display: flex; align-items: baseline; gap: var(--hk-s2); }
-.rs-coins-num { font: 700 2.4rem/1 var(--hk-mono); font-variant-numeric: tabular-nums; }
-.rs-coins small, .rs-muted { color: var(--hk-dim); font: 500 .8rem/1.4 var(--hk-body); }
+.rs-coins-num { font: 700 2.4rem/1 var(--f-code); font-variant-numeric: tabular-nums; }
+.rs-coins small, .rs-muted { color: var(--chaff); font: 500 .8rem/1.4 var(--f-body); }
 .rs-muted { margin: 0; }
 .rs-medals { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--hk-s2); }
-.rs-medal { display: grid; grid-template-columns: 2.4rem 1fr auto; align-items: center; gap: var(--hk-s3); padding: var(--hk-s2) var(--hk-s3); border: 1px solid var(--hk-line); border-radius: var(--hk-r-md); background: rgba(244, 234, 216, .05); }
-.rs-stamp { display: grid; place-items: center; width: 2.4rem; height: 2.4rem; border-radius: 50%; border: 2px dashed var(--hk-line); font: 700 1.1rem var(--hk-display); color: var(--hk-dim); opacity: .45; }
-.rs-medal-body { display: grid; gap: 2px; } .rs-medal-body small { color: var(--hk-dim); font: 500 .78rem/1.3 var(--hk-body); }
-.rs-medal-rank { font: 600 .85rem var(--hk-mono); color: var(--hk-lantern); }
-.rs-medal.stamped[data-state="earned"] { border-color: var(--hk-lantern); }
-.rs-medal.stamped[data-state="earned"] .rs-stamp { opacity: 1; border: 2px solid var(--hk-lantern); background: var(--hk-lantern); color: #2a1c05; animation: rs-stamp .45s cubic-bezier(.3, 1.6, .5, 1) both; }
+.rs-medal { display: grid; grid-template-columns: 2.4rem 1fr auto; align-items: center; gap: var(--hk-s3); padding: var(--hk-s2) 0; border-bottom: 1px solid var(--loam); }
+.rs-stamp { display: grid; place-items: center; width: 2.4rem; height: 2.4rem; border-radius: 50%; border: 2px dashed var(--loam); font: 700 1.1rem var(--f-label); color: var(--chaff); opacity: .45; }
+.rs-medal-body { display: grid; gap: 2px; } .rs-medal-body small { color: var(--chaff); font: 500 .78rem/1.3 var(--f-body); }
+.rs-medal-rank { font: 600 .85rem var(--f-code); color: var(--carrot); }
+.rs-medal.stamped[data-state="earned"] { box-shadow: inset 2px 0 0 var(--carrot); padding-left: var(--hk-s2); }
+.rs-medal.stamped[data-state="earned"] .rs-stamp { opacity: 1; border: 2px solid var(--carrot); color: var(--carrot); animation: rs-stamp .2s ease-out both; }
 .rs-medal.stamped[data-state="missed"] .rs-stamp, .rs-medal.stamped[data-state="locked"] .rs-stamp { opacity: .7; text-decoration: line-through; }
 .rs-medal:not(.stamped) .rs-medal-body, .rs-medal:not(.stamped) .rs-medal-rank { visibility: hidden; }
-.rs-rank { margin: 0; font: 600 .95rem var(--hk-mono); min-height: 1.2em; }
-.rs-best { margin: 0; color: var(--hk-leaf); font: 600 .85rem/1.4 var(--hk-body); }
-.rs-hint { margin: 0; padding: var(--hk-s3); border-left: 3px solid var(--hk-lantern); background: rgba(242, 184, 75, .1); border-radius: var(--hk-r-sm); font: 500 .9rem/1.45 var(--hk-body); }
+.rs-rank { margin: 0; font: 600 .95rem var(--f-code); min-height: 1.2em; }
+.rs-best { margin: 0; color: var(--sprout); font: 600 .85rem/1.4 var(--f-body); }
+.rs-hint { margin: 0; padding: var(--hk-s2) var(--hk-s3); border-left: 2px solid var(--carrot); font: 500 .9rem/1.45 var(--f-body); }
 .rs-buttons { display: flex; flex-wrap: wrap; gap: var(--hk-s2); }
 .rs-buttons .hk-button[hidden], .rs-signin[hidden] { display: none; }
-.rs-try kbd { font: 600 .65rem var(--hk-mono); opacity: .65; text-transform: uppercase; letter-spacing: .06em; }
-.rs-duel summary { cursor: pointer; color: var(--hk-dim); font: 600 .8rem var(--hk-mono); }
+.rs-try kbd { font: 600 .65rem var(--f-code); opacity: .65; text-transform: uppercase; letter-spacing: .06em; }
+.rs-duel summary { cursor: pointer; color: var(--chaff); font: 600 .8rem var(--f-code); }
 .rs-reopen { position: fixed; z-index: 45; bottom: 92px; left: calc((100vw - var(--slate-w) - 24px) / 2); transform: translateX(-50%); }
 .game-stage.slate-hidden .rs-reopen { left: 50%; }
 @keyframes rs-fade { from { opacity: 0; } }
-@keyframes rs-stamp { from { transform: scale(2.4) rotate(-14deg); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes rs-stamp { from { opacity: 0; } to { opacity: 1; } }
 html[data-motion="reduced"] .rs-card { transition: none; transform: none; opacity: 1; }
 html[data-motion="reduced"] .rs-layer::before, html[data-motion="reduced"] .rs-stamp { animation: none !important; }
 .rs-rank:empty, .rs-rating:empty, .rs-note:empty { display: none; }
 
 /* daily briefs (K6): what the hidden farms add to the score */
-.rs-final { display: grid; gap: 2px; margin: 0 0 var(--hk-s2, 8px); padding: .5rem .7rem; border-radius: var(--hk-r-sm, 8px); border: 1px solid var(--hk-line); font-size: .9rem; }
+.rs-final { display: grid; gap: 2px; margin: 0 0 var(--hk-s2, 8px); padding: .5rem .7rem; border: 1px solid var(--loam); font-size: .9rem; }
 .rs-final[hidden] { display: none; }
-.rs-final b { font: 700 .95rem var(--hk-display); }
-.rs-final span { color: var(--hk-dim); }
+.rs-final b { font: 700 .95rem var(--f-label); }
+.rs-final span { color: var(--chaff); }
 .rs-final[data-state="provisional"] { border-style: dashed; }
-.rs-final[data-state="provisional"] b { color: var(--hk-lantern); }
-.rs-final[data-state="final"] { border-color: var(--hk-leaf); }
+.rs-final[data-state="provisional"] b { color: var(--carrot); }
+.rs-final[data-state="final"] { border-color: var(--sprout); }
 
 /* phones: the slate is as wide as the screen, so the card takes the whole width and sits above it */
 @media (max-width: 720px) { .game-stage .rs-layer { padding-right: 0; padding-bottom: 48px; } .rs-card { max-height: calc(100vh - 5rem); } }

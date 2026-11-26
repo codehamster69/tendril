@@ -1,26 +1,27 @@
-/* Day dial: top centre of the stage, in the free area left of the code slate. Uses hud-kit tokens only. */
-.dd { position: fixed; z-index: 22; top: 10px; left: calc((100vw - var(--slate-w, 440px) - 24px) / 2); transform: translateX(-50%); width: min(300px, 34vw); min-width: 180px; display: flex; flex-direction: column; align-items: center; pointer-events: none; }
+/* Day dial: a thin arc under the ledger strip, in the free area left of the code slate. Its tick text is a ledger cell. */
+.dd { position: fixed; z-index: 22; top: calc(var(--ledger-h) + 8px); left: calc((100vw - var(--slate-w, 440px) - 24px) / 2); transform: translateX(-50%); width: min(300px, 34vw); min-width: 180px; display: flex; flex-direction: column; align-items: center; pointer-events: none; }
 .game-stage.slate-hidden .dd { left: 50%; }
 .dd-art { width: 100%; height: auto; overflow: visible; }
-.dd-track { fill: none; stroke: rgba(244, 234, 216, .3); stroke-width: 2; stroke-dasharray: 2 5; }
-.dd-done { fill: none; stroke: var(--hk-lantern); stroke-width: 3; stroke-linecap: round; }
-.dd-disc { fill: var(--hk-lantern); stroke: #fff3d0; stroke-width: 2; }
-.dd-halo { fill: var(--hk-lantern); opacity: .25; }
+.dd-track { fill: none; stroke: var(--root); stroke-width: 2; stroke-dasharray: 2 5; }
+.dd-done { fill: none; stroke: var(--carrot); stroke-width: 3; stroke-linecap: butt; }
+.dd-disc { fill: var(--carrot); stroke: var(--soil); stroke-width: 2; }
+.dd-halo { fill: var(--carrot); opacity: .2; }
 .dd-mark { pointer-events: auto; cursor: help; outline: none; }
-.dd-seg { fill: none; stroke-width: 5; stroke-linecap: butt; opacity: .55; }
-.dd-rain .dd-seg, .dd-rain .dd-dot { stroke: var(--hk-bot2); fill: var(--hk-bot2); }
+.dd-seg { fill: none; stroke-width: 5; stroke-linecap: butt; opacity: .6; }
+.dd-rain .dd-seg, .dd-rain .dd-dot { stroke: var(--rain); fill: var(--rain); }
 .dd-rain .dd-seg { fill: none; }
-.dd-frost .dd-seg { stroke: #dbeeff; } .dd-frost .dd-dot { fill: #dbeeff; }
+.dd-frost .dd-seg { stroke: var(--straw); } .dd-frost .dd-dot { fill: var(--straw); }
 .dd-dot { stroke: none; }
-.dd-order line { stroke: var(--hk-leaf); stroke-width: 2; }
+.dd-order line { stroke: var(--sprout); stroke-width: 2; }
 .dd-hit { fill: transparent; }
-.dd-mark:hover .dd-seg, .dd-mark:focus-visible .dd-seg { opacity: .95; }
+.dd-mark:hover .dd-seg, .dd-mark:focus-visible .dd-seg { opacity: 1; }
 .dd-mark:hover line, .dd-mark:focus-visible line { stroke-width: 3.5; }
-.dd-mark:focus-visible { outline: 2px solid var(--hk-lantern); outline-offset: 2px; }
-.dd-tick { margin-top: -.5rem; padding: .15rem .7rem; font: 600 .8rem var(--hk-mono); }
-.dd-tip { position: absolute; top: 100%; margin-top: 6px; padding: .35rem .6rem; width: max-content; max-width: 260px; font: 600 .8rem/1.3 var(--hk-body); pointer-events: none; }
+.dd-mark:focus-visible { outline: 2px solid var(--carrot); outline-offset: 2px; }
+.dd-tick { white-space: nowrap; }
+.dd-tick b { font-weight: 600; }
+.dd-tip { position: absolute; top: 100%; margin-top: 6px; padding: .35rem .6rem; width: max-content; max-width: 260px; font: 500 .8rem/1.3 var(--f-body); pointer-events: none; }
 .dd-tip[hidden] { display: none; }
-@media (max-width: 760px) { .dd { top: 58px; width: 56vw; } }
-/* The dial sits above the tool row (top 62px in stage.css): day-dial.ts sets --dd-bottom so the row starts below it. */
-body.game-stage #stage-tools { top: max(62px, var(--dd-bottom, 96px)); }
+@media (max-width: 760px) { .dd { top: calc(var(--ledger-h) + 8px); width: 56vw; } }
+/* The dial sits above the tool row: day-dial.ts sets --dd-bottom so the row starts below it. */
+body.game-stage #stage-tools { top: max(calc(var(--ledger-h) + 18px), var(--dd-bottom, 96px)); }
 @media (max-width: 760px) { body.game-stage #stage-tools { top: max(120px, var(--dd-bottom, 120px)); } }

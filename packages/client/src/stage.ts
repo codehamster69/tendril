@@ -131,12 +131,17 @@ export function mountStage({ loop, api, current, ranked }: { loop: GameLoop; edi
   listen('debug', (d: { paused: unknown }) => { if (d.paused) { setSlate(true); setStrip(true); } });
 
   // ---- HUD: coins + stock top-left, menu top-right ----
+  // The ledger strip: mark, then one cell per readout (label over value), then the slate and menu buttons at the right.
   const coins = el('b', { id: 'chip-coins', text: '0' }), stock = el('b', { id: 'chip-stock', text: '0' });
-  const hud = el('div', { id: 'game-hud', class: 'hud-tl' },
+  const mark = el('a', { class: 'ledger-mark', href: '../', title: 'Tendril home', 'data-site-link': '' });
+  mark.innerHTML = '<svg viewBox="0 0 32 32" aria-hidden="true"><path d="M16 29c0-9 0-15 0-18"/><path d="M16 15c-6 0-10-4-10-10 6 0 10 4 10 10Z"/><path d="M16 12c0-5 3-8 9-8 0 5-3 8-9 8Z"/></svg><span>Tendril</span>';
+  const cells = el('div', { id: 'ledger-cells', class: 'ledger-cells', role: 'group', 'aria-label': 'Farm readouts' },
     el('span', { class: 'hk-chip', title: 'Coins' }, el('small', { text: 'Coins' }), coins),
     el('span', { class: 'hk-chip', title: 'Items in the barn' }, el('small', { text: 'Stock' }), stock));
-  const menuBtn = el('button', { id: 'btn-menu', class: 'hk-icon-button', type: 'button', 'aria-haspopup': 'dialog', 'aria-label': 'Menu', title: 'Menu', text: '☰' });
+  const menuBtn = el('button', { id: 'btn-menu', class: 'hk-button', type: 'button', 'aria-haspopup': 'dialog', 'aria-label': 'Menu', title: 'Menu', text: 'Menu' });
   const hudTr = el('div', { id: 'game-hud-tr', class: 'hud-tr' }, menuBtn);
+  const slateToggle = el('div', { id: 'slate-toggle', class: 'slate-toggle' }, slateBtn);
+  const hud = el('div', { id: 'game-hud', class: 'hud-tl', role: 'banner' }, mark, cells, el('div', { class: 'ledger-actions' }, slateToggle, hudTr));
   listen<Snapshot>('snapshot', (s) => {
     coins.textContent = s.coins.toLocaleString();
     stock.textContent = (s.stock ?? []).reduce((a, b) => a + b, 0).toLocaleString();
@@ -196,6 +201,6 @@ export function mountStage({ loop, api, current, ranked }: { loop: GameLoop; edi
   // The menu itself lives in menu.ts; the stage only hands it the pieces it needs.
   mountMenu({ loop, api, current, ranked, button: menuBtn, panels, openDebugger: () => { setSlate(true); setStrip(true); document.querySelector<HTMLButtonElement>('[data-dock="debugger"]')?.click(); } });
 
-  document.body.append(hud, hudTr, transport, el('div', { id: 'slate-toggle', class: 'slate-toggle' }, slateBtn));
+  document.body.append(hud, transport);
   // The caption's tile readout and the farm bar stay on the stage; chips sit above them.
 }
