@@ -1,0 +1,15 @@
+/* Live code: the "Equipped" chip beside the editor, the pulse on applied lines, and the ring a bot shows when it picks up new code. */
+.equip-chip { align-self: center; padding: 1px 9px; border-radius: var(--r); font: 600 12px/1.4 var(--f-label); letter-spacing: .08em; text-transform: uppercase; color: var(--sprout); border: 1px solid var(--sprout); white-space: nowrap; }
+.equip-chip[hidden] { display: none; }
+.equip-chip[data-state='kept'] { color: var(--beet); border-color: var(--beet); }
+.equip-chip[data-state='pending'] { color: var(--chaff); border-color: var(--root); }
+.equip-chip[data-fresh='true'] { animation: equip-pop .5s ease-out; }
+@keyframes equip-pop { from { opacity: .4; } }
+
+@keyframes cm-applied { from { background-color: rgba(147, 193, 96, .35); } to { background-color: rgba(147, 193, 96, 0); } }
+html[data-motion='reduced'] .cm-applied-line, html[data-motion='reduced'] .cm-applied-gutter { animation: none; background-color: rgba(147, 193, 96, .2); }
+
+.wf-equip {
+  position: absolute; left: 0; top: 0; width: 2.4rem; height: 2.4rem; margin: 0; border-radius: 50%; pointer-events: none;
+  border: 2px solid var(--wf-bot, var(--sprout)); opacity: 0; will-change: transform, opacity;
+}

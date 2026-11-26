@@ -1,7 +1,6 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import type { Snapshot } from './sim-types';
-import { motionQuery } from './settings.ts';
 
 export type Placement = { x: number; z: number; rotation?: number; scale?: number; depth?: number };
 export type Bounds = { x0: number; x1: number; z0: number; z1: number };
@@ -36,9 +35,7 @@ export function sceneryPlacements(tiles: Snapshot['tiles'], { x0, x1, z0, z1 }: 
 
 /* ------------------------------------------------------------------ the living island */
 
-const COLORS = { grass: 0x4e9a63, soil: 0x4a2f25, strata1: 0x7a5a45, strata2: 0xa07f5e, keel: 0x6a7e85, keel2: 0x586a70, bed: 0x33231f, tendril: 0x4fd1b0, tendrilGlow: 0x1d6b58 };
-/** Beds (dark gaps under owned tiles) are only built when scanning the rectangle is cheap. */
-const BED_SCAN_LIMIT = 16384;
+const COLORS = { grass: 0x5f8d3e, soil: 0x4a2f25, strata1: 0x7a5a45, strata2: 0xa07f5e, keel: 0x6a7e85, keel2: 0x586a70, root: 0x4a3524, frontier: 0xece2d0 };
 const KEEL_MAX = 48;
 const TENDRIL_MAX = 40;
 const TENDRIL_REACH = 28;
@@ -49,31 +46,28 @@ function rng(seed: number): () => number {
   return () => (s = (s * 16807) % 2147483647) / 2147483647;
 }
 
-/** Floating slab under the farm: grass cap, soil lip, two strata, a faceted stone keel and glowing tendrils; a pulsing frontier marks where land can grow. Cost follows the number of owned tiles only up to a scan limit, never the size of the farm. */
+/** Floating slab under the farm: grass cap, soil lip, two strata, a faceted stone keel and hanging roots; a plain line marks where land can grow. The tile ground itself (beds, meadow) is drawn by the world view. Cost never follows the size of the farm. */
 export class FarmIsland {
   private group = new THREE.Group();
   private frontier = new THREE.Group();
-  private frontierMat = new THREE.MeshBasicMaterial({ color: COLORS.tendril, transparent: true, opacity: 0.4, blending: THREE.AdditiveBlending, depthWrite: false });
+  private frontierMat = new THREE.MeshBasicMaterial({ color: COLORS.frontier, transparent: true, opacity: 0.35, depthWrite: false });
   private frontierBars: THREE.Mesh[] = [];
   private unitBox = new THREE.BoxGeometry(1, 1, 1);
   private keelGeo = new THREE.ConeGeometry(Math.SQRT1_2, 1, 4).rotateY(Math.PI / 4).rotateX(Math.PI);
-  private mats: Record<'grass' | 'soil' | 'strata1' | 'strata2' | 'keel' | 'keel2' | 'bed' | 'tendril', THREE.MeshStandardMaterial>;
+  private mats: Record<'grass' | 'soil' | 'strata1' | 'strata2' | 'keel' | 'keel2' | 'root', THREE.MeshStandardMaterial>;
   private slab: THREE.Mesh[] = [];
   private keel: THREE.Mesh[] = [];
   private tendrils: THREE.Mesh | null = null;
-  private bed: THREE.InstancedMesh | null = null;
-  private bedKey = '';
   private boundsKey = '';
   private bounds: Bounds | null = null;
   private distance = 20;
-  private reduced = motionQuery;
   private disposed = false;
 
   constructor(private scene: THREE.Scene) {
     const m = (color: number, extra: THREE.MeshStandardMaterialParameters = {}): THREE.MeshStandardMaterial => new THREE.MeshStandardMaterial({ color, roughness: 0.95, flatShading: true, ...extra });
     this.mats = {
-      grass: m(COLORS.grass), soil: m(COLORS.soil), strata1: m(COLORS.strata1), strata2: m(COLORS.strata2), keel: m(COLORS.keel, { emissive: 0x0a1a1c }), keel2: m(COLORS.keel2, { emissive: 0x0a1a1c }), bed: m(COLORS.bed),
-      tendril: m(COLORS.tendril, { emissive: COLORS.tendrilGlow, roughness: 0.7, flatShading: false }),
+      grass: m(COLORS.grass), soil: m(COLORS.soil), strata1: m(COLORS.strata1), strata2: m(COLORS.strata2), keel: m(COLORS.keel), keel2: m(COLORS.keel2),
+      root: m(COLORS.root, { roughness: 0.85, flatShading: false }),
     };
     const box = (mat: THREE.Material, shadow = true): THREE.Mesh => { const mesh = new THREE.Mesh(this.unitBox, mat); mesh.receiveShadow = shadow; mesh.frustumCulled = false; this.group.add(mesh); return mesh; };
     this.slab = [box(this.mats.grass), box(this.mats.soil), box(this.mats.strata1), box(this.mats.strata2)];
@@ -92,26 +86,19 @@ export class FarmIsland {
     scene.add(this.group, this.frontier);
   }
 
-  /** Call when the snapshot changes (not per frame). Rebuilds only when the bounds or the owned set (small farms) change. */
-  update(bounds: Bounds | null, owned: (x: number, y: number) => boolean): void {
+  /** Call when the snapshot changes (not per frame). Rebuilds only when the bounds change. */
+  update(bounds: Bounds | null): void {
     if (this.disposed) return;
     this.bounds = bounds;
     this.group.visible = this.frontier.visible = !!bounds;
-    if (!bounds) { this.clearBed(); this.boundsKey = ''; return; }
+    if (!bounds) { this.boundsKey = ''; return; }
     const key = `${bounds.x0},${bounds.x1},${bounds.z0},${bounds.z1}`;
     if (key !== this.boundsKey) { this.boundsKey = key; this.layoutSlab(bounds); this.layoutFrontier(); }
-    this.buildBed(bounds, owned);
   }
 
   setDistance(d: number): void {
     this.distance = Math.max(1, d);
     if (this.bounds) this.layoutFrontier();
-  }
-
-  pulse(time: number): void {
-    if (this.disposed) return;
-    this.frontierMat.opacity = this.reduced?.matches ? 0.4 : 0.32 + 0.16 * Math.sin(time * 2);
-    this.mats.tendril.emissiveIntensity = this.reduced?.matches ? 1 : 0.85 + 0.25 * Math.sin(time * 1.3);
   }
 
   private layoutSlab(b: Bounds): void {
@@ -157,7 +144,7 @@ export class FarmIsland {
     const merged = geos.length ? mergeGeometries(geos, false) : null;
     for (const g of geos) g.dispose();
     if (!merged) return;
-    this.tendrils = new THREE.Mesh(merged, this.mats.tendril);
+    this.tendrils = new THREE.Mesh(merged, this.mats.root);
     this.tendrils.frustumCulled = false;
     this.group.add(this.tendrils);
   }
@@ -173,42 +160,9 @@ export class FarmIsland {
     e.position.set(b.x1, 0.06, cz); e.scale.set(t, 0.02, d + t);
   }
 
-  /** Dark soil plates under owned tiles so gaps between tiles read as a grid; the rest of the top stays meadow. */
-  private buildBed(b: Bounds, owned: (x: number, y: number) => boolean): void {
-    const w = Math.round(b.x1 - b.x0), d = Math.round(b.z1 - b.z0);
-    if (w * d > BED_SCAN_LIMIT || w < 1 || d < 1) { this.clearBed(); return; }
-    const xs: number[] = [], zs: number[] = [];
-    let hash = 0;
-    const x0 = Math.round(b.x0 + 0.5), z0 = Math.round(b.z0 + 0.5);
-    for (let z = 0; z < d; z++) for (let x = 0; x < w; x++) {
-      if (!owned(x0 + x, z0 + z)) continue;
-      xs.push(x0 + x); zs.push(z0 + z);
-      hash = (hash * 31 + (x + 1) * 7919 + (z + 1) * 104729) | 0;
-    }
-    const key = `${this.boundsKey}|${xs.length}|${hash}`;
-    if (key === this.bedKey) return;
-    this.bedKey = key;
-    this.clearBed(false);
-    if (!xs.length) return;
-    const geo = new THREE.BoxGeometry(1, 0.02, 1).translate(0, -0.03, 0);
-    const mesh = new THREE.InstancedMesh(geo, this.mats.bed, xs.length);
-    const m = new THREE.Matrix4();
-    for (let i = 0; i < xs.length; i++) mesh.setMatrixAt(i, m.makeTranslation(xs[i]!, 0, zs[i]!));
-    mesh.instanceMatrix.needsUpdate = true;
-    mesh.receiveShadow = true; mesh.frustumCulled = false;
-    this.bed = mesh;
-    this.group.add(mesh);
-  }
-
-  private clearBed(resetKey = true): void {
-    if (this.bed) { this.group.remove(this.bed); this.bed.geometry.dispose(); this.bed.dispose(); this.bed = null; }
-    if (resetKey) this.bedKey = '';
-  }
-
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
-    this.clearBed();
     if (this.tendrils) this.tendrils.geometry.dispose();
     this.scene.remove(this.group, this.frontier);
     this.unitBox.dispose();

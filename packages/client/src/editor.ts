@@ -2,7 +2,7 @@ import { boot } from './boot';
 import { EditorState, RangeSetBuilder, StateEffect, StateField, Prec, type Extension } from '@codemirror/state';
 import {
   EditorView, Decoration, GutterMarker, gutter, lineNumbers, keymap, drawSelection, highlightActiveLine, highlightActiveLineGutter,
-  hoverTooltip, type DecorationSet,
+  hoverTooltip, gutterLineClass, type DecorationSet,
 } from '@codemirror/view';
 import { defaultKeymap, history, historyKeymap, indentWithTab, insertNewlineAndIndent } from '@codemirror/commands';
 import {
@@ -161,6 +161,8 @@ export interface Editor {
   onRun(cb: () => void): void;
   onChange(cb: () => void): void;
   onStepLine(cb: () => void): void;
+  /** A short green pulse on lines that just went onto the bots. */
+  flashLines(lines: number[]): void;
 }
 
 function loadBreakpoints(key: string): number[] {
@@ -217,6 +219,30 @@ const botLineDecorations = EditorView.decorations.compute([botMarks], (state): D
   return b.finish();
 });
 
+// Lines that just went onto the bots: a short green wash on the line and its gutter. Positions follow the text while the player keeps typing.
+const setAppliedLines = StateEffect.define<number[]>();
+const appliedLines = StateField.define<number[]>({
+  create: () => [],
+  update: (v, tr) => {
+    let next = tr.docChanged ? v.map((p) => tr.changes.mapPos(p)) : v;
+    for (const e of tr.effects) if (e.is(setAppliedLines)) next = e.value;
+    return next;
+  },
+  provide: (f) => [
+    EditorView.decorations.compute([f], (state): DecorationSet => {
+      const b = new RangeSetBuilder<Decoration>();
+      for (const at of [...new Set(state.field(f).map((p) => state.doc.lineAt(Math.min(p, state.doc.length)).from))].sort((x, y) => x - y)) b.add(at, at, Decoration.line({ class: 'cm-applied-line' }));
+      return b.finish();
+    }),
+    gutterLineClass.compute([f], (state) => {
+      const b = new RangeSetBuilder<GutterMarker>();
+      const mark = new (class extends GutterMarker { elementClass = 'cm-applied-gutter'; })();
+      for (const at of [...new Set(state.field(f).map((p) => state.doc.lineAt(Math.min(p, state.doc.length)).from))].sort((x, y) => x - y)) b.add(at, at, mark);
+      return b.finish();
+    }),
+  ],
+});
+
 const markClick = new WeakMap<EditorView, (bot: number) => void>();
 const markGutter = gutter({
   class: 'cm-mark-gutter',
@@ -261,6 +287,8 @@ const theme = EditorView.theme({
   '.cm-bot-line.cm-bot-selected': { background: 'color-mix(in srgb, var(--mark) 24%, transparent)', boxShadow: 'inset 3px 0 0 var(--mark)' },
   '.cm-bot-marker-selected': { width: '6px', marginLeft: '2px' },
   '.cm-mark-gutter .cm-bot-marker': { cursor: 'pointer' },
+  '.cm-applied-line': { animation: 'cm-applied 1.1s ease-out' },
+  '.cm-applied-gutter': { animation: 'cm-applied 1.1s ease-out' },
   '.cm-bot-line.cm-bot-paused': { background: 'rgba(240,138,58,.22)' },
   '.cm-matchingBracket': { backgroundColor: 'rgba(240,138,58,.2)', outline: '1px solid rgba(240,138,58,.45)' },
   '.cm-selectionMatch': { backgroundColor: 'rgba(127,178,214,.2)' },
@@ -300,6 +328,7 @@ export function createEditor(container: HTMLElement, storageKey: string, fallbac
     }));
     view.dispatch({ effects: setBotMarks.of(marks) });
   };
+  let flashTimer = 0;
   let runCb: (() => void) | null = null;
   let stepCb: (() => void) | null = null;
 
@@ -343,7 +372,7 @@ export function createEditor(container: HTMLElement, storageKey: string, fallbac
   const extensions: Extension[] = [
     theme,
     lineNumbers({ domEventHandlers: { mousedown: (v, block) => { toggleBp(lineAt(v, block)); return true; } } }),
-    bpField, bpGutter, botMarks, heatMarks, markGutter, botLineDecorations,
+    bpField, bpGutter, appliedLines, botMarks, heatMarks, markGutter, botLineDecorations,
     highlightActiveLineGutter(), highlightActiveLine(), drawSelection(),
     history(), EditorState.tabSize.of(4), indentUnit.of(INDENT),
     sproutLanguage, syntaxHighlighting(highlight), sproutIndent, bracketMatching(), closeBrackets(),
@@ -427,6 +456,13 @@ export function createEditor(container: HTMLElement, storageKey: string, fallbac
     onRun(cb) { runCb = cb; },
     onChange(cb) { changeCbs.push(cb); },
     onStepLine(cb) { stepCb = cb; },
+    flashLines(lines) {
+      const at = lines.filter((l) => l >= 1 && l <= lineCount()).map((l) => view.state.doc.line(l).from);
+      if (!at.length) return;
+      view.dispatch({ effects: setAppliedLines.of(at) });
+      clearTimeout(flashTimer);
+      flashTimer = window.setTimeout(() => view.dispatch({ effects: setAppliedLines.of([]) }), 1200);
+    },
     setSelectedBot(bot) { selectedBot = bot; applyBotMarks(); },
     onBotMarkClick(cb) { markClick.set(view, cb); },
   };

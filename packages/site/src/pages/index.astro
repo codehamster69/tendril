@@ -43,6 +43,13 @@ const bot = art('bot_tender');
     </div>
   </section>
 
+  <nav class="wrap paths" aria-label="Where to go">
+    <a href="/play/?mode=daily"><b>Play</b><span>Today's farm, ten minutes, ranked</span></a>
+    <a href="/docs/sprout/"><b>Learn</b><span>Sprout in ten minutes, then the reference</span></a>
+    <a href="/leaderboard/"><b>Compete</b><span>Every score replayed and checked</span></a>
+    <a href="/duel/"><b>Race a friend</b><span>Same farm, same seed, no account</span></a>
+  </nav>
+
   <section class="wrap split">
     <div>
       <h2>You don't farm. You write the farmer.</h2>
@@ -143,6 +150,10 @@ const bot = art('bot_tender');
 </script>
 
 <style>
+  .paths { display: grid; grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr)); gap: 0.75rem; margin-top: 1rem; }
+  .paths a { display: grid; gap: 0.2rem; padding: 0.9rem 1rem; border: 1px solid var(--line); border-radius: 12px; text-decoration: none; color: var(--ink); }
+  .paths a:hover { background: var(--panel); }
+  .paths span { color: var(--dim); font-size: 0.92rem; }
   .today { background: var(--panel); border: 1.5px solid var(--line); border-radius: 12px; padding: 1rem 1.25rem; margin: 0 0 1.25rem; max-width: 34rem; }
   .eyebrow { font: 700 1.2rem var(--display); margin: 0; }
   .facts { display: flex; flex-wrap: wrap; gap: 0.25rem 1.25rem; color: var(--dim); margin: 0.4rem 0 0.9rem; }

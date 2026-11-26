@@ -40,7 +40,9 @@ export function mountFirstRun({ editor }: { editor: Editor }): void {
   const step = el('small', { class: 'fr-step' });
   const action = el('button', { class: 'hk-button hk-primary', type: 'button' });
   const skip = el('button', { class: 'hk-button', type: 'button', text: 'Skip tour' });
-  const card = el('div', { class: 'hk-card fr-card', role: 'dialog', 'aria-label': 'First run tour', 'aria-live': 'polite' }, step, title, text, el('div', { class: 'fr-actions' }, action, skip));
+  const packets = el('button', { class: 'hk-button', type: 'button', text: 'Start from a popular packet' });
+  packets.addEventListener('click', () => window.dispatchEvent(new Event('tendril:open-packets')));
+  const card = el('div', { class: 'hk-card fr-card', role: 'dialog', 'aria-label': 'First run tour', 'aria-live': 'polite' }, step, title, text, el('div', { class: 'fr-actions' }, action, packets, skip));
   card.hidden = true;
   document.body.append(card);
 
@@ -98,6 +100,7 @@ export function mountFirstRun({ editor }: { editor: Editor }): void {
     title.textContent = p.title;
     text.textContent = p.text;
     action.hidden = !p.action;
+    packets.hidden = i !== 0;
     if (p.action) action.textContent = p.action.label;
     card.hidden = false;
     place();
