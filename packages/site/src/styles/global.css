@@ -1,54 +1,49 @@
 /* Border-first site style, shared with the game: soil and straw base, carrot accent.
    Fills are only for the page base, code blocks and data meters. Emphasis is a border or an underline. */
 :root {
-  color-scheme: dark;
-  --paper: #18130e;   /* soil: page base */
-  --panel: #211a14;   /* a meter or data cell, never a container */
-  --ink: #ece2d0;     /* straw: text */
-  --dim: #a99881;     /* chaff: muted text */
-  --line: #3b2f24;    /* loam: hairline */
-  --rule: #5c4835;    /* root: strong line */
-  --leaf: #93c160;    /* sprout: good */
-  --leaf-ink: #18130e;
+  color-scheme: light;
+  --paper: #ece2d0;   /* straw: page base */
+  --panel: #f5efe2;   /* a meter or data cell, never a container */
+  --ink: #18130e;     /* soil: text */
+  --dim: #5c4835;     /* root: muted text */
+  --line: #cbbda4;    /* hairline */
+  --rule: #5c4835;    /* strong line */
+  --leaf: #3f6b22;    /* good; darkened sprout for contrast on straw */
+  --leaf-ink: #ece2d0;
   --carrot: #f08a3a;  /* accent: underline, focus, active */
-  --wheat: #e2be4f;
-  --soil: #b08866;
-  --grass: #241b14;
-  --pumpkin: #d9762c;
-  --berry: #c07ac9;
-  --apple: #e8645a;   /* beet: danger */
-  --code-bg: #1d1712;
+  --wheat: #8a6410;
+  --soil: #6e4a2f;
+  --grass: #ddd0b6;
+  --pumpkin: #9a4f16;
+  --berry: #7b3a86;
+  --apple: #a9372f;
+  --code-bg: #ece3cf;
   --display: 'Barlow Condensed', 'Arial Narrow', system-ui, sans-serif;
   --body: 'Atkinson Hyperlegible Next', system-ui, sans-serif;
   --mono: 'JetBrains Mono', ui-monospace, Menlo, monospace;
   --wrap: 72rem;
   --gutter: clamp(16px, 4vw, 40px);
 }
-@media (prefers-color-scheme: light) {
-  :root:not([data-theme='dark']) {
-    color-scheme: light;
-    --paper: #ece2d0;
-    --panel: #e2d6bf;
-    --ink: #18130e;
-    --dim: #5c4835;
-    --line: #cbbda4;
-    --rule: #5c4835;
-    --leaf: #3f6b22;
-    --leaf-ink: #ece2d0;
-    --wheat: #8a6410;
-    --soil: #6e4a2f;
-    --grass: #ddd0b6;
-    --pumpkin: #9a4f16;
-    --berry: #7b3a86;
-    --apple: #a9372f;
-    --code-bg: #e3d8c2;
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --paper: #18130e;   /* soil */
+    --panel: #211a14;
+    --ink: #ece2d0;     /* straw */
+    --dim: #a99881;     /* chaff */
+    --line: #3b2f24;    /* loam */
+    --rule: #5c4835;    /* root */
+    --leaf: #93c160;    /* sprout */
+    --leaf-ink: #18130e;
+    --carrot: #f08a3a;
+    --wheat: #e2be4f;
+    --soil: #b08866;
+    --grass: #241b14;
+    --pumpkin: #d9762c;
+    --berry: #c07ac9;
+    --apple: #e8645a;   /* beet */
+    --code-bg: #1d1712;
   }
-}
-:root[data-theme='light'] {
-  color-scheme: light;
-  --paper: #ece2d0; --panel: #e2d6bf; --ink: #18130e; --dim: #5c4835; --line: #cbbda4; --rule: #5c4835;
-  --leaf: #3f6b22; --leaf-ink: #ece2d0; --wheat: #8a6410; --soil: #6e4a2f; --grass: #ddd0b6;
-  --pumpkin: #9a4f16; --berry: #7b3a86; --apple: #a9372f; --code-bg: #e3d8c2;
 }
 
 * { box-sizing: border-box; }
@@ -78,11 +73,10 @@ pre {
   padding: 1rem 1.15rem; overflow-x: auto; line-height: 1.55; font-size: 0.85rem;
 }
 pre code { font-size: inherit; }
-.astro-code, .astro-code span { color: var(--shiki-dark); background-color: var(--code-bg) !important; }
-@media (prefers-color-scheme: light) {
-  :root:not([data-theme='dark']) .astro-code, :root:not([data-theme='dark']) .astro-code span { color: var(--shiki-light); }
+.astro-code, .astro-code span { color: var(--shiki-light); background-color: var(--code-bg) !important; }
+@media (prefers-color-scheme: dark) {
+  .astro-code, .astro-code span { color: var(--shiki-dark); }
 }
-:root[data-theme='light'] .astro-code, :root[data-theme='light'] .astro-code span { color: var(--shiki-light); }
 
 .wrap { max-width: var(--wrap); margin-inline: auto; padding-inline: var(--gutter); }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
