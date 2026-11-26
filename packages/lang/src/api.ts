@@ -4,7 +4,7 @@ export interface ApiEntry {
   name: string; kind: 'action' | 'farm' | 'query' | 'utility' | 'constant' | 'keyword';
   signature: string; doc: string; ticks: number | 'n'; example: string; feature: string;
 }
-export const KEYWORDS = 'if elif else while repeat forever times for each in from to step define def return break continue pass stop and or not is true false none set global'.split(' ');
+export const KEYWORDS = 'if elif else while repeat forever times for each in from to step define def return break continue pass stop and or not is true false none set global tend when every unless region'.split(' ');
 export const CONSTANTS = 'north east south west carrot wheat clover pumpkin berry apple honey compost hive composter silo satchel barn all shared'.split(' ');
 /** Actions and statement helpers are written as commands (`move east`), so the reference shows that form first. */
 const command = (name: string, args: string): string => (args === '' ? name : `${name} ${args}`);
