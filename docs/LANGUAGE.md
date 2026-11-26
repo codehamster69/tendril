@@ -32,7 +32,8 @@ repeat forever:
 - Blank and comment-only lines are ignored for indentation. A line may continue inside `(`, `[`, `{`.
 - Identifiers: `[A-Za-z_][A-Za-z0-9_]*`, case-sensitive. Keywords are lowercase and reserved:
   `if elif else while repeat forever times for each in from to step define def return break
-  continue pass stop and or not is true false none set global`.
+  continue pass stop and or not is true false none set global tend when every unless region`
+  (the last five are only special in rules, section 11).
 - Integers only: `0`, `42`, `1_000`. No floats, no exponent. Literal magnitude must be <= 2^53-1.
 - Strings: `"..."` or `'...'`, escapes `\n \t \\ \" \'`. Double-quoted strings interpolate
   `{expression}`; `{{` and `}}` are literal braces. Single-quoted strings never interpolate.
@@ -170,7 +171,7 @@ Suggest the nearest built-in by edit distance <= 2.
 is absent is a compile error naming the lesson that unlocks it. Feature IDs:
 `commands` (actions + constants), `repeat`, `variables`, `if`, `while`, `for`, `functions`, `lists`,
 `records`, `queries`, `market`, `farm`, `crew` (shared, my_id, bots, buy_bot), `weather`, `orders`,
-`buildings`, `utilities`. Default (no option) = all features.
+`buildings`, `utilities`, `tend` (section 11). Default (no option) = all features.
 
 ## 10. TypeScript API (`@tendril/lang`, exported from `packages/lang/src/index.ts`)
 ```ts
@@ -204,3 +205,73 @@ LANGUAGE_VERSION = 1
 A breakpoint pause can happen mid-tick (some bots already acted at tick T). The next `step` resumes the
 paused bot exactly where it stopped, so pausing never changes the action log. Breakpoints never fire in
 headless runs (CLI, goldens) unless set.
+
+## 11. Rules: `tend` and `when` (logic first)
+A farming program is mostly plumbing: visit every tile, walk there, carry, deposit, go home. `tend` lets you write only the
+decisions. It is not a new engine: `compile` rewrites every `tend` and top-level `when` into the ordinary statements of
+sections 4 and 5 before anything runs, so the interpreter, the compiled engine and the server check all run the same code.
+`expandTend(source)` returns that code as text ("See the full program"); `examples/starter-tend.sprout` is the starter in 8 lines.
+```
+tend every tile:
+    when ripe: harvest
+    when empty and dry: water
+    when empty: plant carrot unless tired, else clover
+when full: sell everything
+```
+**Where it goes.** `tend <where>:` takes `every tile` (every owned tile, plot order then row order), a list of positions
+(`tend route:`, `tend my_list():`) or `region x1, y1 to x2, y2:` (owned tiles inside the rectangle, corners in any order).
+Its body is only `when` rules. A `when` at the start of a line, outside any block, is a **between-tile rule** (below).
+`tend` may also sit inside your own loop or `if`.
+
+**Rules.** `when <condition>: <action>`, or `when <condition>:` followed by an indented block of ordinary statements.
+Rules are checked top to bottom and the **first one whose condition is true runs; the others are skipped for that tile visit**,
+so put the more specific rule first. An action can end with `unless <condition>` and then `, else <other>`:
+`plant carrot unless tired, else clover` plants clover when tired (a bare crop name after `else` reuses the verb; a full
+action such as `else water` also works).
+
+**Plain words in a condition.** They look at the tile in front of the bot, using a fresh `scan()`. Inside a rule they always
+mean the tile, even if a variable has the same name.
+
+| word | means |
+|---|---|
+| `ripe`, `empty`, `tilled` | the `scan()` field of that name |
+| `growing` | a crop is planted and not ripe |
+| `dry` / `tired` / `hungry` | moisture below 25 / fatigue above 40 / nitrogen below 25 |
+| `frost`, `rain` | `weather()` is that |
+| `full` | `carried() >= capacity()` |
+| `carrying` | `carried() > 0` |
+| `stocked` | the barn holds at least one unit |
+| `moisture nitrogen fatigue stage crop honey` | the `scan()` field, for comparisons: `when moisture < 10:` |
+| `coins carried capacity tick weather bots my_id orders stock ...` | any built-in question that takes no arguments, called for you: `when coins > 50:` |
+
+Combine with `and`, `or`, `not` and brackets; any other Sprout expression (`unlocked(clover)`, `price(carrot) > 3`) works too.
+
+**Two extra verbs, only when written directly in a rule.** `sell everything` and `sell carrot` walk to the nearest drop
+(`nearest_drop()`), deposit what the bot carries, then sell all of every crop (or of that crop). `plant carrot` tills first when
+the soil is not tilled (the till is skipped, and costs nothing, when it is). `sell carrot, 5`, `plant(carrot)` and anything inside
+your own functions are ordinary Sprout and do exactly what they say.
+
+**What a tend block does, in this fixed order** (every tick it spends is one of these, so the cost of a program is explainable):
+1. Work out the tile list, then take this bot's share (see below).
+2. For each tile in the share: walk there with `go_to` (2 ticks per step); `scan()`; run the first matching rule;
+   run the first matching **between-tile rule**; then, if the bag is still full, walk to the nearest drop and `deposit`.
+3. After the last tile: walk to the nearest drop, `deposit` if carrying, then check the between-tile rules once more.
+4. If the whole pass took no ticks at all, `wait 10`, so an idle farm never spins.
+Between-tile rules also use first match wins, so write the most important first.
+
+**Repeating.** When a `tend` is at the top level, everything from the first `tend` to the end of the program repeats forever
+(what is above it, such as `define`s and variables, runs once). Put `tend` inside your own `repeat` and you control the loop.
+
+**Several bots.** Every bot runs the same program. With `n = bots()` bots and a list of `L` tiles, bot number `k = my_id()` tends
+tiles `L*k/n` up to (not including) `L*(k+1)/n` (integer division), so each bot gets one block of neighbours and nothing is
+tended twice. Bots bought mid-run split the list the next time a pass starts.
+
+**Errors and warnings.** Unknown words get "Did you mean `dry`?"; a line inside `tend` that does not start with `when` is an
+error; a `when` outside a `tend` program is an error; `tend` is locked until its feature (`tend`) is unlocked. A rule that can
+never run is a **warning** (the program still runs): its conditions contradict (`ripe and empty`), or an earlier rule always
+catches first (`when empty:` above `when empty and dry:`). `dry` and `moisture < 25` count as the same fact.
+
+**Brevity.** `countTokens` counts the tokens the player wrote, `tend` and `when` included; the generated code is never counted,
+so a rules program is shorter than the plumbing it replaces. Old programs score as before. LANGUAGE_VERSION stays 1: `tend`,
+`when`, `every`, `region` and `unless` are only special at the start of a block head or rule line, so a variable called
+`when` or a function called `unless` still works.

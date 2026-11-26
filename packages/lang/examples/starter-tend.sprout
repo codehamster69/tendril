@@ -1,0 +1,9 @@
+# The same farm as starter.sprout, written as rules. Walking, carrying and going home happen on their own.
+when coins() >= unlock_cost(clover) and not unlocked(clover): unlock clover
+when full: sell everything
+
+tend every tile:
+    when ripe: harvest
+    when empty and dry: water
+    when empty and (tired or hungry) and unlocked(clover): plant clover
+    when empty: plant carrot
