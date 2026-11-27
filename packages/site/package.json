@@ -11,7 +11,7 @@
     "typecheck": "astro check"
   },
   "dependencies": {
-    "@astrojs/mdx": "^4.0.0",
+    "@astrojs/mdx": "^8.1.6",
     "@astrojs/sitemap": "^3.7.6",
     "@tendril/lang": "workspace:*",
     "@tendril/sim": "workspace:*",
