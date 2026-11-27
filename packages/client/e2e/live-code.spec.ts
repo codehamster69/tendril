@@ -8,7 +8,7 @@ const pacer = 'while true:\n    move east\n    move west\n';
 const sleeper = 'while true:\n    wait 5\n';
 const running = (page: Page) => page.evaluate(() => window.tendril!.loop.runningSource);
 
-async function farm(page: Page, source: string, url = '/?coach=0'): Promise<void> {
+async function farm(page: Page, source: string, url = '/?mode=live&coach=0'): Promise<void> {
   await page.goto(url);
   await ready(page);
   await expect(page.locator('#status')).toHaveAttribute('data-state', /running|catching-up/);
@@ -60,7 +60,7 @@ test('with "Apply code as I type" off, edits wait for Run', async ({ page }) => 
 });
 
 test('the setting is in the menu and defaults on', async ({ page }) => {
-  await page.goto('/?coach=0');
+  await page.goto('/?mode=live&coach=0');
   await ready(page);
   await page.click('#btn-menu');
   await page.click('#menu-overlay [data-entry="settings"]');
