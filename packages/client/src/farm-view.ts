@@ -1,7 +1,7 @@
 import { boot } from './boot';
 import { perfHook } from './perf-meter';
 import * as THREE from 'three';
-import { CROPS as SIM_CROPS } from '@tendril/sim/src/index.ts';
+import { CROPS as SIM_CROPS, plotPrice } from '@tendril/sim/src/index.ts';
 import { AssetLoader, disposeModels, type AssetModel, type AssetStatus } from './asset-loader';
 import type { Snapshot } from './sim-types';
 import { fallbackModel } from './fallback-models';
@@ -267,7 +267,7 @@ export class FarmView {
     const bounds = this.world.bounds;
     this.rig.setBounds(bounds);
     const key = `${bounds ? `${bounds.x0},${bounds.x1},${bounds.z0},${bounds.z1}` : '-'}|${this.world.tileCount}`;
-    if (key !== this.islandKey) { this.islandKey = key; this.island.update(bounds, this.world.ownership()); this.light.setFarm(bounds); this.light.markShadowDirty(); }
+    if (key !== this.islandKey) { this.islandKey = key; const own = this.world.ownership(); this.island.update(bounds, own, plotPrice(own.count)); this.light.setFarm(bounds); this.light.markShadowDirty(); }
     if (this.market && !this.stallPlaced && this.world.tileAt(0, 0)) { this.market.setStallAt(1, 0); this.stallPlaced = true; }
     this.drones.setBots(snapshot.bots, tickDelta);
     if (this.selectedBot !== null && this.selectedBot >= snapshot.bots.length) this.selectedBot = null;
@@ -585,7 +585,7 @@ export class FarmView {
     this.rig.update(dt);
     const focus = this.rig.target;
     this.light.update(dt, focus, this.rig.distance);
-    this.island.setDistance(this.rig.distance);
+    this.island.faceCamera(this.camera.position.x, this.camera.position.z);
     this.renderWorld(time);
     this.drones.update(dt, time, this.light.glow, droneViewScale(this.tilePx));
     this.fx.update(dt, time, focus, this.light.glow, droneViewScale(this.tilePx));
