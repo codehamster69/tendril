@@ -1,9 +1,12 @@
 import * as THREE from 'three';
-import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import type { AssetModel } from './asset-loader';
+import { bladeClumpGeometry } from './farm-ground';
+import { buildBody, buildField, buildMoss, buildRoots, cloudPuffs, keelDepth, rimBlades, rimProps, rectOwnership, wallStones, type Bounds, type Field, type Ownership } from './farm-island';
 import type { Snapshot } from './sim-types';
 
 export type Placement = { x: number; z: number; rotation?: number; scale?: number; depth?: number };
-export type Bounds = { x0: number; x1: number; z0: number; z1: number };
+export type { Bounds, Ownership };
+export { rectOwnership };
 
 export function tileBounds(tiles: Snapshot['tiles']): Bounds | null {
   if (!tiles.length) return null;
@@ -35,47 +38,76 @@ export function sceneryPlacements(tiles: Snapshot['tiles'], { x0, x1, z0, z1 }: 
 
 /* ------------------------------------------------------------------ the living island */
 
-const COLORS = { grass: 0x5f8d3e, soil: 0x4a2f25, strata1: 0x7a5a45, strata2: 0xa07f5e, keel: 0x6a7e85, keel2: 0x586a70, root: 0x4a3524, frontier: 0xece2d0 };
-const KEEL_MAX = 48;
-const TENDRIL_MAX = 40;
-const TENDRIL_REACH = 28;
+const GLSL_NOISE = `
+float ih(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+float inz(vec2 p){ vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
+  return mix(mix(ih(i), ih(i + vec2(1.0, 0.0)), f.x), mix(ih(i + vec2(0.0, 1.0)), ih(i + vec2(1.0, 1.0)), f.x), f.y); }`;
 
-/** Small deterministic PRNG so tendrils keep their look between rebuilds. */
-function rng(seed: number): () => number {
-  let s = seed;
-  return () => (s = (s * 16807) % 2147483647) / 2147483647;
+/** Island body shader: grass on the lip and up-facing top, banded earth, clay and stone by depth with noise, moss on up-facing ledges. Colours come from world position, so a rebuilt body never changes look. */
+function bodyMaterial(uniforms: { uBand: { value: number } }): THREE.MeshStandardMaterial {
+  const m = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.96, flatShading: true });
+  m.onBeforeCompile = (shader) => {
+    shader.uniforms.uBand = uniforms.uBand;
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', '#include <common>\nvarying vec3 vWP;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvWP = (modelMatrix * vec4(transformed, 1.0)).xyz;');
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <common>', `#include <common>\nvarying vec3 vWP;\nuniform float uBand;\n${GLSL_NOISE}`)
+      .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
+{
+  float up = inverseTransformDirection(normal, viewMatrix).y;
+  float depth = -vWP.y;
+  float dd = (depth + (inz(vWP.xz * 0.9 + vWP.y * 0.4) - 0.5) * 0.55 + (inz(vWP.xz * 3.1 + vWP.y * 2.3) - 0.5) * 0.14) / uBand;
+  vec3 top = vec3(0.38, 0.24, 0.15), earth = vec3(0.58, 0.37, 0.22), clay = vec3(0.86, 0.55, 0.31), clay2 = vec3(0.95, 0.74, 0.46), stone = vec3(0.55, 0.57, 0.58), stone2 = vec3(0.72, 0.73, 0.72);
+  float band = 0.5 + 0.5 * sin(dd * 8.0 + inz(vWP.xz * 0.6) * 3.0);
+  vec3 c = mix(top, earth, smoothstep(0.1, 0.8, dd));
+  c = mix(c, mix(earth, clay, band), smoothstep(0.9, 1.7, dd));
+  c = mix(c, mix(clay, clay2, band), smoothstep(2.2, 3.4, dd));
+  c = mix(c, mix(stone, stone2, band), smoothstep(3.6, 5.2, dd));
+  c *= 0.86 + 0.28 * inz(vWP.xz * 2.2 + vWP.y * 1.7);
+  float n = inz(vWP.xz * 1.1) * 0.65 + inz(vWP.xz * 3.63) * 0.35;
+  vec3 g = vec3(0.373, 0.553, 0.243) * 0.94 * (0.86 + 0.28 * n);
+  float s = smoothstep(0.58, 0.78, inz(vWP.xz * 0.33 + 7.0));
+  g = mix(g, g * vec3(1.28, 1.12, 0.62), s * 0.8);
+  float grass = max(smoothstep(0.45, 0.7, up) * step(-0.4, vWP.y), (1.0 - smoothstep(0.06, 0.2, depth)) * smoothstep(-0.2, 0.25, up));
+  float moss = smoothstep(0.3, 0.6, up) * smoothstep(0.35, 0.55, inz(vWP.xz * 2.0 + vWP.y)) * smoothstep(0.3, 0.6, depth) * (1.0 - grass);
+  vec3 mc = vec3(0.26, 0.43, 0.17) * (0.8 + 0.4 * inz(vWP.xz * 4.0));
+  c = mix(c, mc, moss * 0.9);
+  diffuseColor.rgb = pow(mix(c, g, grass), vec3(2.2));
+}`);
+  };
+  m.customProgramCacheKey = () => 'island-body';
+  return m;
 }
 
-/** Floating slab under the farm: grass cap, soil lip, two strata, a faceted stone keel and hanging roots; a plain line marks where land can grow. The tile ground itself (beds, meadow) is drawn by the world view. Cost never follows the size of the farm. */
+/** The floating island under the farm, lofted from the owned land plus a wild rim: grass lip, banded cliff with moss, bark roots, hanging moss, dry-stone wall, meadow and props on the rim, and a cloud sea below. The tile ground itself is drawn by the world view. A plain line marks where land can grow. Everything is static between plot changes and its size is capped, so cost never follows the size of the farm. */
 export class FarmIsland {
   private group = new THREE.Group();
+  private dressing = new THREE.Group();
   private frontier = new THREE.Group();
-  private frontierMat = new THREE.MeshBasicMaterial({ color: COLORS.frontier, transparent: true, opacity: 0.35, depthWrite: false });
+  private frontierMat = new THREE.MeshBasicMaterial({ color: 0xece2d0, transparent: true, opacity: 0.35, depthWrite: false });
   private frontierBars: THREE.Mesh[] = [];
   private unitBox = new THREE.BoxGeometry(1, 1, 1);
-  private keelGeo = new THREE.ConeGeometry(Math.SQRT1_2, 1, 4).rotateY(Math.PI / 4).rotateX(Math.PI);
-  private mats: Record<'grass' | 'soil' | 'strata1' | 'strata2' | 'keel' | 'keel2' | 'root', THREE.MeshStandardMaterial>;
-  private slab: THREE.Mesh[] = [];
-  private keel: THREE.Mesh[] = [];
-  private tendrils: THREE.Mesh | null = null;
-  private boundsKey = '';
+  private bodyUniforms = { uBand: { value: 1 } };
+  private bodyMat = bodyMaterial(this.bodyUniforms);
+  private rootMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9 });
+  private mossMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95, side: THREE.DoubleSide });
+  private stoneMat = new THREE.MeshStandardMaterial({ color: 0x817c70, roughness: 1, flatShading: true });
+  private bladeGeo = bladeClumpGeometry();
+  private bladeMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9, side: THREE.DoubleSide });
+  private cloudGeo = new THREE.IcosahedronGeometry(1, 2);
+  private cloudMat = new THREE.MeshLambertMaterial({ color: 0xdde3ea });
+  private built: THREE.Object3D[] = [];
   private bounds: Bounds | null = null;
+  private own: Ownership | null = null;
+  private field: Field | null = null;
+  private boundsKey = '';
   private distance = 20;
   private disposed = false;
+  /** Counters for the tests and perf notes. */
+  stats = { bodyTriangles: 0, roots: 0, wallStones: 0, props: 0, blades: 0, puffs: 0 };
 
-  constructor(private scene: THREE.Scene) {
-    const m = (color: number, extra: THREE.MeshStandardMaterialParameters = {}): THREE.MeshStandardMaterial => new THREE.MeshStandardMaterial({ color, roughness: 0.95, flatShading: true, ...extra });
-    this.mats = {
-      grass: m(COLORS.grass), soil: m(COLORS.soil), strata1: m(COLORS.strata1), strata2: m(COLORS.strata2), keel: m(COLORS.keel), keel2: m(COLORS.keel2),
-      root: m(COLORS.root, { roughness: 0.85, flatShading: false }),
-    };
-    const box = (mat: THREE.Material, shadow = true): THREE.Mesh => { const mesh = new THREE.Mesh(this.unitBox, mat); mesh.receiveShadow = shadow; mesh.frustumCulled = false; this.group.add(mesh); return mesh; };
-    this.slab = [box(this.mats.grass), box(this.mats.soil), box(this.mats.strata1), box(this.mats.strata2)];
-    for (const mat of [this.mats.keel, this.mats.keel2]) {
-      const mesh = new THREE.Mesh(this.keelGeo, mat);
-      mesh.receiveShadow = true; mesh.frustumCulled = false;
-      this.group.add(mesh); this.keel.push(mesh);
-    }
+  constructor(private scene: THREE.Scene, private models: ((name: string) => AssetModel) | null = null) {
     for (let i = 0; i < 4; i++) {
       const bar = new THREE.Mesh(this.unitBox, this.frontierMat);
       bar.frustumCulled = false; bar.renderOrder = 2;
@@ -83,17 +115,23 @@ export class FarmIsland {
     }
     this.group.visible = false;
     this.frontier.visible = false;
-    scene.add(this.group, this.frontier);
+    scene.add(this.group, this.dressing, this.frontier);
   }
 
-  /** Call when the snapshot changes (not per frame). Rebuilds only when the bounds change. */
-  update(bounds: Bounds | null): void {
+  /** Call when the snapshot changes (not per frame). Rebuilds only when the owned land changes. */
+  update(bounds: Bounds | null, own: Ownership | null = null): void {
     if (this.disposed) return;
-    this.bounds = bounds;
-    this.group.visible = this.frontier.visible = !!bounds;
-    if (!bounds) { this.boundsKey = ''; return; }
-    const key = `${bounds.x0},${bounds.x1},${bounds.z0},${bounds.z1}`;
-    if (key !== this.boundsKey) { this.boundsKey = key; this.layoutSlab(bounds); this.layoutFrontier(); }
+    this.bounds = bounds; this.own = own;
+    this.group.visible = this.dressing.visible = this.frontier.visible = !!bounds;
+    if (!bounds) { this.boundsKey = ''; this.clear(); return; }
+    const key = `${bounds.x0},${bounds.x1},${bounds.z0},${bounds.z1}|${own?.count ?? 0}`;
+    if (key !== this.boundsKey) { this.boundsKey = key; this.rebuild(); this.layoutFrontier(); }
+  }
+
+  /** Models arrived or changed: dress the rim again with the real ones. */
+  refreshModels(): void {
+    if (this.disposed || !this.bounds || !this.field) return;
+    this.rebuild();
   }
 
   setDistance(d: number): void {
@@ -101,52 +139,87 @@ export class FarmIsland {
     if (this.bounds) this.layoutFrontier();
   }
 
-  private layoutSlab(b: Bounds): void {
-    const cx = (b.x0 + b.x1) / 2, cz = (b.z0 + b.z1) / 2, w = b.x1 - b.x0 + 0.1, d = b.z1 - b.z0 + 0.1;
-    // [width pad, height, centre y]: cap top sits just below the tile tops, strata stack under it.
-    const layers: [number, number, number][] = [[0, 0.1, -0.09], [0, 0.22, -0.25], [0.06, 0.32, -0.52], [0.02, 0.3, -0.83]];
-    this.slab.forEach((mesh, i) => { const [pad, h, y] = layers[i]!; mesh.scale.set(w + pad, h, d + pad); mesh.position.set(cx, y, cz); });
-    // A long thin farm gets a shallow keel: depth follows the short side, so a strip is not carried by a deep wall.
-    const size = Math.min((w + d) / 2, Math.min(w, d) * 2 + 2);
-    const h = Math.min(KEEL_MAX, Math.max(2.6, size * 0.35));
-    const [k1, k2] = this.keel as [THREE.Mesh, THREE.Mesh];
-    k1.scale.set(w, h, d); k1.position.set(cx, -0.98 - h / 2, cz);
-    // A smaller, turned facet cluster breaks up the perfect pyramid (not turned on a long thin farm: it would sweep out sideways).
-    k2.scale.set(w * 0.72, h * 0.72, d * 0.72); k2.rotation.y = 0.5 * Math.min(1, 1.5 * Math.min(w, d) / Math.max(w, d)); k2.position.set(cx + w * 0.04, -0.98 - h * 0.36, cz - d * 0.03);
-    this.buildTendrils(cx, cz, w, d);
+  private clear(): void {
+    for (const o of this.built) {
+      o.parent?.remove(o);
+      if (o instanceof THREE.Mesh && o.userData.own) o.geometry.dispose();
+      if (o instanceof THREE.InstancedMesh) o.dispose();
+    }
+    this.built = [];
   }
 
-  private buildTendrils(cx: number, cz: number, w: number, d: number): void {
-    if (this.tendrils) { this.group.remove(this.tendrils); this.tendrils.geometry.dispose(); this.tendrils = null; }
-    const rnd = rng(7), size = (w + d) / 2;
-    const n = Math.min(TENDRIL_MAX, Math.round(8 + (w + d) * 0.35));
-    const reach = Math.min(TENDRIL_REACH, Math.max(1.5, size * 0.14));
-    const geos: THREE.BufferGeometry[] = [];
-    for (let k = 0; k < n; k++) {
-      const side = (k * 7) % 4;
-      const along = rnd() - 0.5, ex = w / 2 + 0.02, ez = d / 2 + 0.02;
-      let x0: number, z0: number, dx: number, dz: number;
-      if (side === 0) { x0 = along * w; z0 = -ez; dx = 0; dz = -1; }
-      else if (side === 1) { x0 = along * w; z0 = ez; dx = 0; dz = 1; }
-      else if (side === 2) { x0 = -ex; z0 = along * d; dx = -1; dz = 0; }
-      else { x0 = ex; z0 = along * d; dx = 1; dz = 0; }
-      const len = 1.2 + rnd() * reach, ph = rnd() * 6, pts: THREE.Vector3[] = [];
-      for (let s = 0; s <= 10; s++) {
-        const u = s / 10, curl = Math.max(0, u - 0.65) / 0.35;
-        pts.push(new THREE.Vector3(
-          cx + x0 + dx * (0.12 + 0.25 * Math.sin(u * 3 + ph) + curl * 0.28 * Math.cos(curl * 7)),
-          -0.7 - u * len,
-          cz + z0 + dz * (0.12 + 0.25 * Math.cos(u * 2.6 + ph) + curl * 0.28 * Math.sin(curl * 7))));
-      }
-      const tube = new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 16, 0.05, 5);
-      geos.push(tube);
+  private add(o: THREE.Object3D, parent: THREE.Object3D = this.group): void { parent.add(o); this.built.push(o); }
+
+  private rebuild(): void {
+    this.clear();
+    const b = this.bounds!, own = this.own ?? rectOwnership(b);
+    const field = this.field = buildField(b, own), H = keelDepth(b);
+    this.bodyUniforms.uBand.value = Math.min(3, Math.max(0.5, H / 5));
+    const mesh = (geo: THREE.BufferGeometry | null, mat: THREE.Material, shadow = false): void => {
+      if (!geo) return;
+      const m = new THREE.Mesh(geo, mat);
+      m.frustumCulled = false; m.receiveShadow = true; m.castShadow = shadow; m.userData.own = true;
+      this.add(m);
+    };
+    const body = buildBody(field, H);
+    this.stats.bodyTriangles = (body.index?.count ?? 0) / 3;
+    mesh(body, this.bodyMat);
+    const roots = buildRoots(field, H); this.stats.roots = roots ? roots.index!.count / 3 : 0;
+    mesh(roots, this.rootMat);
+    mesh(buildMoss(field), this.mossMat);
+
+    const dummy = new THREE.Object3D(), col = new THREE.Color();
+    const instanced = (geo: THREE.BufferGeometry, mat: THREE.Material | THREE.Material[], n: number, cast: boolean, parent: THREE.Object3D = this.dressing): THREE.InstancedMesh => {
+      const im = new THREE.InstancedMesh(geo, mat, Math.max(1, n));
+      im.frustumCulled = false; im.castShadow = cast; im.receiveShadow = true; im.count = 0;
+      this.add(im, parent);
+      return im;
+    };
+    // Dry-stone wall.
+    const stones = wallStones(own); this.stats.wallStones = stones.length;
+    if (stones.length) {
+      const im = instanced(this.unitBox, this.stoneMat, stones.length, true);
+      stones.forEach((st, i) => {
+        dummy.position.set(st.x, st.y + st.sy / 2, st.z); dummy.rotation.set(0, st.rotation, 0); dummy.scale.set(st.sx, st.sy, st.sz); dummy.updateMatrix();
+        im.setMatrixAt(i, dummy.matrix); im.setColorAt(i, col.setRGB(st.tone, st.tone * 0.98, st.tone * 0.92));
+      });
+      im.count = stones.length; im.instanceMatrix.needsUpdate = true; if (im.instanceColor) im.instanceColor.needsUpdate = true;
     }
-    const merged = geos.length ? mergeGeometries(geos, false) : null;
-    for (const g of geos) g.dispose();
-    if (!merged) return;
-    this.tendrils = new THREE.Mesh(merged, this.mats.root);
-    this.tendrils.frustumCulled = false;
-    this.group.add(this.tendrils);
+    // Meadow clumps on the rim.
+    const blades = rimBlades(field); this.stats.blades = blades.length;
+    if (blades.length) {
+      const im = instanced(this.bladeGeo, this.bladeMat, blades.length, false);
+      blades.forEach((bl, i) => {
+        dummy.position.set(bl.x, 0, bl.z); dummy.rotation.set(0, bl.rotation, 0); dummy.scale.setScalar(bl.scale); dummy.updateMatrix();
+        im.setMatrixAt(i, dummy.matrix); im.setColorAt(i, col.setRGB(bl.tone, bl.tone, bl.tone * 0.92));
+      });
+      im.count = blades.length; im.instanceMatrix.needsUpdate = true; if (im.instanceColor) im.instanceColor.needsUpdate = true;
+    }
+    // Props from the existing models, placed from world-space hashes.
+    const props = this.models ? rimProps(field) : [];
+    this.stats.props = props.length;
+    for (const name of new Set(props.map((p) => p.name))) {
+      const model = this.models!(name), list = props.filter((p) => p.name === name);
+      for (const part of model.parts) {
+        const im = instanced(part.geometry, part.material, list.length, name === 'prop_tree' || name === 'prop_rocks');
+        list.forEach((p, i) => {
+          dummy.position.set(p.x, 0, p.z); dummy.rotation.set(0, p.rotation, 0); dummy.scale.setScalar(p.scale); dummy.updateMatrix();
+          im.setMatrixAt(i, dummy.matrix);
+        });
+        im.count = list.length; im.instanceMatrix.needsUpdate = true;
+      }
+    }
+    // Cloud sea: no shadows, one draw call.
+    const puffs = cloudPuffs(field, b, H); this.stats.puffs = puffs.length;
+    if (puffs.length) {
+      const im = instanced(this.cloudGeo, this.cloudMat, puffs.length, false, this.group);
+      im.receiveShadow = false;
+      puffs.forEach((p, i) => {
+        dummy.position.set(p.x, p.y, p.z); dummy.rotation.set(0, i * 1.7, 0); dummy.scale.set(p.r * 1.35, p.r * p.flat, p.r); dummy.updateMatrix();
+        im.setMatrixAt(i, dummy.matrix);
+      });
+      im.count = puffs.length; im.instanceMatrix.needsUpdate = true;
+    }
   }
 
   private layoutFrontier(): void {
@@ -163,11 +236,9 @@ export class FarmIsland {
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
-    if (this.tendrils) this.tendrils.geometry.dispose();
-    this.scene.remove(this.group, this.frontier);
-    this.unitBox.dispose();
-    this.keelGeo.dispose();
-    this.frontierMat.dispose();
-    for (const mat of Object.values(this.mats)) mat.dispose();
+    this.clear();
+    this.scene.remove(this.group, this.dressing, this.frontier);
+    for (const g of [this.unitBox, this.bladeGeo, this.cloudGeo]) g.dispose();
+    for (const m of [this.frontierMat, this.bodyMat, this.rootMat, this.mossMat, this.stoneMat, this.bladeMat, this.cloudMat]) m.dispose();
   }
 }

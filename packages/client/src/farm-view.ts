@@ -105,8 +105,8 @@ export class FarmView {
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.light = new FarmLight(this.scene, this.renderer, { shadows: !this.lite });
     this.light.setShadows(this.plan.shadows);
-    this.island = new FarmIsland(this.scene);
     this.loader = new AssetLoader(this.assetsChanged);
+    this.island = new FarmIsland(this.scene, (name) => this.loader.models.get(name) ?? this.fallback(name));
     this.world = new FarmWorld(this.scene, (name) => this.loader.models.get(name) ?? this.fallback(name));
     this.fx = new FarmFx(this.scene);
     this.fx.fireflies = !this.lite;
@@ -233,6 +233,7 @@ export class FarmView {
     this.canvas.dataset.modelsErrors = status.errors.join('; ');
     this.canvas.dataset.modelsAssets = JSON.stringify([...this.loader.models.keys()].sort());
     this.world.invalidate();
+    this.island?.refreshModels();
     if (this.latest) this.renderWorld(performance.now() / 1000); // swap placeholders for the GLBs before anyone reads the batches
     this.light.markShadowDirty();
     this.requestRender();
@@ -261,10 +262,12 @@ export class FarmView {
     this.syncDay(snapshot, scrub);
     if (snapshot.weather !== this.weather) { this.weather = snapshot.weather; this.light.setWeather(snapshot.weather); }
     this.world.setSnapshot(snapshot);
+    if (scrub) this.world.wear.reset();
+    if (this.world.wear.stepBots(snapshot.bots, !scrub && tickDelta <= 40)) this.world.invalidate();
     const bounds = this.world.bounds;
     this.rig.setBounds(bounds);
     const key = `${bounds ? `${bounds.x0},${bounds.x1},${bounds.z0},${bounds.z1}` : '-'}|${this.world.tileCount}`;
-    if (key !== this.islandKey) { this.islandKey = key; this.island.update(bounds); this.light.setFarm(bounds); this.light.markShadowDirty(); }
+    if (key !== this.islandKey) { this.islandKey = key; this.island.update(bounds, this.world.ownership()); this.light.setFarm(bounds); this.light.markShadowDirty(); }
     if (this.market && !this.stallPlaced && this.world.tileAt(0, 0)) { this.market.setStallAt(1, 0); this.stallPlaced = true; }
     this.drones.setBots(snapshot.bots, tickDelta);
     if (this.selectedBot !== null && this.selectedBot >= snapshot.bots.length) this.selectedBot = null;
